@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Taskwell" />
+  <title>Taskwell</title>
+  <style>
+    :root {
+      --cream: #F5F0E8; --cream-dark: #EDE6D6;
+      --rose: #C4907A; --rose-dark: #A67055; --rose-pale: #E8C4B4;
+      --ink: #2E2118; --ink-soft: #6B5744; --ink-faint: #B8A898;
+      --sage: #7A9E7E; --rust: #B85C38; --paper: #FAF7F2;
+      --tab-w: 64px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { background: var(--cream-dark); font-family: Georgia, serif; color: var(--ink);
+           height: 100dvh; display: flex; overflow: hidden; }
+
+    /* Sidebar */
+    .rail { width: var(--tab-w); background: var(--rose); display: flex; flex-direction: column;
+            align-items: center; padding: 16px 0 24px; gap: 4px; flex-shrink: 0; z-index: 10; }
+    .app-mark { width: 34px; height: 34px; background: var(--cream); border-radius: 8px;
+                display: flex; align-items: center; justify-content: center; margin-bottom: 18px;
+                font-size: 16px; color: var(--rose); font-weight: bold; }
+    .tab-btn { width: 48px; border-radius: 10px; border: none; cursor: pointer;
+               display: flex; flex-direction: column; align-items: center; justify-content: center;
+               gap: 3px; padding: 8px 4px; transition: background .15s; background: transparent; }
+    .tab-btn svg { width: 22px; height: 22px; stroke: var(--ink); fill: none;
+                   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .tab-btn span { font-size: 9px; font-family: 'Helvetica Neue', sans-serif;
+                    letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
+    .tab-btn.active { background: var(--rose-pale); }
+    .tab-btn:hover { background: var(--rose-pale); }
+
+    /* Main */
+    .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: var(--paper); }
+    .section { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+    .section.active { display: flex; }
+    .page-header { padding: 18px 20px 0; flex-shrink: 0; display: flex; align-items: baseline; gap: 10px; }
+    .page-title { font-size: 26px; font-weight: normal; color: var(--ink); }
+    .page-sub { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-soft); }
+
+    /* Buttons */
+    .btn { padding: 6px 14px; border-radius: 8px; border: 1.5px solid var(--cream-dark);
+           background: var(--cream); color: var(--ink); font-family: 'Helvetica Neue', sans-serif;
+           font-size: 12px; cursor: pointer; transition: all .15s; }
+    .btn:hover { background: var(--cream-dark); }
+    .btn-primary { background: var(--cream); border-color: var(--ink-faint); color: var(--ink);
+                   font-weight: 600; }
+    .btn-primary:hover { background: var(--cream-dark); }
+    .btn-sm { padding: 3px 10px; font-size: 11px; }
+
+    /* ── HUB ── */
+    #hub .hub-controls { display: flex; align-items: center; gap: 8px;
+                         padding: 10px 20px 0; flex-shrink: 0; flex-wrap: wrap; }
+    #hub .scroll-area { flex: 1; overflow-y: auto; padding: 0 20px 24px; }
+
+    .section-block { margin-top: 14px; }
+    .section-hdr { display: flex; align-items: center; justify-content: space-between;
+                   background: var(--cream-dark); padding: 6px 10px; cursor: pointer;
+                   user-select: none; border-radius: 4px; }
+    .section-hdr-left { display: flex; align-items: center; gap: 8px;
+                        font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
+                        font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+    .section-hdr-right { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); }
+    .section-body { padding-left: 10px; }
+
+    .list-block { margin-top: 10px; }
+    .list-hdr { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .list-name { font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
+                 font-weight: 700; color: var(--ink); }
+    .list-count { background: var(--rose-pale); color: var(--ink); font-size: 10px;
+                  font-family: 'Helvetica Neue', sans-serif; padding: 1px 6px; border-radius: 10px; }
+    .list-del { margin-left: auto; font-size: 11px; color: var(--ink-faint);
+                background: none; border: none; cursor: pointer; padding: 2px 6px; }
+    .list-del:hover { color: var(--rust); }
+    .list-body { padding-left: 12px; margin-top: 6px; }
+
+    .task-input-row { display: flex; gap: 6px; margin-bottom: 10px; }
+    .task-input { flex: 1; padding: 7px 10px; border: 1.5px solid var(--cream-dark);
+                  border-radius: 8px; background: var(--cream); font-family: Georgia, serif;
+                  font-size: 13px; color: var(--ink); outline: none; }
+    .task-input:focus { border-color: var(--rose); }
+    .due-input { padding: 7px 8px; border: 1.5px solid var(--cream-dark); border-radius: 8px;
+                 background: var(--cream); font-family: 'Helvetica Neue', sans-serif;
+                 font-size: 11px; color: var(--ink); outline: none; width: 130px; }
+    .due-input:focus { border-color: var(--rose); }
+
+    .task-row { display: flex; align-items: center; gap: 8px; padding: 7px 0;
+                border-bottom: 1px solid var(--cream-dark); }
+    .task-check { width: 18px; height: 18px; border: 1.5px solid var(--rose);
+                  border-radius: 50%; flex-shrink: 0; cursor: pointer;
+                  display: flex; align-items: center; justify-content: center; transition: all .15s; }
+    .task-check.done { background: var(--rose); border-color: var(--rose); }
+    .task-check.done::after { content: ''; display: block; width: 4px; height: 7px;
+                               border: 2px solid white; border-top: none; border-left: none;
+                               transform: rotate(45deg) translateY(-1px); }
+    .task-text { flex: 1; font-size: 13px; color: var(--ink); }
+    .task-text.done { text-decoration: line-through; color: var(--ink-faint); }
+    .due-badge { font-size: 10px; font-family: 'Helvetica Neue', sans-serif;
+                 padding: 2px 7px; border-radius: 10px; flex-shrink: 0; }
+    .due-badge.overdue { background: var(--rust); color: white; }
+    .due-badge.today { background: var(--rose-pale); color: var(--ink); }
+    .due-badge.soon { background: var(--cream-dark); color: var(--ink-soft); }
+    .task-del { background: none; border: none; color: var(--ink-faint); font-size: 16px;
+                cursor: pointer; padding: 0 2px; flex-shrink: 0; }
+    .task-del:hover { color: var(--rust); }
+
+    .done-section { margin-top: 8px; }
+    .done-hdr { display: flex; align-items: center; justify-content: space-between;
+                font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-faint); }
+    .no-tasks { font-family: Georgia, serif; font-size: 12px; font-style: italic;
+                color: var(--ink-faint); padding: 6px 0; }
+    .empty-section { font-family: Georgia, serif; font-size: 12px; font-style: italic;
+                     color: var(--ink-faint); padding: 8px 12px; }
+    .divider { border: none; border-top: 1px solid var(--cream-dark); margin: 6px 0; }
+
+    /* ── WEEK ── */
+    #week .week-controls { padding: 10px 20px 0; flex-shrink: 0; display: flex;
+                           align-items: center; gap: 6px; flex-wrap: wrap; }
+    #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px;
+                          border-radius: 8px; flex-shrink: 0; }
+    .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px;
+                     text-transform: uppercase; letter-spacing: .06em;
+                     color: var(--ink-faint); margin-bottom: 8px; }
+    .pending-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+    .chip { padding: 4px 10px; border-radius: 20px; background: var(--cream-dark);
+            border: 1px solid var(--rose); font-family: 'Helvetica Neue', sans-serif;
+            font-size: 11px; color: var(--ink); cursor: grab; user-select: none;
+            transition: all .15s; }
+    .chip:hover { background: var(--rose-pale); }
+    .chip.dragging { opacity: .5; }
+
+    .week-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; padding: 10px 20px 16px; }
+    .week-grid { display: flex; gap: 8px; height: 100%; min-width: max-content; }
+    .day-col { width: 160px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+               display: flex; flex-direction: column; }
+    .day-col.today { border: 2px solid var(--rose); }
+    .day-hdr { padding: 8px 10px; display: flex; justify-content: space-between;
+               align-items: center; background: var(--cream-dark); flex-shrink: 0; }
+    .day-col.today .day-hdr { background: var(--rose-pale); }
+    .day-hdr-name { font-family: 'Helvetica Neue', sans-serif; font-size: 12px;
+                    font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: .05em; }
+    .day-hdr-date { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); }
+    .day-body { flex: 1; background: var(--cream); padding: 8px; overflow-y: auto;
+                min-height: 200px; transition: background .15s; }
+    .day-body.drag-over { background: var(--rose-pale); }
+    .day-empty { font-family: Georgia, serif; font-size: 11px; font-style: italic;
+                 color: var(--ink-faint); padding: 6px 0; }
+    .week-task { background: var(--paper); border-radius: 6px; padding: 6px 8px;
+                 margin-bottom: 6px; }
+    .week-task-title { font-size: 12px; color: var(--ink); margin-bottom: 2px; }
+    .week-task-title.done { text-decoration: line-through; color: var(--ink-faint); }
+    .week-task-meta { display: flex; align-items: center; justify-content: space-between; }
+    .week-task-list { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); }
+    .week-task-remove { background: none; border: none; color: var(--ink-faint);
+                        font-size: 13px; cursor: pointer; padding: 0; }
+    .week-task-remove:hover { color: var(--rust); }
+
+    /* ── CAPTURE ── */
+    #capture .capture-inner { flex: 1; overflow: hidden; display: flex;
+                              flex-direction: column; padding: 14px 20px 20px; gap: 14px; }
+    .capture-section-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px;
+                              text-transform: uppercase; letter-spacing: .08em;
+                              color: var(--ink-faint); margin-bottom: 6px; }
+    .quick-input-row { display: flex; gap: 8px; }
+    .quick-input { flex: 1; padding: 8px 12px; border: 1.5px solid var(--cream-dark);
+                   border-radius: 8px; background: var(--cream); font-family: Georgia, serif;
+                   font-size: 13px; color: var(--ink); outline: none; }
+    .quick-input:focus { border-color: var(--rose); }
+    .capture-list { flex: 0 0 auto; max-height: 180px; overflow-y: auto; }
+    .capture-item { display: flex; align-items: center; gap: 8px; padding: 7px 0;
+                    border-bottom: 1px solid var(--cream-dark); }
+    .capture-item-text { flex: 1; font-size: 13px; color: var(--ink); }
+    .capture-notes { flex: 1; padding: 12px; border: 1.5px solid var(--cream-dark);
+                     border-radius: 10px; background: var(--cream); font-family: Georgia, serif;
+                     font-size: 13px; color: var(--ink); resize: none; outline: none;
+                     line-height: 1.7; }
+    .capture-notes:focus { border-color: var(--rose); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(46,33,24,.4);
+                     display: flex; align-items: center; justify-content: center;
+                     z-index: 100; padding: 24px; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal { background: var(--paper); border-radius: 16px; padding: 22px;
+             width: 100%; max-width: 340px; box-shadow: 0 20px 60px rgba(46,33,24,.2); }
+    .modal-title { font-size: 19px; font-weight: normal; color: var(--ink); margin-bottom: 14px; }
+    .modal-input { width: 100%; padding: 9px 12px; border: 1.5px solid var(--cream-dark);
+                   border-radius: 8px; background: var(--cream); font-family: Georgia, serif;
+                   font-size: 14px; color: var(--ink); outline: none; margin-bottom: 10px; }
+    .modal-input:focus { border-color: var(--rose); }
+    .modal-select { width: 100%; padding: 9px 12px; border: 1.5px solid var(--cream-dark);
+                    border-radius: 8px; background: var(--cream); font-family: 'Helvetica Neue', sans-serif;
+                    font-size: 13px; color: var(--ink); outline: none; margin-bottom: 14px; }
+    .modal-label { font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
+                   color: var(--ink-soft); margin-bottom: 4px; display: block; }
+    .modal-row { display: flex; gap: 10px; margin-top: 4px; }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
+             background: var(--ink); color: var(--cream); font-family: 'Helvetica Neue', sans-serif;
+             font-size: 12px; padding: 8px 18px; border-radius: 20px; z-index: 200;
+             opacity: 0; transition: all .3s; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* Loading */
+    .loading { position: fixed; inset: 0; background: var(--paper);
+               display: flex; align-items: center; justify-content: center;
+               flex-direction: column; gap: 12px; z-index: 300; transition: opacity .4s; }
+    .loading.hidden { opacity: 0; pointer-events: none; }
+    .spinner { width: 26px; height: 26px; border: 2.5px solid var(--cream-dark);
+               border-top-color: var(--rose); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: var(--ink-soft); }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--cream-dark); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading Taskwell…</div>
+</div>
+
+<!-- Rail -->
+<nav class="rail">
+  <div class="app-mark">✓</div>
+  <button class="tab-btn active" data-tab="hub" onclick="switchTab('hub')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span>Hub</span>
+  </button>
+  <button class="tab-btn" data-tab="week" onclick="switchTab('week')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <span>Week</span>
+  </button>
+  <button class="tab-btn" data-tab="capture" onclick="switchTab('capture')">
+    <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    <span>Capture</span>
+  </button>
+</nav>
+
+<main class="main">
+
+  <!-- HUB -->
+  <section id="hub" class="section active">
+    <div class="page-header">
+      <div class="page-title">Hub</div>
+      <div class="page-sub" id="hubSub">Your task lists</div>
+    </div>
+    <div class="hub-controls">
+      <button class="btn btn-primary" onclick="openNewListModal()">+ New List</button>
+      <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
+      <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
+    </div>
+    <div class="scroll-area" id="hubScrollArea"></div>
+  </section>
+
+  <!-- WEEK -->
+  <section id="week" class="section">
+    <div class="page-header">
+      <div class="page-title">Week</div>
+      <div class="page-sub" id="weekSub"></div>
+    </div>
+    <div class="week-controls" id="weekControls"></div>
+    <div class="pending-area">
+      <div class="pending-label">Unassigned — drag onto a day</div>
+      <div class="pending-chips" id="pendingChips"></div>
+    </div>
+    <div class="week-scroll">
+      <div class="week-grid" id="weekGrid"></div>
+    </div>
+  </section>
+
+  <!-- CAPTURE -->
+  <section id="capture" class="section">
+    <div class="page-header">
+      <div class="page-title">Capture</div>
+      <div class="page-sub">Freeform thoughts &amp; quick items</div>
+    </div>
+    <div class="capture-inner">
+      <div>
+        <div class="capture-section-label">Quick Items</div>
+        <div class="quick-input-row">
+          <input class="quick-input" id="quickInput" placeholder="Quick thought…" onkeydown="if(event.key==='Enter') addCaptureItem()" />
+          <button class="btn btn-primary" onclick="addCaptureItem()">Add</button>
+        </div>
+        <div class="capture-list" id="captureList"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;">
+        <div class="capture-section-label">Freeform Notes</div>
+        <textarea class="capture-notes" id="captureNotes" placeholder="Type anything…"></textarea>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- New List Modal -->
+<div class="modal-overlay" id="newListModal">
+  <div class="modal">
+    <div class="modal-title">New List</div>
+    <label class="modal-label">List name</label>
+    <input class="modal-input" id="newListName" placeholder="e.g. BIO 340, CFA…" onkeydown="if(event.key==='Enter') confirmNewList()" />
+    <label class="modal-label">Section</label>
+    <select class="modal-select" id="newListSection">
+      <option>Service</option><option>Teaching</option><option>Research</option><option selected>Misc</option>
+    </select>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('newListModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmNewList()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move to List Modal -->
+<div class="modal-overlay" id="moveModal">
+  <div class="modal">
+    <div class="modal-title">Move to List</div>
+    <select class="modal-select" id="moveSelect"></select>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('moveModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmMove()">Move</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
+const SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
+const HDRS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
+               'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+const SECTIONS = ['Service','Teaching','Research','Misc'];
+
+let lists = [], tasks = [], captureItems = [], pendingMoveIdx = null;
+let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
+let notesTimer = null;
+
+async function api(method, path, body) {
+  const r = await fetch(SB_URL + '/rest/v1/' + path, {
+    method, headers: HDRS, body: body ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw new Error(await r.text());
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+// ── Boot ──
+async function boot() {
+  try {
+    [lists, tasks] = await Promise.all([
+      api('GET','lists?order=created_at.asc'),
+      api('GET','tasks?order=created_at.asc')
+    ]);
+    captureItems = JSON.parse(localStorage.getItem('tw_capture') || '[]');
+    document.getElementById('captureNotes').value = localStorage.getItem('tw_notes') || '';
+    renderHub(); renderWeek(); renderCapture();
+  } catch(e) { showToast('Connection error'); console.error(e); }
+  document.getElementById('loading').classList.add('hidden');
+}
+
+// ── NAV ──
+function switchTab(tab) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tab).classList.add('active');
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  if (tab === 'week') renderWeek();
+}
+
+// ══════════════════════════════
+// HUB
+// ══════════════════════════════
+function renderHub() {
+  const area = document.getElementById('hubScrollArea');
+  area.innerHTML = '';
+  document.getElementById('hubSub').textContent =
+    lists.length === 0 ? 'Your task lists' : `${lists.length} list${lists.length !== 1 ? 's' : ''}`;
+
+  SECTIONS.forEach(sec => {
+    const secLists = lists.filter(l => (l.section || 'Misc') === sec);
+    const openCount = secLists.reduce((n, l) =>
+      n + tasks.filter(t => t.list_id === l.id && !t.completed).length, 0);
+    const collapsed = sectionCollapsed[sec];
+
+    const block = document.createElement('div');
+    block.className = 'section-block';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'section-hdr';
+    hdr.innerHTML = `
+      <div class="section-hdr-left">
+        <span>${collapsed ? '▶' : '▼'}</span>
+        <span>${sec.toUpperCase()}</span>
+      </div>
+      ${openCount > 0 ? `<div class="section-hdr-right">${openCount} open</div>` : ''}`;
+    hdr.onclick = () => { sectionCollapsed[sec] = !collapsed; renderHub(); };
+    block.appendChild(hdr);
+
+    if (!collapsed) {
+      const body = document.createElement('div');
+      body.className = 'section-body';
+      if (secLists.length === 0) {
+        body.innerHTML = '<div class="empty-section">No lists yet</div>';
+      } else {
+        secLists.forEach(lst => body.appendChild(makeListBlock(lst)));
+      }
+      block.appendChild(body);
+    }
+    area.appendChild(block);
+  });
+}
+
+function makeListBlock(lst) {
+  const listTasks = tasks.filter(t => t.list_id === lst.id);
+  const openTasks = listTasks.filter(t => !t.completed);
+  const doneTasks = listTasks.filter(t => t.completed);
+  const collapsed = listCollapsed[lst.id];
+
+  const block = document.createElement('div');
+  block.className = 'list-block';
+
+  // List header
+  const hdr = document.createElement('div');
+  hdr.className = 'list-hdr';
+  hdr.innerHTML = `
+    <span style="color:var(--ink-soft);font-size:11px;">${collapsed ? '▶' : '▼'}</span>
+    <span class="list-name">${lst.name}</span>
+    ${openTasks.length > 0 ? `<span class="list-count">${openTasks.length}</span>` : ''}
+    <button class="list-del" onclick="event.stopPropagation();deleteList('${lst.id}','${lst.name}')">Delete</button>`;
+  hdr.onclick = () => { listCollapsed[lst.id] = !collapsed; renderHub(); };
+  block.appendChild(hdr);
+
+  if (!collapsed) {
+    const body = document.createElement('div');
+    body.className = 'list-body';
+
+    // Task input row
+    const inputRow = document.createElement('div');
+    inputRow.className = 'task-input-row';
+    inputRow.innerHTML = `
+      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" />
+      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" />
+      <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">Add</button>`;
+    body.appendChild(inputRow);
+
+    document.addEventListener('keydown', function handler(e) {
+      const inp = document.getElementById(`ti_${lst.id}`);
+      if (inp && document.activeElement === inp && e.key === 'Enter') {
+        addTask(lst.id);
+      }
+    }, { once: false });
+
+    // Set up enter key for this specific input
+    setTimeout(() => {
+      const inp = document.getElementById(`ti_${lst.id}`);
+      if (inp) inp.onkeydown = e => { if (e.key === 'Enter') addTask(lst.id); };
+    }, 0);
+
+    if (openTasks.length === 0) {
+      const emp = document.createElement('div');
+      emp.className = 'no-tasks'; emp.textContent = 'No open tasks';
+      body.appendChild(emp);
+    } else {
+      openTasks.forEach(t => body.appendChild(makeTaskRow(t)));
+    }
+
+    if (doneTasks.length > 0) {
+      const doneSection = document.createElement('div');
+      doneSection.className = 'done-section';
+      const doneHdr = document.createElement('div');
+      doneHdr.className = 'done-hdr';
+      doneHdr.innerHTML = `<span>${doneTasks.length} completed</span>
+        <button class="btn btn-sm" onclick="clearCompleted('${lst.id}')">Clear completed</button>`;
+      doneSection.appendChild(doneHdr);
+      doneTasks.forEach(t => doneSection.appendChild(makeTaskRow(t)));
+      body.appendChild(doneSection);
+    }
+
+    const div = document.createElement('hr');
+    div.className = 'divider';
+    body.appendChild(div);
+    block.appendChild(body);
+  }
+  return block;
+}
+
+function makeTaskRow(task) {
+  const row = document.createElement('div');
+  row.className = 'task-row';
+  const done = task.completed;
+
+  const check = document.createElement('div');
+  check.className = 'task-check' + (done ? ' done' : '');
+  check.onclick = () => toggleTask(task.id);
+
+  const text = document.createElement('div');
+  text.className = 'task-text' + (done ? ' done' : '');
+  text.textContent = task.title;
+
+  row.appendChild(check);
+  row.appendChild(text);
+
+  // Due date badge
+  if (task.due_date) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const due = new Date(task.due_date + 'T00:00:00');
+    const diff = Math.round((due - today) / 86400000);
+    const badge = document.createElement('span');
+    badge.className = 'due-badge';
+    if (diff < 0) { badge.classList.add('overdue'); badge.textContent = `Overdue ${due.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'})}`; }
+    else if (diff === 0) { badge.classList.add('today'); badge.textContent = 'Today'; }
+    else if (diff === 1) { badge.classList.add('soon'); badge.textContent = 'Tomorrow'; }
+    
+    else { badge.classList.add('soon'); badge.textContent = due.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'}); }
+    row.appendChild(badge);
+  }
+
+  const del = document.createElement('button');
+  del.className = 'task-del'; del.textContent = '×';
+  del.onclick = () => deleteTask(task.id);
+  row.appendChild(del);
+  return row;
+}
+
+async function addTask(listId) {
+  const inp = document.getElementById(`ti_${listId}`);
+  const dateInp = document.getElementById(`td_${listId}`);
+  const title = inp.value.trim();
+  if (!title) return;
+  let due_date = null;
+  if (dateInp.value.trim()) {
+    try {
+      const parts = dateInp.value.trim().split('/');
+      if (parts.length === 3) {
+        const year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+        due_date = `${year}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}`;
+      }
+    } catch(e) {}
+  }
+  inp.value = ''; dateInp.value = '';
+  try {
+    const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date });
+    tasks.push(t);
+    renderHub(); renderWeek();
+  } catch(e) { showToast('Error adding task'); }
+}
+
+async function toggleTask(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  t.completed = !t.completed;
+  renderHub(); renderWeek();
+  await api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed });
+}
+
+async function deleteTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  renderHub(); renderWeek();
+  await api('DELETE', `tasks?id=eq.${id}`);
+}
+
+async function clearCompleted(listId) {
+  const ids = tasks.filter(t => t.list_id === listId && t.completed).map(t => t.id);
+  tasks = tasks.filter(t => !(t.list_id === listId && t.completed));
+  renderHub(); renderWeek();
+  for (const id of ids) await api('DELETE', `tasks?id=eq.${id}`);
+}
+
+async function deleteList(id, name) {
+  if (!confirm(`Delete "${name}" and all its tasks?`)) return;
+  tasks = tasks.filter(t => t.list_id !== id);
+  lists = lists.filter(l => l.id !== id);
+  renderHub(); renderWeek();
+  await api('DELETE', `tasks?list_id=eq.${id}`);
+  await api('DELETE', `lists?id=eq.${id}`);
+}
+
+function collapseAll() { SECTIONS.forEach(s => sectionCollapsed[s] = true); renderHub(); }
+function expandAll() { SECTIONS.forEach(s => sectionCollapsed[s] = false); lists.forEach(l => listCollapsed[l.id] = false); renderHub(); }
+
+// ── New List ──
+function openNewListModal() { document.getElementById('newListName').value = ''; openModal('newListModal'); setTimeout(() => document.getElementById('newListName').focus(), 200); }
+async function confirmNewList() {
+  const name = document.getElementById('newListName').value.trim();
+  const section = document.getElementById('newListSection').value;
+  if (!name) return;
+  closeModal('newListModal');
+  try {
+    const [l] = await api('POST', 'lists', { name, section });
+    lists.push(l); renderHub(); renderWeek(); showToast(`"${name}" created`);
+  } catch(e) { showToast('Error'); }
+}
+
+// ══════════════════════════════
+// WEEK
+// ══════════════════════════════
+function getWeekDays() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - today.getDay());
+  return Array.from({length:7}, (_,i) => { const d = new Date(sunday); d.setDate(sunday.getDate()+i); return d; });
+}
+
+function dateKey(d) { return d.toISOString().split('T')[0]; }
+
+let activeWeekList = 'all';
+
+function renderWeek() {
+  const days = getWeekDays();
+  const today = dateKey(new Date());
+  document.getElementById('weekSub').textContent =
+    `${days[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${days[6].toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+
+  // List filter tabs
+  const ctrl = document.getElementById('weekControls');
+  ctrl.innerHTML = '';
+  [['all','All Lists'], ...lists.map(l => [l.id, l.name])].forEach(([key, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm' + (activeWeekList === key ? ' btn-primary' : '');
+    btn.textContent = label;
+    btn.onclick = () => { activeWeekList = key; renderWeek(); };
+    ctrl.appendChild(btn);
+  });
+
+  // Pending chips
+  const chips = document.getElementById('pendingChips');
+  chips.innerHTML = '';
+  const unassigned = tasks.filter(t => !t.week_assigned && !t.completed &&
+    (activeWeekList === 'all' || t.list_id === activeWeekList));
+  if (unassigned.length === 0) {
+    chips.innerHTML = '<span style="font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink-faint)">All tasks assigned ✓</span>';
+  } else {
+    unassigned.forEach(t => {
+      const chip = document.createElement('div');
+      chip.className = 'chip'; chip.textContent = t.title;
+      chip.draggable = true;
+      chip.addEventListener('dragstart', e => { dragTaskId = t.id; chip.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+      chip.addEventListener('dragend', () => { dragTaskId = null; chip.classList.remove('dragging'); });
+      chips.appendChild(chip);
+    });
+  }
+
+  // Day columns
+  const grid = document.getElementById('weekGrid');
+  grid.innerHTML = '';
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  days.forEach((day, i) => {
+    const key = dateKey(day);
+    const isToday = key === today;
+    const dayTasks = tasks.filter(t => t.week_assigned === key);
+
+    const col = document.createElement('div');
+    col.className = 'day-col' + (isToday ? ' today' : '');
+
+    const hdr = document.createElement('div');
+    hdr.className = 'day-hdr';
+    hdr.innerHTML = `<span class="day-hdr-name">${dayNames[i]}</span><span class="day-hdr-date">${day.getDate()}</span>`;
+    col.appendChild(hdr);
+
+    const body = document.createElement('div');
+    body.className = 'day-body';
+
+    // Drag and drop
+    body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
+    body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
+    body.addEventListener('drop', async e => {
+      e.preventDefault(); body.classList.remove('drag-over');
+      if (!dragTaskId) return;
+      const t = tasks.find(t => t.id === dragTaskId);
+      if (t) { t.week_assigned = key; t.due_date = key; }
+      renderWeek(); renderHub();
+      await api('PATCH', `tasks?id=eq.${dragTaskId}`, { week_assigned: key, due_date: key });
+      showToast('Task assigned');
+      dragTaskId = null;
+    });
+
+    if (dayTasks.length === 0) {
+      body.innerHTML = '<div class="day-empty">Drop here</div>';
+    } else {
+      dayTasks.forEach(t => {
+        const lst = lists.find(l => l.id === t.list_id);
+        const card = document.createElement('div');
+        card.className = 'week-task';
+        const done = t.completed;
+        card.innerHTML = `
+          <div class="week-task-title${done ? ' done' : ''}">${t.title}</div>
+          <div class="week-task-meta">
+            <span class="week-task-list">${lst ? lst.name : ''}</span>
+            <button class="week-task-remove" title="Remove from week">×</button>
+          </div>`;
+        card.querySelector('.week-task-remove').onclick = async () => {
+          t.week_assigned = null; t.due_date = null;
+          renderWeek(); renderHub();
+          await api('PATCH', `tasks?id=eq.${t.id}`, { week_assigned: null, due_date: null });
+        };
+        body.appendChild(card);
+      });
+    }
+
+    col.appendChild(body);
+    grid.appendChild(col);
+  });
+}
+
+// ══════════════════════════════
+// CAPTURE
+// ══════════════════════════════
+function renderCapture() {
+  const list = document.getElementById('captureList');
+  list.innerHTML = '';
+  if (captureItems.length === 0) {
+    list.innerHTML = '<div class="no-tasks">No quick items yet</div>';
+    return;
+  }
+  captureItems.forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'capture-item';
+    row.innerHTML = `
+      <span class="capture-item-text">${item}</span>
+      <button class="btn btn-sm" onclick="openMoveModal(${i})">Move to list →</button>
+      <button class="task-del" onclick="deleteCaptureItem(${i})">×</button>`;
+    list.appendChild(row);
+  });
+}
+
+function addCaptureItem() {
+  const inp = document.getElementById('quickInput');
+  const val = inp.value.trim(); if (!val) return;
+  inp.value = '';
+  captureItems.unshift(val);
+  localStorage.setItem('tw_capture', JSON.stringify(captureItems));
+  renderCapture();
+}
+
+function deleteCaptureItem(i) {
+  captureItems.splice(i, 1);
+  localStorage.setItem('tw_capture', JSON.stringify(captureItems));
+  renderCapture();
+}
+
+function openMoveModal(i) {
+  if (lists.length === 0) { showToast('Create a list first'); return; }
+  pendingMoveIdx = i;
+  const sel = document.getElementById('moveSelect');
+  sel.innerHTML = lists.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  openModal('moveModal');
+}
+
+async function confirmMove() {
+  const listId = document.getElementById('moveSelect').value;
+  const text = captureItems[pendingMoveIdx];
+  closeModal('moveModal');
+  captureItems.splice(pendingMoveIdx, 1);
+  localStorage.setItem('tw_capture', JSON.stringify(captureItems));
+  renderCapture();
+  try {
+    const [t] = await api('POST', 'tasks', { list_id: listId, title: text, completed: false });
+    tasks.push(t); renderHub(); renderWeek(); showToast('Moved to list ✓');
+  } catch(e) { showToast('Error'); }
+}
+
+document.getElementById('captureNotes').addEventListener('input', e => {
+  clearTimeout(notesTimer);
+  notesTimer = setTimeout(() => localStorage.setItem('tw_notes', e.target.value), 800);
+});
+
+// ── Modal helpers ──
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el =>
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); }));
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+
+boot();
+</script>
+</body>
+</html>
