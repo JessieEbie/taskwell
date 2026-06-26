@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Taskwell" />
+  <meta name="apple-pencil-markup" content="yes" />
   <title>Taskwell</title>
   <style>
     :root {
@@ -219,6 +220,21 @@
 
     ::-webkit-scrollbar { width: 4px; height: 4px; }
     ::-webkit-scrollbar-thumb { background: var(--cream-dark); border-radius: 4px; }
+
+    /* Touch friendliness */
+    .week-scroll { -webkit-overflow-scrolling: touch; }
+    .scroll-area { -webkit-overflow-scrolling: touch; }
+    .capture-list { -webkit-overflow-scrolling: touch; }
+    .tab-btn { min-height: 56px; }
+    .task-check { width: 24px; height: 24px; flex-shrink: 0; }
+    .btn { min-height: 36px; }
+    .btn-sm { min-height: 32px; }
+    .chip { min-height: 36px; display: flex; align-items: center; cursor: grab; touch-action: none; }
+    .day-body { min-height: 250px; touch-action: pan-y; }
+    input, textarea, select { font-size: 16px !important; } /* prevents iOS zoom */
+    .task-input { font-size: 16px !important; }
+    .quick-input { font-size: 16px !important; }
+    .modal-input { font-size: 16px !important; }
   </style>
 </head>
 <body>
@@ -287,14 +303,14 @@
       <div>
         <div class="capture-section-label">Quick Items</div>
         <div class="quick-input-row">
-          <input class="quick-input" id="quickInput" placeholder="Quick thought…" onkeydown="if(event.key==='Enter') addCaptureItem()" />
+          <input class="quick-input" id="quickInput" placeholder="Quick thought…" inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter') addCaptureItem()" />
           <button class="btn btn-primary" onclick="addCaptureItem()">Add</button>
         </div>
         <div class="capture-list" id="captureList"></div>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;">
         <div class="capture-section-label">Freeform Notes</div>
-        <textarea class="capture-notes" id="captureNotes" placeholder="Type anything…"></textarea>
+        <textarea class="capture-notes" id="captureNotes" placeholder="Type anything…" inputmode="text"></textarea>
       </div>
     </div>
   </section>
@@ -445,8 +461,8 @@ function makeListBlock(lst) {
     const inputRow = document.createElement('div');
     inputRow.className = 'task-input-row';
     inputRow.innerHTML = `
-      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" />
-      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" />
+      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" inputmode="text" autocomplete="off" />
+      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
       <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">Add</button>`;
     body.appendChild(inputRow);
 
@@ -601,6 +617,14 @@ async function confirmNewList() {
 // ══════════════════════════════
 // WEEK
 // ══════════════════════════════
+async function dropTaskOnDay(taskId, dayKey) {
+  const t = tasks.find(t => t.id === taskId);
+  if (t) { t.week_assigned = dayKey; t.due_date = dayKey; }
+  renderWeek(); renderHub();
+  await api('PATCH', `tasks?id=eq.${taskId}`, { week_assigned: dayKey, due_date: dayKey });
+  showToast('Task assigned');
+}
+
 function getWeekDays() {
   const today = new Date(); today.setHours(0,0,0,0);
   const sunday = new Date(today);
@@ -641,8 +665,37 @@ function renderWeek() {
       const chip = document.createElement('div');
       chip.className = 'chip'; chip.textContent = t.title;
       chip.draggable = true;
+      // Mouse drag
       chip.addEventListener('dragstart', e => { dragTaskId = t.id; chip.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
       chip.addEventListener('dragend', () => { dragTaskId = null; chip.classList.remove('dragging'); });
+      // Touch drag
+      chip.addEventListener('touchstart', e => {
+        dragTaskId = t.id; chip.classList.add('dragging');
+        const touch = e.touches[0];
+        chip._touchOffsetX = touch.clientX - chip.getBoundingClientRect().left;
+        chip._touchOffsetY = touch.clientY - chip.getBoundingClientRect().top;
+      }, { passive: true });
+      chip.addEventListener('touchmove', e => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        // Highlight day under finger
+        document.querySelectorAll('.day-body').forEach(b => b.classList.remove('drag-over'));
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const dayBody = el && el.closest('.day-body');
+        if (dayBody) dayBody.classList.add('drag-over');
+      }, { passive: false });
+      chip.addEventListener('touchend', e => {
+        chip.classList.remove('dragging');
+        document.querySelectorAll('.day-body').forEach(b => b.classList.remove('drag-over'));
+        const touch = e.changedTouches[0];
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const dayBody = el && el.closest('.day-body');
+        if (dayBody && dragTaskId) {
+          const dayKey = dayBody.dataset.daykey;
+          if (dayKey) dropTaskOnDay(dragTaskId, dayKey);
+        }
+        dragTaskId = null;
+      }, { passive: true });
       chips.appendChild(chip);
     });
   }
@@ -668,17 +721,14 @@ function renderWeek() {
     const body = document.createElement('div');
     body.className = 'day-body';
 
-    // Drag and drop
+    body.dataset.daykey = key;
+    // Mouse drag and drop
     body.addEventListener('dragover', e => { e.preventDefault(); body.classList.add('drag-over'); });
     body.addEventListener('dragleave', () => body.classList.remove('drag-over'));
     body.addEventListener('drop', async e => {
       e.preventDefault(); body.classList.remove('drag-over');
       if (!dragTaskId) return;
-      const t = tasks.find(t => t.id === dragTaskId);
-      if (t) { t.week_assigned = key; t.due_date = key; }
-      renderWeek(); renderHub();
-      await api('PATCH', `tasks?id=eq.${dragTaskId}`, { week_assigned: key, due_date: key });
-      showToast('Task assigned');
+      await dropTaskOnDay(dragTaskId, key);
       dragTaskId = null;
     });
 
