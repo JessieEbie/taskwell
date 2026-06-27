@@ -497,13 +497,13 @@ class TaskwellApp:
         dlg.resizable(False, False)
         dlg.configure(bg=PAPER)
         dlg.transient(self.root)
-        dlg.grab_set()
+        dlg.lift()
+        dlg.focus_force()
 
         tk.Label(dlg, text="Show calendars:", font=FONT_SANS_BOLD, bg=PAPER, fg=INK,
                  anchor="w").pack(fill=tk.X, padx=20, pady=(16, 8))
 
         vars_map = {}
-        saved_result = [None]  # mutable: None = cancelled, set = saved selection
 
         scroll_f = tk.Frame(dlg, bg=PAPER)
         scroll_f.pack(fill=tk.BOTH, expand=True, padx=20)
@@ -523,31 +523,23 @@ class TaskwellApp:
                            selectcolor=CREAM_DARK).pack(side=tk.LEFT, padx=6)
 
         def save():
-            saved_result[0] = {cid for cid, v in vars_map.items() if v.get()}
+            selection = {cid for cid, v in vars_map.items() if v.get()}
             dlg.destroy()
+            self.cal_selected = selection
+            save_json(CAL_PREFS_FILE, {"selected": list(selection)})
+            self._render_week()
+            self._render_agenda()
 
-        def cancel():
-            dlg.destroy()
-
-        dlg.protocol("WM_DELETE_WINDOW", cancel)
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
 
         btn_row = tk.Frame(dlg, bg=PAPER)
         btn_row.pack(pady=16, padx=20, fill=tk.X)
         tk.Button(btn_row, text="Cancel", bg=CREAM, fg=INK, font=FONT_SANS,
                   relief=tk.RAISED, padx=14, pady=6, cursor="hand2",
-                  activebackground=CREAM_DARK, command=cancel).pack(side=tk.LEFT)
+                  activebackground=CREAM_DARK, command=dlg.destroy).pack(side=tk.LEFT)
         tk.Button(btn_row, text="Save", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
                   relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
                   activebackground=self.accent, command=save).pack(side=tk.RIGHT)
-
-        dlg.wait_window()  # block until dialog is fully closed
-
-        # Now safe to update state and re-render
-        if saved_result[0] is not None:
-            self.cal_selected = saved_result[0]
-            save_json(CAL_PREFS_FILE, {"selected": list(saved_result[0])})
-            self._render_week()
-            self._render_agenda()
 
     # ── List context helpers ──
     def get_list_ctx(self, lst):
