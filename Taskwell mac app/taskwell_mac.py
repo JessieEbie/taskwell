@@ -860,6 +860,7 @@ class TaskwellApp:
                 if self.current_context == "work" or sec_lists:
                     self._render_section_block(self.hub_scroll_frame, sec, sec, sec_lists)
 
+        self.hub_canvas.update_idletasks()
         self.hub_canvas.configure(scrollregion=self.hub_canvas.bbox("all"))
 
     def _render_section_block(self, parent, display_name, key, sec_lists):
@@ -992,6 +993,9 @@ class TaskwellApp:
                               highlightthickness=0)
         task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2, ipadx=4)
 
+        # Vertical divider between task and date fields
+        tk.Frame(input_row, bg=CREAM_DARK, width=1).pack(side=tk.LEFT, fill=tk.Y, pady=2)
+
         due_var = make_date_var()
         due_entry = tk.Entry(input_row, textvariable=due_var, font=("Helvetica Neue", 9),
                              bg=bg, fg=INK_SOFT,
@@ -1063,15 +1067,29 @@ class TaskwellApp:
         due_date = parse_date_input(due_var.get())
         entry_widget.delete(0, tk.END)
         due_var.set("")
-        body = {"list_id": list_id, "title": title, "completed": False, "due_date": due_date, "user_id": _auth.get("user_id")}
+        # Optimistic: add locally right away so UI updates instantly
+        tmp_id = f"_tmp_{id(title)}"
+        tmp = {"id": tmp_id, "list_id": list_id, "title": title,
+               "completed": False, "due_date": due_date}
+        self.tasks.append(tmp)
+        self._render_hub()
+        if self.active_section == "week":
+            self._render_week()
+        body = {"list_id": list_id, "title": title, "completed": False,
+                "due_date": due_date, "user_id": _auth.get("user_id")}
         api_bg("POST", "tasks", body,
-               callback=lambda r, e: self.root.after(0, self._on_task_added, r, e))
+               callback=lambda r, e: self.root.after(0, self._on_task_added, tmp_id, r, e))
 
-    def _on_task_added(self, result, error):
-        if error or not result:
-            self.status_var.set(f"Error: {error}")
+    def _on_task_added(self, tmp_id, result, error):
+        # Remove the temp task
+        self.tasks = [t for t in self.tasks if t["id"] != tmp_id]
+        if error:
+            self.status_var.set(f"Error saving task: {error}")
+            self._render_hub()
             return
-        self.tasks.append(result[0])
+        # Replace with real server task if returned, otherwise reload
+        if result and isinstance(result, list) and result:
+            self.tasks.append(result[0])
         self._render_hub()
         if self.active_section == "week":
             self._render_week()
@@ -1846,6 +1864,7 @@ class TaskwellApp:
                           activeforeground=RUST,
                           command=lambda idx=i: self._delete_inbox_item(idx)).pack(side=tk.RIGHT)
 
+        self.inbox_canvas.update_idletasks()
         self.inbox_canvas.configure(scrollregion=self.inbox_canvas.bbox("all"))
 
     def _add_inbox_item(self):
