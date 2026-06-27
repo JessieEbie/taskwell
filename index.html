@@ -1619,7 +1619,7 @@ function renderMiniCal() {
     const evs = (calEvents[key] || []).slice().sort((a,b) => (a.allDay ? -1 : 1) - (b.allDay ? -1 : 1) || (a.time||'').localeCompare(b.time||''));
     if (!evs.length) continue;
     const label = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' :
-      day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
     const hdr = document.createElement('div');
     hdr.className = 'upcoming-day-label'; hdr.textContent = label;
     upcoming.appendChild(hdr);
