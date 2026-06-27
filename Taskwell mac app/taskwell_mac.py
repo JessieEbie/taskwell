@@ -1610,7 +1610,7 @@ class TaskwellApp:
         self._register_scroll(self.day_canvas, 'y')
 
         # Sidebar: mini-cal
-        sidebar = tk.Frame(split, bg=CREAM, width=200)
+        sidebar = tk.Frame(split, bg=CREAM, width=340)
         sidebar.pack(side=tk.RIGHT, fill=tk.Y)
         sidebar.pack_propagate(False)
 
@@ -1620,7 +1620,7 @@ class TaskwellApp:
         tk.Button(cal_nav, text="‹", bg=CREAM, fg=INK, font=("Helvetica Neue", 14),
                   relief=tk.FLAT, bd=0, cursor="hand2",
                   command=self._mini_cal_prev).pack(side=tk.LEFT)
-        self.mini_cal_title = tk.Label(cal_nav, text="", font=FONT_SANS_BOLD,
+        self.mini_cal_title = tk.Label(cal_nav, text="", font=("Helvetica Neue", 15, "bold"),
                                        bg=CREAM, fg=INK)
         self.mini_cal_title.pack(side=tk.LEFT, expand=True)
         tk.Button(cal_nav, text="›", bg=CREAM, fg=INK, font=("Helvetica Neue", 14),
@@ -1646,8 +1646,8 @@ class TaskwellApp:
 
         # Day-of-week headers
         for i, d in enumerate(["Su","Mo","Tu","We","Th","Fr","Sa"]):
-            tk.Label(self.mini_cal_grid_frame, text=d, font=FONT_SANS_BOLD_SM,
-                     bg=CREAM, fg=INK_FAINT, width=3).grid(row=0, column=i, pady=(0, 2))
+            tk.Label(self.mini_cal_grid_frame, text=d, font=("Helvetica Neue", 12, "bold"),
+                     bg=CREAM, fg=INK_FAINT, width=4).grid(row=0, column=i, pady=(0, 4))
 
         first_day = date(year, month, 1)
         start_col = first_day.weekday() + 1  # Monday=0 → col 1; Sunday → col 0
@@ -1656,8 +1656,8 @@ class TaskwellApp:
         # Previous month padding
         for col in range(start_col):
             d = first_day - timedelta(days=start_col - col)
-            tk.Label(self.mini_cal_grid_frame, text=str(d.day), font=FONT_SANS_SM,
-                     bg=CREAM, fg=INK_FAINT, width=3).grid(row=1, column=col)
+            tk.Label(self.mini_cal_grid_frame, text=str(d.day), font=("Helvetica Neue", 13),
+                     bg=CREAM, fg=INK_FAINT, width=4).grid(row=1, column=col)
 
         days_in_month = cal_module.monthrange(year, month)[1]
         task_dates = {t.get("week_assigned") or t.get("due_date") for t in self.tasks
@@ -1678,10 +1678,10 @@ class TaskwellApp:
             else:
                 bg, fg = CREAM, INK
 
-            lbl = tk.Label(self.mini_cal_grid_frame, text=str(d), font=FONT_SANS_SM,
-                           bg=bg, fg=fg, width=3, cursor="hand2",
+            lbl = tk.Label(self.mini_cal_grid_frame, text=str(d), font=("Helvetica Neue", 13),
+                           bg=bg, fg=fg, width=4, cursor="hand2",
                            relief=tk.FLAT, bd=1)
-            lbl.grid(row=row, column=col, padx=1, pady=1)
+            lbl.grid(row=row, column=col, padx=2, pady=2)
             lbl.bind("<Button-1>", lambda e, k=key: self._select_day(k))
 
             if has_tasks and not is_selected:
