@@ -1445,6 +1445,7 @@ function setupDropZone(body, key) {
 }
 
 function touchMoveHandler(e) {
+  if (!dragTaskId) return;
   e.preventDefault();
   const touch = e.touches[0];
   document.querySelectorAll('.day-body').forEach(b => b.classList.remove('drag-over'));
