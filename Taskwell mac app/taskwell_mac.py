@@ -715,8 +715,8 @@ class TaskwellApp:
             tk.Label(lhdr, text="●", bg=bg, fg=dot_color, font=FONT_SANS_SM
                      ).pack(side=tk.LEFT, padx=(0, 4))
 
-        name_lbl = tk.Label(lhdr, text=lst["name"], font=("Helvetica Neue", 12),
-                            bg=bg, fg=INK_SOFT, anchor="w", cursor="hand2")
+        name_lbl = tk.Label(lhdr, text=lst["name"], font=("Helvetica Neue", 13, "bold", "underline"),
+                            bg=bg, fg=INK, anchor="w", cursor="hand2")
         name_lbl.pack(side=tk.LEFT)
 
         if open_tasks:
