@@ -980,24 +980,23 @@ class TaskwellApp:
             for t in done_tasks:
                 self._make_task_row(block, t, done=True)
 
-        # Task input row — at the bottom
-        input_row = tk.Frame(block, bg=CREAM_DARK, height=1)
-        input_row.pack(fill=tk.X, padx=10, pady=(4, 0))
+        # Task input row — underline style, matches web app
+        tk.Frame(block, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=10, pady=(6, 0))
         input_row = tk.Frame(block, bg=bg)
-        input_row.pack(fill=tk.X, padx=10, pady=(0, 6))
+        input_row.pack(fill=tk.X, padx=10, pady=(2, 0))
+        tk.Frame(block, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=10)
+        tk.Frame(block, bg=bg, height=6).pack(fill=tk.X)
 
-        task_entry = tk.Entry(input_row, font=("Georgia", 10), bg=PAPER, fg=INK_SOFT,
+        task_entry = tk.Entry(input_row, font=("Georgia", 10), bg=bg, fg=INK_SOFT,
                               relief=tk.FLAT, bd=0, insertbackground=INK,
-                              highlightthickness=1, highlightbackground=CREAM_DARK,
-                              highlightcolor=self.accent)
+                              highlightthickness=0)
         task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2, ipadx=4)
 
         due_var = make_date_var()
         due_entry = tk.Entry(input_row, textvariable=due_var, font=("Helvetica Neue", 9),
-                             bg=PAPER, fg=INK_SOFT,
+                             bg=bg, fg=INK_SOFT,
                              relief=tk.FLAT, bd=0, insertbackground=INK, width=7,
-                             highlightthickness=1, highlightbackground=CREAM_DARK,
-                             highlightcolor=self.accent)
+                             highlightthickness=0)
         due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2, ipadx=3)
 
         def add(lid=list_id, te=task_entry, dv=due_var):
