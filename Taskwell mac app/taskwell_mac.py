@@ -344,7 +344,10 @@ class TaskwellApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Taskwell")
-        self.root.geometry("1000x720")
+        self.root.update_idletasks()
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        self.root.geometry(f"{sw}x{sh}+0+0")
         self.root.minsize(400, 500)
         self.root.configure(bg=CREAM_DARK)
 
