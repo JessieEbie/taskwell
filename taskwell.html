@@ -212,6 +212,24 @@
     .agenda-task-list { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); margin-top: 1px; }
     .agenda-empty { font-family: Georgia, serif; font-size: 13px; font-style: italic; color: var(--ink-faint); padding: 20px 0; }
 
+    /* ── CAL EVENTS ── */
+    .cal-event { border-radius: 4px; padding: 3px 7px; margin-bottom: 4px; font-size: 11px;
+                 font-family: 'Helvetica Neue', sans-serif; color: white; display: flex;
+                 align-items: center; gap: 4px; overflow: hidden; }
+    .cal-event-time { font-size: 9px; opacity: .85; white-space: nowrap; flex-shrink: 0; }
+    .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agenda-cal-event { background: var(--cream); border-radius: 8px; padding: 8px 12px;
+                        margin-bottom: 6px; }
+    .agenda-cal-time { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); margin-bottom: 2px; }
+    .agenda-cal-title { font-size: 13px; color: var(--ink); }
+    .cal-feed-item { display: flex; align-items: center; gap: 8px; padding: 8px 0;
+                     border-bottom: 1px solid var(--cream-dark); }
+    .cal-feed-color { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .cal-feed-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cal-feed-url { font-size: 10px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cal-feeds-list { max-height: 200px; overflow-y: auto; margin: 8px 0 10px; }
+    .modal.modal-wide { max-width: 440px; width: 90vw; }
+
     /* ── INBOX ── */
     #inbox .inbox-inner { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 14px 20px 20px; }
     .inbox-input-row { display: flex; gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
@@ -372,6 +390,7 @@
     <div class="page-header">
       <div class="page-title">Day</div>
       <div class="page-sub" id="daySub"></div>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>
     </div>
     <div class="day-view-inner">
       <div class="day-agenda" id="dayAgenda"></div>
@@ -451,6 +470,24 @@
   </div>
 </div>
 
+<!-- Calendar Feeds Modal -->
+<div class="modal-overlay" id="calFeedsModal">
+  <div class="modal modal-wide">
+    <div class="modal-title">Calendar Feeds</div>
+    <div class="cal-feeds-list" id="calFeedsList"></div>
+    <label class="modal-label">Add ICS feed URL</label>
+    <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
+           onkeydown="if(event.key==='Enter') addCalFeed()" />
+    <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;font-family:'Helvetica Neue',sans-serif">
+      Paste your secret ICS link from Google Calendar, iCloud, or Outlook settings.
+    </div>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
+      <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -470,6 +507,8 @@ let currentContext = localStorage.getItem('tw_context') || 'work';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
+let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
+let calEvents = {};
 
 // ── Helpers ──
 function getVisibleLists() {
@@ -512,6 +551,203 @@ async function api(method, path, body) {
   return r.json();
 }
 
+// ── Calendar Feeds ──
+const CAL_COLORS = ['#9CAF9A','#C4A4A0','#A67B5B','#C4B99A','#7A9478','#B8A898'];
+const CORS_PROXY = 'https://corsproxy.io/?';
+const WEEKDAY_IDX = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
+
+function saveCalFeeds() { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); }
+
+function parseDTVal(val) {
+  if (!val) return null;
+  const allDay = val.length === 8 || !val.includes('T');
+  const y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
+  const date = new Date(y, mo, d);
+  let timeStr = null;
+  if (!allDay) {
+    const h = +val.slice(9,11), m = val.slice(11,13);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    timeStr = `${h % 12 || 12}:${m} ${ampm}`;
+  }
+  return { date, allDay, timeStr };
+}
+
+function expandEvent(ev, minD, maxD) {
+  const start = parseDTVal(ev.dtstart);
+  if (!start) return [];
+  const startDate = start.date;
+  const results = [];
+
+  if (!ev.rrule) {
+    const s = new Date(startDate); s.setHours(0,0,0,0);
+    if (s >= minD && s <= maxD) results.push({ dk: dateKey(startDate), time: start.timeStr, allDay: start.allDay });
+    return results;
+  }
+
+  const rr = {};
+  ev.rrule.split(';').forEach(p => { const [k,v] = p.split('='); rr[k] = v; });
+  const freq = rr.FREQ || 'WEEKLY';
+  const interval = rr.INTERVAL ? +rr.INTERVAL : 1;
+  const maxCount = rr.COUNT ? +rr.COUNT : 500;
+  let untilDate = null;
+  if (rr.UNTIL) { const u = parseDTVal(rr.UNTIL.replace(/[TZ]/g,'').slice(0,8)); if (u) untilDate = u.date; }
+  const byDays = rr.BYDAY ? rr.BYDAY.split(',').map(s => WEEKDAY_IDX[s.replace(/^[+-]?\d*/,'')]).filter(n => n !== undefined) : null;
+
+  if (freq === 'WEEKLY' && byDays && byDays.length > 1) {
+    // Expand to each named weekday; iterate week by week
+    const weekStart = new Date(startDate);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // back to Sunday
+    let n = 0;
+    while (weekStart <= maxD && n < maxCount) {
+      byDays.forEach(dow => {
+        const candidate = new Date(weekStart);
+        candidate.setDate(weekStart.getDate() + dow);
+        const cs = new Date(candidate); cs.setHours(0,0,0,0);
+        if (candidate >= startDate && cs >= minD && cs <= maxD) {
+          if (!untilDate || candidate <= untilDate) {
+            results.push({ dk: dateKey(candidate), time: start.timeStr, allDay: start.allDay });
+            n++;
+          }
+        }
+      });
+      weekStart.setDate(weekStart.getDate() + 7 * interval);
+    }
+  } else {
+    const cursor = new Date(startDate);
+    let n = 0;
+    while (cursor <= maxD && n < maxCount) {
+      const cs = new Date(cursor); cs.setHours(0,0,0,0);
+      if (cs >= minD) results.push({ dk: dateKey(cursor), time: start.timeStr, allDay: start.allDay });
+      n++;
+      if (freq === 'DAILY') cursor.setDate(cursor.getDate() + interval);
+      else if (freq === 'WEEKLY') cursor.setDate(cursor.getDate() + 7 * interval);
+      else if (freq === 'MONTHLY') cursor.setMonth(cursor.getMonth() + interval);
+      else if (freq === 'YEARLY') cursor.setFullYear(cursor.getFullYear() + interval);
+      else break;
+      if (untilDate && cursor > untilDate) break;
+    }
+  }
+  return results;
+}
+
+function parseICS(text, feedColor) {
+  text = text.replace(/\r?\n[ \t]/g, ''); // unfold
+  const lines = text.split(/\r?\n/);
+  const vevents = [];
+  let ev = null;
+  for (const raw of lines) {
+    const ci = raw.indexOf(':');
+    if (ci < 0) continue;
+    const keyPart = raw.slice(0, ci);
+    const val = raw.slice(ci + 1).trim();
+    const propName = keyPart.split(';')[0].toUpperCase();
+    if (propName === 'BEGIN' && val === 'VEVENT') { ev = {}; continue; }
+    if (propName === 'END' && val === 'VEVENT') { if (ev && ev.summary && ev.dtstart) vevents.push(ev); ev = null; continue; }
+    if (!ev) continue;
+    if (propName === 'SUMMARY') ev.summary = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, ' ').trim();
+    if (propName === 'DTSTART') { ev.dtstart = val.replace(/[TZ]/g, s => s === 'T' ? 'T' : ''); ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
+    if (propName === 'DTEND') ev.dtend = val;
+    if (propName === 'RRULE') ev.rrule = val;
+  }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 14);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 90);
+
+  const result = {};
+  vevents.forEach(ev => {
+    expandEvent(ev, minD, maxD).forEach(({ dk, time, allDay }) => {
+      if (!result[dk]) result[dk] = [];
+      result[dk].push({ title: ev.summary, time, allDay, color: feedColor });
+    });
+  });
+  return result;
+}
+
+async function fetchFeed(feed) {
+  const url = feed.url.replace(/^webcal:\/\//i, 'https://');
+  try {
+    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const text = await r.text();
+    if (!feed.name || feed.name === 'Loading…') {
+      const m = text.match(/X-WR-CALNAME:(.+)/);
+      if (m) { feed.name = m[1].trim(); saveCalFeeds(); }
+      else feed.name = 'Calendar';
+    }
+    return parseICS(text, feed.color);
+  } catch(e) {
+    console.error('Cal feed error:', feed.url, e);
+    showToast('Could not load calendar feed');
+    return {};
+  }
+}
+
+async function fetchAllFeeds() {
+  if (calFeeds.length === 0) return;
+  calEvents = {};
+  await Promise.all(calFeeds.map(async feed => {
+    const evs = await fetchFeed(feed);
+    Object.entries(evs).forEach(([dk, arr]) => {
+      if (!calEvents[dk]) calEvents[dk] = [];
+      calEvents[dk].push(...arr);
+    });
+  }));
+  renderWeek(); renderAgenda();
+}
+
+function openCalFeedsModal() {
+  renderCalFeedsList();
+  openModal('calFeedsModal');
+}
+
+function renderCalFeedsList() {
+  const el = document.getElementById('calFeedsList');
+  el.innerHTML = '';
+  if (calFeeds.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-faint);font-size:12px;font-style:italic;padding:6px 0">No feeds added yet.</div>';
+    return;
+  }
+  calFeeds.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'cal-feed-item';
+    row.innerHTML = `
+      <div class="cal-feed-color" style="background:${f.color}"></div>
+      <div style="flex:1;overflow:hidden">
+        <div class="cal-feed-name">${f.name || 'Untitled'}</div>
+        <div class="cal-feed-url">${f.url}</div>
+      </div>
+      <button class="task-del" onclick="removeCalFeed(${i})">×</button>`;
+    el.appendChild(row);
+  });
+}
+
+async function addCalFeed() {
+  const inp = document.getElementById('calFeedUrl');
+  const url = inp.value.trim();
+  if (!url) return;
+  const color = CAL_COLORS[calFeeds.length % CAL_COLORS.length];
+  const feed = { id: Date.now().toString(), url, name: 'Loading…', color };
+  calFeeds.push(feed);
+  saveCalFeeds();
+  inp.value = '';
+  renderCalFeedsList();
+  const evs = await fetchFeed(feed);
+  Object.entries(evs).forEach(([dk, arr]) => {
+    if (!calEvents[dk]) calEvents[dk] = [];
+    calEvents[dk].push(...arr);
+  });
+  renderCalFeedsList();
+  renderWeek(); renderAgenda();
+}
+
+function removeCalFeed(i) {
+  calFeeds.splice(i, 1);
+  saveCalFeeds();
+  renderCalFeedsList();
+  fetchAllFeeds();
+}
+
 // ── Boot ──
 async function boot() {
   applyContext();
@@ -523,6 +759,7 @@ async function boot() {
     ]);
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
+    fetchAllFeeds();
   } catch(e) { showToast('Connection error'); console.error(e); }
   document.getElementById('loading').classList.add('hidden');
 }
@@ -935,8 +1172,25 @@ function renderWeek() {
       (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
     );
 
+    const dayCalEvs = (calEvents[key] || []).slice().sort((a, b) => {
+      if (a.allDay && !b.allDay) return -1;
+      if (!a.allDay && b.allDay) return 1;
+      return (a.time || '').localeCompare(b.time || '');
+    });
+    dayCalEvs.forEach(ev => {
+      const el = document.createElement('div');
+      el.className = 'cal-event';
+      el.style.background = ev.color;
+      if (ev.time) {
+        const ts = document.createElement('span'); ts.className = 'cal-event-time'; ts.textContent = ev.time;
+        el.appendChild(ts);
+      }
+      const tt = document.createElement('span'); tt.className = 'cal-event-title'; tt.textContent = ev.title;
+      el.appendChild(tt);
+      body.appendChild(el);
+    });
     if (dayTasks.length === 0) {
-      body.innerHTML = '<div class="day-empty">Drop here</div>';
+      body.appendChild(Object.assign(document.createElement('div'), { className: 'day-empty', textContent: 'Drop here' }));
     } else {
       dayTasks.forEach(t => body.appendChild(makeWeekCard(t, key)));
     }
@@ -1123,7 +1377,31 @@ function renderAgenda() {
     });
   }
 
-  if (dayTasks.length === 0) {
+  // Cal events for this day
+  const agendaCalEvs = (calEvents[selectedDay] || []).slice().sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    return (a.time || '').localeCompare(b.time || '');
+  });
+  if (agendaCalEvs.length > 0) {
+    const lbl = document.createElement('div');
+    lbl.className = 'agenda-section-label'; lbl.textContent = 'Events';
+    agenda.appendChild(lbl);
+    agendaCalEvs.forEach(ev => {
+      const row = document.createElement('div');
+      row.className = 'agenda-cal-event';
+      row.style.borderLeft = `3px solid ${ev.color}`;
+      if (ev.time) {
+        const t = document.createElement('div'); t.className = 'agenda-cal-time'; t.textContent = ev.time;
+        row.appendChild(t);
+      }
+      const ttl = document.createElement('div'); ttl.className = 'agenda-cal-title'; ttl.textContent = ev.title;
+      row.appendChild(ttl);
+      agenda.appendChild(row);
+    });
+  }
+
+  if (dayTasks.length === 0 && agendaCalEvs.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'agenda-empty';
     empty.textContent = 'Nothing scheduled for this day.';
