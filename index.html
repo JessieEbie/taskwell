@@ -613,7 +613,8 @@ function saveSession(data) {
   authSession = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
-    expires_at: Date.now() + (data.expires_in || 3600) * 1000
+    expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+    user_id: data.user?.id || data.user_id
   };
   localStorage.setItem('tw_auth', JSON.stringify(authSession));
 }
@@ -1129,7 +1130,7 @@ async function addTask(listId) {
   const due_date = parseDate(td.value);
   ti.value = ''; td.value = '';
   try {
-    const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date });
+    const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date, user_id: authSession?.user_id });
     tasks.push(t);
     renderHub(); renderWeek();
   } catch(e) { showToast('Error adding task'); }
@@ -1184,7 +1185,7 @@ async function confirmNewList() {
   const context = isHome ? 'home' : 'work';
   closeModal('newListModal');
   try {
-    const [l] = await api('POST', 'lists', { name, section, context });
+    const [l] = await api('POST', 'lists', { name, section, context, user_id: authSession?.user_id });
     lists.push(l);
     renderHub(); renderWeek(); showToast(`"${name}" created`);
   } catch(e) { showToast('Error'); }
@@ -1615,7 +1616,7 @@ async function confirmMove() {
   inboxItems[pendingMoveIdx].done = true;
   saveInbox(); renderInbox();
   try {
-    const [t] = await api('POST', 'tasks', { list_id: listId, title: item.text, completed: false });
+    const [t] = await api('POST', 'tasks', { list_id: listId, title: item.text, completed: false, user_id: authSession?.user_id });
     tasks.push(t); renderHub(); renderWeek(); showToast('Assigned to list ✓');
   } catch(e) { showToast('Error'); }
 }
