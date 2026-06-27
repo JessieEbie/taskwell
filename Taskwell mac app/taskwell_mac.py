@@ -316,8 +316,13 @@ def _expand_rrule(dtstart, rrule_str, duration, entry_template, events, min_d, m
 
     cursor = dtstart.date() if hasattr(dtstart, 'date') else dtstart
 
-    # Fast-forward to near min_d to avoid exhausting max_count on old events
-    if cursor < min_d:
+    # If series ended before our window, skip entirely
+    if until and not rr.get('COUNT') and until < min_d:
+        return
+
+    # Fast-forward for infinite events only (no COUNT).
+    # COUNT events must iterate from start so n correctly tracks series end.
+    if not rr.get('COUNT') and cursor < min_d:
         if freq == 'DAILY':
             days = (min_d - cursor).days
             cursor += timedelta(days=(days // interval) * interval)

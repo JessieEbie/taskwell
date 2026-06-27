@@ -776,30 +776,47 @@ function expandEvent(ev, minD, maxD) {
   if (rr.UNTIL) { const u = parseDTVal(rr.UNTIL.replace(/[TZ]/g,'').slice(0,8)); if (u) untilDate = u.date; }
   const byDays = rr.BYDAY ? rr.BYDAY.split(',').map(s => WEEKDAY_IDX[s.replace(/^[+-]?\d*/,'')]).filter(n => n !== undefined) : null;
 
+  // If series ended before our window (UNTIL in past, no COUNT), skip entirely
+  if (untilDate && !rr.COUNT) {
+    const ud = new Date(untilDate); ud.setHours(0,0,0,0);
+    if (ud < minD) return results;
+  }
+
+  function advanceCursor(d) {
+    if (freq === 'DAILY') d.setDate(d.getDate() + interval);
+    else if (freq === 'WEEKLY') d.setDate(d.getDate() + 7 * interval);
+    else if (freq === 'MONTHLY') d.setMonth(d.getMonth() + interval);
+    else if (freq === 'YEARLY') d.setFullYear(d.getFullYear() + interval);
+  }
+
   if (freq === 'WEEKLY' && byDays && byDays.length > 1) {
-    // Expand to each named weekday; iterate week by week
+    // Multi-day weekly: iterate week by week, count ALL occurrences toward COUNT limit
     const weekStart = new Date(startDate);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay()); // back to Sunday
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    const maxN = rr.COUNT ? +rr.COUNT : 500;
     let n = 0;
-    while (weekStart <= maxD && n < maxCount) {
-      byDays.forEach(dow => {
+    while (weekStart <= maxD && n < maxN) {
+      let stop = false;
+      for (const dow of byDays) {
         const candidate = new Date(weekStart);
         candidate.setDate(weekStart.getDate() + dow);
+        if (candidate < startDate) continue;
         const cs = new Date(candidate); cs.setHours(0,0,0,0);
-        if (candidate >= startDate && cs >= minD && cs <= maxD) {
-          if (!untilDate || candidate <= untilDate) {
-            results.push({ dk: dateKey(candidate), time: start.timeStr, allDay: start.allDay });
-            n++;
-          }
+        if (untilDate && cs > untilDate) { stop = true; break; }
+        n++;
+        if (cs >= minD && cs <= maxD) {
+          results.push({ dk: dateKey(candidate), time: start.timeStr, allDay: start.allDay });
         }
-      });
+        if (n >= maxN) { stop = true; break; }
+      }
+      if (stop) break;
       weekStart.setDate(weekStart.getDate() + 7 * interval);
     }
   } else {
     const cursor = new Date(startDate);
-    // Fast-forward to near minD only when there's no COUNT limit.
-    // With COUNT, n must track all iterations from the start or events
-    // that ended years ago would appear to still be active.
+    const maxN = rr.COUNT ? +rr.COUNT : 500;
+    // Fast-forward for infinite events only (no COUNT, no past UNTIL)
+    // COUNT events must iterate from start so n correctly tracks series end
     if (!rr.COUNT && cursor < minD) {
       if (freq === 'DAILY') {
         const days = Math.floor((minD - cursor) / 86400000);
@@ -816,16 +833,12 @@ function expandEvent(ev, minD, maxD) {
       }
     }
     let n = 0;
-    while (cursor <= maxD && n < maxCount) {
+    while (cursor <= maxD && n < maxN) {
       const cs = new Date(cursor); cs.setHours(0,0,0,0);
+      if (untilDate && cs > untilDate) break;
       if (cs >= minD) results.push({ dk: dateKey(cursor), time: start.timeStr, allDay: start.allDay });
       n++;
-      if (freq === 'DAILY') cursor.setDate(cursor.getDate() + interval);
-      else if (freq === 'WEEKLY') cursor.setDate(cursor.getDate() + 7 * interval);
-      else if (freq === 'MONTHLY') cursor.setMonth(cursor.getMonth() + interval);
-      else if (freq === 'YEARLY') cursor.setFullYear(cursor.getFullYear() + interval);
-      else break;
-      if (untilDate && cursor > untilDate) break;
+      advanceCursor(cursor);
     }
   }
   return results;
