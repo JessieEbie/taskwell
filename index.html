@@ -715,16 +715,23 @@ function saveCalFeeds() { localStorage.setItem('tw_cal_feeds', JSON.stringify(ca
 
 function parseDTVal(val) {
   if (!val) return null;
-  const allDay = val.length === 8 || !val.includes('T');
-  const y = +val.slice(0,4), mo = +val.slice(4,6)-1, d = +val.slice(6,8);
-  const date = new Date(y, mo, d);
+  const isUTC = val.endsWith('Z');
+  const clean = val.replace('Z', '');
+  const allDay = clean.length === 8 || !clean.includes('T');
+  const y = +clean.slice(0,4), mo = +clean.slice(4,6)-1, d = +clean.slice(6,8);
+  let dt;
+  if (!allDay) {
+    const h = +clean.slice(9,11), mi = +clean.slice(11,13), s = +(clean.slice(13,15)||0);
+    dt = isUTC ? new Date(Date.UTC(y, mo, d, h, mi, s)) : new Date(y, mo, d, h, mi, s);
+  } else {
+    dt = new Date(y, mo, d);
+  }
   let timeStr = null;
   if (!allDay) {
-    const h = +val.slice(9,11), m = val.slice(11,13);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    timeStr = `${h % 12 || 12}:${m} ${ampm}`;
+    const lh = dt.getHours(), lm = String(dt.getMinutes()).padStart(2, '0');
+    timeStr = `${lh % 12 || 12}:${lm} ${lh >= 12 ? 'PM' : 'AM'}`;
   }
-  return { date, allDay, timeStr };
+  return { date: new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()), allDay, timeStr };
 }
 
 function expandEvent(ev, minD, maxD) {
@@ -800,7 +807,7 @@ function parseICS(text, feedColor) {
     if (propName === 'END' && val === 'VEVENT') { if (ev && ev.summary && ev.dtstart) vevents.push(ev); ev = null; continue; }
     if (!ev) continue;
     if (propName === 'SUMMARY') ev.summary = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, ' ').trim();
-    if (propName === 'DTSTART') { ev.dtstart = val.replace(/[TZ]/g, s => s === 'T' ? 'T' : ''); ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
+    if (propName === 'DTSTART') { ev.dtstart = val; ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
     if (propName === 'DTEND') ev.dtend = val;
     if (propName === 'RRULE') ev.rrule = val;
   }

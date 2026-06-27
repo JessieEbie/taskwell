@@ -283,10 +283,18 @@ def make_date_var(trace_write=None):
 ICS_CAL_COLORS = ['#9CAF9A','#C4A4A0','#A67B5B','#C4B99A','#7A9478','#B8A898']
 
 def _parse_ics_dt(val, tzid=None):
-    val = val.strip().replace('Z','')
-    for fmt in ('%Y%m%dT%H%M%S','%Y%m%d'):
-        try: return datetime.strptime(val, fmt)
-        except: pass
+    import calendar as _cal
+    val = val.strip()
+    is_utc = val.endswith('Z')
+    val = val.replace('Z', '')
+    for fmt in ('%Y%m%dT%H%M%S', '%Y%m%d'):
+        try:
+            dt = datetime.strptime(val, fmt)
+            if is_utc:
+                dt = datetime.fromtimestamp(_cal.timegm(dt.timetuple()))
+            return dt
+        except:
+            pass
     return None
 
 def parse_ics_mac(text, color):
