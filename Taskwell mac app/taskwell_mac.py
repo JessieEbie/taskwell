@@ -17,9 +17,13 @@ import calendar as cal_module
 try:
     from EventKit import EKEventStore, EKEntityTypeEvent
     from Foundation import NSDate
+    from AppKit import NSEvent
+    NSEventMaskScrollWheel = 1 << 22
     HAS_EVENTKIT = True
 except ImportError:
     HAS_EVENTKIT = False
+    NSEvent = None
+    NSEventMaskScrollWheel = 0
 
 # ── Config ──
 SUPABASE_URL = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
@@ -206,29 +210,52 @@ class TaskwellApp:
 
     # ── Scroll helpers ──
     def _init_global_scroll(self):
-        """Bind a single root-level scroll handler; always scrolls the active tab's canvas."""
+        """Intercept trackpad/scroll events via NSEvent local monitor (bypasses tkinter event quirks)."""
         self._active_scroll = None  # (canvas, orient) for the currently visible tab
+        self._ns_monitor = None
+        self._scroll_carry = 0.0   # sub-unit accumulator for smooth scroll
 
-        def _do_scroll(e):
+        def _dispatch(units, canvas, orient):
+            try:
+                if orient == 'y':
+                    canvas.yview_scroll(units, "units")
+                else:
+                    canvas.xview_scroll(units, "units")
+            except Exception:
+                pass
+
+        if NSEvent:
+            def _ns_scroll(ns_event):
+                if not self._active_scroll:
+                    return ns_event
+                canvas, orient = self._active_scroll
+                dy = float(ns_event.scrollingDeltaY() if orient == 'y'
+                           else ns_event.scrollingDeltaX())
+                # Accumulate until we have at least 1 unit to scroll
+                self._scroll_carry += dy
+                units = int(self._scroll_carry / 8)  # 8px per unit feels natural
+                if units:
+                    self._scroll_carry -= units * 8
+                    self.root.after(0, _dispatch, -units, canvas, orient)
+                return ns_event
+
+            self._ns_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+                NSEventMaskScrollWheel, _ns_scroll)
+
+        # Tkinter binding as fallback for non-NSEvent environments
+        def _tk_scroll(e):
             if not self._active_scroll:
                 return
             canvas, orient = self._active_scroll
             raw = e.delta
             if raw == 0:
                 return
-            # macOS trackpad sends small values (±1–5); Windows wheel sends ±120.
-            amt = int(-raw) if abs(raw) < 120 else int(-raw / 40)
+            amt = -int(raw / 120) if abs(raw) >= 120 else int(-raw)
             if amt == 0:
                 amt = 1 if raw < 0 else -1
-            try:
-                if orient == 'y':
-                    canvas.yview_scroll(amt, "units")
-                else:
-                    canvas.xview_scroll(amt, "units")
-            except Exception:
-                pass
+            _dispatch(amt, canvas, orient)
 
-        self.root.bind_all('<MouseWheel>', _do_scroll)
+        self.root.bind_all('<MouseWheel>', _tk_scroll)
 
     def _register_scroll(self, canvas, orient='y'):
         pass  # kept for call-site compatibility; routing is now done via _active_scroll
@@ -237,7 +264,9 @@ class TaskwellApp:
     def _init_calendar(self):
         self.cal_store = None
         self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered)
-        self.cal_selected = set(load_json(CAL_PREFS_FILE, {}).get("selected", []))
+        saved = load_json(CAL_PREFS_FILE, {})
+        # None = no preference ever saved (show all); set = explicit selection (may be empty)
+        self.cal_selected = set(saved["selected"]) if "selected" in saved else None
         if not HAS_EVENTKIT:
             return
         self.cal_store = EKEventStore.alloc().init()
@@ -316,10 +345,15 @@ class TaskwellApp:
             self._render_agenda()
 
     def get_cal_events(self, date_key):
-        """Return calendar events for date_key, filtered by cal_selected."""
+        """Return calendar events for date_key, filtered by cal_selected.
+        Empty cal_selected means no preference saved yet — show all calendars."""
         evs = self.cal_events_all.get(date_key, [])
-        if not self.cal_selected:
+        # cal_selected is None only before any preference is ever saved;
+        # an empty set means the user explicitly unchecked everything.
+        if self.cal_selected is None:
             return evs
+        if len(self.cal_selected) == 0:
+            return []
         return [e for e in evs if e["cal_id"] in self.cal_selected]
 
     def _cal_chooser(self):
@@ -350,7 +384,7 @@ class TaskwellApp:
             cal_id = str(cal.calendarIdentifier())
             title  = str(cal.title() or "")
             color  = self._cal_color(cal)
-            checked = not self.cal_selected or cal_id in self.cal_selected
+            checked = self.cal_selected is None or cal_id in self.cal_selected
             var = tk.BooleanVar(value=checked)
             vars_map[cal_id] = var
             row = tk.Frame(scroll_f, bg=PAPER)
@@ -365,11 +399,9 @@ class TaskwellApp:
             self.cal_selected = selected
             save_json(CAL_PREFS_FILE, {"selected": list(selected)})
             dlg.destroy()
-            # Re-render immediately using cached events; no re-fetch needed
-            if self.active_section == "week":
-                self._render_week()
-            elif self.active_section == "day":
-                self._render_agenda()
+            # Always re-render both views so changes are visible wherever the user looks
+            self._render_week()
+            self._render_agenda()
 
         tk.Button(dlg, text="Done", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
                   relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
