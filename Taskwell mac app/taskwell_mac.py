@@ -489,6 +489,8 @@ class TaskwellApp:
             self._render_week()
         elif self.active_section == "day":
             self._render_agenda()
+        if hasattr(self, 'upcoming_frame'):
+            self._render_mini_cal()
 
     # ── List context helpers ──
     def _ics_feeds_dialog(self):
@@ -1631,7 +1633,11 @@ class TaskwellApp:
         self.mini_cal_grid_frame = tk.Frame(sidebar, bg=CREAM)
         self.mini_cal_grid_frame.pack(fill=tk.X, padx=8)
 
-        # Calendar connect note removed — EventKit handles it natively
+        tk.Frame(sidebar, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=12, pady=(14, 0))
+        tk.Label(sidebar, text="UPCOMING", font=("Helvetica Neue", 10, "bold"),
+                 bg=CREAM, fg=INK_FAINT).pack(anchor="w", padx=16, pady=(8, 4))
+        self.upcoming_frame = tk.Frame(sidebar, bg=CREAM)
+        self.upcoming_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
     def _render_mini_cal(self):
         for w in self.mini_cal_grid_frame.winfo_children():
@@ -1691,6 +1697,28 @@ class TaskwellApp:
             if col == 7:
                 col = 0
                 row += 1
+
+        # Upcoming events — next 7 days
+        for w in self.upcoming_frame.winfo_children():
+            w.destroy()
+        today = date.today()
+        shown = 0
+        for offset in range(8):
+            day = today + timedelta(days=offset)
+            evs = self.get_cal_events(day.isoformat())
+            if not evs:
+                continue
+            day_lbl = "Today" if offset == 0 else ("Tomorrow" if offset == 1 else day.strftime("%a, %b %-d"))
+            tk.Label(self.upcoming_frame, text=day_lbl,
+                     font=("Helvetica Neue", 10, "bold"), bg=CREAM, fg=INK_SOFT
+                     ).pack(anchor="w", pady=(6 if shown else 0, 1))
+            for ev in sorted(evs, key=lambda e: (e["all_day"], e["start"])):
+                t = "" if ev["all_day"] else ev["start"].strftime("%-I:%M %p").lower() + "  "
+                tk.Label(self.upcoming_frame, text=f"{t}{ev['title']}",
+                         font=("Helvetica Neue", 11), bg=CREAM, fg=INK,
+                         wraplength=280, justify="left", anchor="w"
+                         ).pack(fill=tk.X, anchor="w")
+            shown += 1
 
     def _mini_cal_prev(self):
         m = self.mini_month
