@@ -677,7 +677,11 @@ async function api(method, path, body) {
 
 // ── Calendar Feeds ──
 const CAL_COLORS = ['#9CAF9A','#C4A4A0','#A67B5B','#C4B99A','#7A9478','#B8A898'];
-const CORS_PROXY = 'https://corsproxy.io/?';
+const CORS_PROXIES = [
+  'https://api.allorigins.win/raw?url=',
+  'https://corsproxy.io/?',
+  'https://cors-anywhere.herokuapp.com/',
+];
 const WEEKDAY_IDX = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
 
 function saveCalFeeds() { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); }
@@ -790,26 +794,28 @@ function parseICS(text, feedColor) {
 
 async function fetchFeed(feed) {
   const url = feed.url.replace(/^webcal:\/\//i, 'https://');
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
-    const r = await fetch(CORS_PROXY + encodeURIComponent(url), { signal: controller.signal });
-    clearTimeout(timer);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const text = await r.text();
-    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS feed');
-    if (!feed.name || feed.name === 'Loading…') {
-      const m = text.match(/X-WR-CALNAME:(.+)/);
-      feed.name = m ? m[1].trim() : 'Calendar';
-      saveCalFeeds();
-    }
-    return parseICS(text, feed.color);
-  } catch(e) {
-    if (feed.name === 'Loading…') { feed.name = '⚠ Could not load'; saveCalFeeds(); }
-    console.error('Cal feed error:', feed.url, e);
-    showToast('Could not load calendar feed: ' + e.message);
-    return {};
+  let lastErr = null;
+  for (const proxy of CORS_PROXIES) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      const r = await fetch(proxy + encodeURIComponent(url), { signal: controller.signal });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const text = await r.text();
+      if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS feed');
+      if (!feed.name || feed.name === 'Loading…' || feed.name === '⚠ Could not load') {
+        const m = text.match(/X-WR-CALNAME:(.+)/);
+        feed.name = m ? m[1].trim() : 'Calendar';
+        saveCalFeeds();
+      }
+      return parseICS(text, feed.color);
+    } catch(e) { lastErr = e; }
   }
+  if (feed.name === 'Loading…') { feed.name = '⚠ Could not load'; saveCalFeeds(); }
+  console.error('Cal feed error:', feed.url, lastErr);
+  showToast('Could not load calendar feed');
+  return {};
 }
 
 async function fetchAllFeeds() {
