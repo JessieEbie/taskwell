@@ -877,7 +877,6 @@ async function boot() {
   // Handle OAuth callback — token in hash (implicit) or code in query (PKCE)
   const hash = window.location.hash;
   const qp = new URLSearchParams(window.location.search);
-  if (hash || qp.toString()) alert('DEBUG URL:\nhash=' + hash + '\nquery=' + qp.toString());
   if (hash.includes('access_token')) {
     const params = new URLSearchParams(hash.slice(1));
     const access_token = params.get('access_token');
@@ -920,7 +919,7 @@ async function boot() {
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
     fetchAllFeeds();
-  } catch(e) { showToast('Connection error'); console.error(e); }
+  } catch(e) { alert('Load error: ' + e.message); showToast('Connection error'); console.error(e); }
   document.getElementById('loading').classList.add('hidden');
 }
 
