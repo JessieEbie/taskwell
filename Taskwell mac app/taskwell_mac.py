@@ -10,7 +10,13 @@ import threading
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 import os
+import hashlib
+import base64
+import secrets
+import webbrowser
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import date, timedelta, datetime
 import calendar as cal_module
 
@@ -25,18 +31,142 @@ except ImportError:
     NSEvent = None
     NSEventMaskScrollWheel = 0
 
-# ── Config ──
-SUPABASE_URL = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
-SUPABASE_KEY = "sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU"
-INBOX_FILE   = os.path.expanduser("~/.taskwell_inbox.json")
-CAL_PREFS_FILE = os.path.expanduser("~/.taskwell_cal_prefs.json")
+# ── Local persistence (defined early, needed by auth) ──
+def load_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except:
+        return default
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json",
-    "Prefer": "return=representation"
-}
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+# ── Config ──
+SUPABASE_URL   = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
+SUPABASE_KEY   = "sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU"
+ALLOWED_EMAIL  = "jessieebie@gmail.com"
+INBOX_FILE     = os.path.expanduser("~/.taskwell_inbox.json")
+CAL_PREFS_FILE = os.path.expanduser("~/.taskwell_cal_prefs.json")
+AUTH_FILE      = os.path.expanduser("~/.taskwell_auth.json")
+OAUTH_PORT     = 54321
+OAUTH_REDIRECT = f"http://localhost:{OAUTH_PORT}"
+
+# ── Auth state ──
+_auth = load_json(AUTH_FILE, {}) if os.path.exists(AUTH_FILE) else {}
+
+def _auth_headers():
+    token = _auth.get("access_token", SUPABASE_KEY)
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+def _save_auth(data):
+    global _auth
+    _auth = data
+    save_json(AUTH_FILE, data)
+
+def _clear_auth():
+    global _auth
+    _auth = {}
+    try: os.remove(AUTH_FILE)
+    except: pass
+
+def _decode_jwt_email(token):
+    try:
+        payload = token.split('.')[1]
+        payload += '=' * (4 - len(payload) % 4)
+        decoded = json.loads(base64.urlsafe_b64decode(payload))
+        return decoded.get('email', ''), decoded.get('sub', '')
+    except:
+        return '', ''
+
+def _pkce_pair():
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode()
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b'=').decode()
+    return verifier, challenge
+
+def _exchange_code(code, verifier):
+    body = json.dumps({"auth_code": code, "code_verifier": verifier}).encode()
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/auth/v1/token?grant_type=pkce",
+        data=body,
+        headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+def _refresh_token():
+    if not _auth.get("refresh_token"): return False
+    try:
+        body = json.dumps({"refresh_token": _auth["refresh_token"]}).encode()
+        req = urllib.request.Request(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=refresh_token",
+            data=body,
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read())
+            _save_auth(data)
+            return True
+    except:
+        return False
+
+def is_logged_in():
+    return bool(_auth.get("access_token"))
+
+def login_with_google(on_success, on_error):
+    verifier, challenge = _pkce_pair()
+    result_holder = [None]
+
+    class _Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            code = params.get('code', [None])[0]
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            if code:
+                self.wfile.write(b'<html><body><h2>Signed in! You can close this tab.</h2></body></html>')
+                result_holder[0] = code
+            else:
+                self.wfile.write(b'<html><body><h2>Sign-in failed. Please try again.</h2></body></html>')
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+    def _run():
+        try:
+            server = HTTPServer(('localhost', OAUTH_PORT), _Handler)
+            redirect_enc = urllib.parse.quote(OAUTH_REDIRECT, safe='')
+            url = (f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
+                   f"&redirect_to={redirect_enc}"
+                   f"&code_challenge={challenge}&code_challenge_method=S256")
+            webbrowser.open(url)
+            server.serve_forever()
+            code = result_holder[0]
+            if not code:
+                on_error("Sign-in cancelled or failed.")
+                return
+            data = _exchange_code(code, verifier)
+            email, uid = _decode_jwt_email(data.get("access_token", ""))
+            if email != ALLOWED_EMAIL:
+                on_error(f"Access denied for {email}.")
+                return
+            data["user_id"] = uid
+            _save_auth(data)
+            on_success()
+        except Exception as e:
+            on_error(str(e))
+
+    threading.Thread(target=_run, daemon=True).start()
 
 # ── Colors (earthy palette) ──
 CREAM      = "#F5F0E8"
@@ -70,12 +200,18 @@ WORK_SECTIONS = ["Service", "Teaching", "Research", "Misc"]
 def api(method, path, body=None):
     url = f"{SUPABASE_URL}/rest/v1/{path}"
     data = json.dumps(body).encode() if body else None
-    req = urllib.request.Request(url, data=data, headers=HEADERS, method=method)
-    with urllib.request.urlopen(req, timeout=10) as r:
-        content = r.read()
-        if not content:
-            return None
-        return json.loads(content)
+    try:
+        req = urllib.request.Request(url, data=data, headers=_auth_headers(), method=method)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            content = r.read()
+            return json.loads(content) if content else None
+    except urllib.error.HTTPError as e:
+        if e.code == 401 and _refresh_token():
+            req = urllib.request.Request(url, data=data, headers=_auth_headers(), method=method)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                content = r.read()
+                return json.loads(content) if content else None
+        raise
 
 def api_bg(method, path, body=None, callback=None):
     def run():
@@ -87,18 +223,6 @@ def api_bg(method, path, body=None, callback=None):
             if callback:
                 callback(None, e)
     threading.Thread(target=run, daemon=True).start()
-
-# ── Local persistence ──
-def load_json(path, default):
-    try:
-        with open(path) as f:
-            return json.load(f)
-    except:
-        return default
-
-def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f)
 
 # ── Date helpers ──
 def parse_date_input(val):
@@ -852,7 +976,7 @@ class TaskwellApp:
         due_date = parse_date_input(due_var.get())
         entry_widget.delete(0, tk.END)
         due_var.set("")
-        body = {"list_id": list_id, "title": title, "completed": False, "due_date": due_date}
+        body = {"list_id": list_id, "title": title, "completed": False, "due_date": due_date, "user_id": _auth.get("user_id")}
         api_bg("POST", "tasks", body,
                callback=lambda r, e: self.root.after(0, self._on_task_added, r, e))
 
@@ -999,7 +1123,7 @@ class TaskwellApp:
             section = "Misc" if is_home else section_var.get()
             context = "home" if is_home else "work"
             dialog.destroy()
-            api_bg("POST", "lists", {"name": name, "section": section, "context": context},
+            api_bg("POST", "lists", {"name": name, "section": section, "context": context, "user_id": _auth.get("user_id")},
                    callback=lambda r, e: self.root.after(0, self._on_list_created, r, e))
 
         name_entry.bind("<Return>", lambda e: confirm())
@@ -1678,7 +1802,7 @@ class TaskwellApp:
             save_json(INBOX_FILE, self.inbox_items)
             self._render_inbox()
             api_bg("POST", "tasks",
-                   {"list_id": chosen["id"], "title": item["text"], "completed": False},
+                   {"list_id": chosen["id"], "title": item["text"], "completed": False, "user_id": _auth.get("user_id")},
                    callback=lambda r, e: self.root.after(0, self._on_task_added, r, e))
 
         btn_row = tk.Frame(dialog, bg=PAPER)
@@ -1711,14 +1835,57 @@ class TaskwellApp:
         self.status_var.set(f"Loaded {len(self.lists)} lists, {len(self.tasks)} tasks")
 
 
+def _show_login(root):
+    win = tk.Toplevel(root)
+    win.title("Sign in to Taskwell")
+    win.geometry("340x220")
+    win.resizable(False, False)
+    win.configure(bg=CREAM)
+    win.grab_set()
+
+    tk.Label(win, text="Taskwell", font=("Georgia", 22), bg=CREAM, fg=INK).pack(pady=(30, 4))
+    tk.Label(win, text="Sign in to access your tasks", font=("Helvetica Neue", 12),
+             bg=CREAM, fg=INK_SOFT).pack()
+
+    status = tk.Label(win, text="", font=("Helvetica Neue", 11), bg=CREAM, fg=RUST, wraplength=300)
+    status.pack(pady=8)
+
+    btn = tk.Button(win, text="Sign in with Google", font=("Helvetica Neue", 13, "bold"),
+                    bg=SAGE, fg="white", relief="flat", padx=16, pady=8, cursor="hand2",
+                    command=lambda: _do_login(win, btn, status, root))
+    btn.pack(pady=4)
+
+def _do_login(win, btn, status, root):
+    btn.config(state="disabled", text="Opening browser…")
+    status.config(text="")
+
+    def on_success():
+        root.after(0, lambda: (win.destroy(), TaskwellApp(root)))
+
+    def on_error(msg):
+        root.after(0, lambda: (
+            btn.config(state="normal", text="Sign in with Google"),
+            status.config(text=msg)
+        ))
+
+    login_with_google(on_success, on_error)
+
 def main():
     root = tk.Tk()
     root.title("Taskwell")
+    root.withdraw()
     try:
         root.createcommand('tk::mac::ReopenApplication', root.deiconify)
     except:
         pass
-    TaskwellApp(root)
+
+    if is_logged_in():
+        root.deiconify()
+        TaskwellApp(root)
+    else:
+        root.deiconify()
+        _show_login(root)
+
     root.mainloop()
 
 
