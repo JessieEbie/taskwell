@@ -358,8 +358,9 @@
       .app-mark { margin-bottom: 0; margin-right: 4px; }
       .main { order: 1; overflow: hidden; }
       .section { padding: 0; }
-      #day .day-view-inner { flex-direction: column; }
-      .day-sidebar { width: 100%; border-left: none; border-bottom: 1px solid var(--cream-dark); flex-shrink: 0; }
+      #day .day-view-inner { flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+      .day-sidebar { width: 100%; border-left: none; border-bottom: 1px solid var(--cream-dark); flex-shrink: 0; order: -1; }
+      .day-agenda { flex: none; overflow-y: visible; }
       .mini-cal { padding: 8px 12px; }
       .mini-cal-header { margin-bottom: 4px; }
       .mini-cal-title { font-size: 12px; }
