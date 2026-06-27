@@ -704,10 +704,10 @@ async function api(method, path, body) {
 const CAL_COLORS = ['#9CAF9A','#C4A4A0','#A67B5B','#C4B99A','#7A9478','#B8A898'];
 // Each entry: [proxyPrefix, encodeUrl]
 const CORS_PROXIES = [
-  ['https://corsproxy.io/?', true],
+  [`${SB_URL}/functions/v1/ics-proxy?url=`, true],
+  ['https://corsproxy.io/?', false],
   ['https://api.allorigins.win/raw?url=', true],
   ['https://api.codetabs.com/v1/proxy?quest=', true],
-  ['https://thingproxy.freeboard.io/fetch/', false],
 ];
 const WEEKDAY_IDX = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
 
