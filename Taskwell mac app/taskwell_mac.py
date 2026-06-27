@@ -378,6 +378,8 @@ class TaskwellApp:
                  anchor="w").pack(fill=tk.X, padx=20, pady=(16, 8))
 
         vars_map = {}
+        saved_result = [None]  # mutable: None = cancelled, set = saved selection
+
         scroll_f = tk.Frame(dlg, bg=PAPER)
         scroll_f.pack(fill=tk.BOTH, expand=True, padx=20)
 
@@ -396,12 +398,8 @@ class TaskwellApp:
                            selectcolor=CREAM_DARK).pack(side=tk.LEFT, padx=6)
 
         def save():
-            selected = {cal_id for cal_id, var in vars_map.items() if var.get()}
-            self.cal_selected = selected
-            save_json(CAL_PREFS_FILE, {"selected": list(selected)})
+            saved_result[0] = {cid for cid, v in vars_map.items() if v.get()}
             dlg.destroy()
-            self._render_week()
-            self._render_agenda()
 
         def cancel():
             dlg.destroy()
@@ -416,6 +414,15 @@ class TaskwellApp:
         tk.Button(btn_row, text="Save", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
                   relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
                   activebackground=self.accent, command=save).pack(side=tk.RIGHT)
+
+        dlg.wait_window()  # block until dialog is fully closed
+
+        # Now safe to update state and re-render
+        if saved_result[0] is not None:
+            self.cal_selected = saved_result[0]
+            save_json(CAL_PREFS_FILE, {"selected": list(saved_result[0])})
+            self._render_week()
+            self._render_agenda()
 
     # ── List context helpers ──
     def get_list_ctx(self, lst):
