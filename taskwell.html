@@ -109,15 +109,16 @@
     .list-del { font-size: 14px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .list-del:hover { color: var(--rust); }
     .list-body { padding: 0 12px 10px; }
-    .task-input-row { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
-    .task-input { flex: 1; min-width: 80px; padding: 2px 5px; border: 1px solid var(--cream-dark);
-                  border-radius: 3px; background: var(--paper); font-family: Georgia, serif;
-                  font-size: 10px; color: var(--ink-soft); outline: none; }
-    .task-input:focus { border-color: var(--accent); color: var(--ink); }
-    .due-input { padding: 2px 4px; border: 1px solid var(--cream-dark); border-radius: 3px;
-                 background: var(--paper); font-family: 'Helvetica Neue', sans-serif;
-                 font-size: 9px; color: var(--ink-soft); outline: none; width: 58px; }
-    .due-input:focus { border-color: var(--accent); color: var(--ink); }
+    .task-input-row { display: flex; gap: 3px; margin-top: 4px; margin-bottom: 4px; opacity: 0.6; transition: opacity .15s; }
+    .task-input-row:focus-within { opacity: 1; }
+    .task-input { flex: 1; min-width: 60px; padding: 1px 4px; border: none; border-bottom: 1px solid var(--cream-dark);
+                  background: transparent; font-family: Georgia, serif;
+                  font-size: 10px; color: var(--ink); outline: none; }
+    .task-input:focus { border-bottom-color: var(--accent); }
+    .due-input { padding: 1px 3px; border: none; border-bottom: 1px solid var(--cream-dark);
+                 background: transparent; font-family: 'Helvetica Neue', sans-serif;
+                 font-size: 9px; color: var(--ink-soft); outline: none; width: 52px; }
+    .due-input:focus { border-bottom-color: var(--accent); }
     .task-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--cream-dark); }
     .task-check { width: 18px; height: 18px; border: 1.5px solid var(--accent); border-radius: 50%;
                   flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
@@ -143,9 +144,10 @@
     .divider { border: none; border-top: 1px solid var(--cream-dark); margin: 6px 0; }
 
     /* ── WEEK ── */
-    #week .week-controls { padding: 10px 20px 0; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
-    .week-nav-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-    .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    #week .week-controls { padding: 10px 20px 0; flex-shrink: 0; display: block; }
+    #week .week-controls > * { display: flex; align-items: center; width: 100%; margin-bottom: 6px; }
+    .week-nav-row { display: flex; align-items: center; gap: 4px; width: 100%; }
+    .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
     #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px; border-radius: 8px; flex-shrink: 0; }
     .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                      letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
