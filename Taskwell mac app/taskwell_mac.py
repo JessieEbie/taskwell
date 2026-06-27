@@ -3,6 +3,7 @@
 Taskwell — Mac App
 Synced with Supabase. Hub · Week · Day · Inbox
 """
+BUILD_TIMESTAMP = "2026-06-27"
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -21,13 +22,11 @@ from datetime import date, timedelta, datetime
 import calendar as cal_module
 
 try:
-    from EventKit import EKEventStore, EKEntityTypeEvent
-    from Foundation import NSDate
     from AppKit import NSEvent
     NSEventMaskScrollWheel = 1 << 22
-    HAS_EVENTKIT = True
+    HAS_APPKIT = True
 except ImportError:
-    HAS_EVENTKIT = False
+    HAS_APPKIT = False
     NSEvent = None
     NSEventMaskScrollWheel = 0
 
@@ -48,7 +47,6 @@ SUPABASE_URL   = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
 SUPABASE_KEY   = "sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU"
 ALLOWED_EMAIL  = "jessieebie@gmail.com"
 INBOX_FILE      = os.path.expanduser("~/.taskwell_inbox.json")
-CAL_PREFS_FILE  = os.path.expanduser("~/.taskwell_cal_prefs.json")
 AUTH_FILE       = os.path.expanduser("~/.taskwell_auth.json")
 ICS_FEEDS_FILE  = os.path.expanduser("~/.taskwell_ics_feeds.json")
 OAUTH_PORT     = 54321
@@ -290,17 +288,14 @@ def _parse_ics_dt(val, tzid=None):
 def parse_ics_mac(text, color):
     """Parse ICS text → dict of date_str -> [event_dict]"""
     events = {}
-    lines = text.replace('\r\n',' \n').replace('\r','\n').splitlines()
-    # Unfold continuation lines
-    unfolded = []
-    for line in lines:
-        if line.startswith((' ','\t')) and unfolded:
-            unfolded[-1] += line.strip()
-        else:
-            unfolded.append(line)
+    # Unfold RFC 5545 continuation lines (CRLF + whitespace → nothing)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = __import__('re').sub(r'\n[ \t]', '', text)
+    unfolded = text.splitlines()
     in_event = False
     ev = {}
     for line in unfolded:
+        line = line.rstrip()
         if line == 'BEGIN:VEVENT':
             in_event = True; ev = {}
         elif line == 'END:VEVENT' and in_event:
@@ -346,7 +341,7 @@ class TaskwellApp:
         self.root = root
         self.root.title("Taskwell")
         self.root.geometry("1000x720")
-        self.root.minsize(800, 560)
+        self.root.minsize(400, 500)
         self.root.configure(bg=CREAM_DARK)
 
         # Data
@@ -447,102 +442,15 @@ class TaskwellApp:
     def _register_scroll(self, canvas, orient='y'):
         pass  # kept for call-site compatibility; routing is now done via _active_scroll
 
-    # ── Calendar (EventKit + ICS) ──
+    # ── Calendar (ICS only) ──
     def _init_calendar(self):
-        self.cal_store = None
-        self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered, EventKit)
-        self.ics_events = {}      # date_str -> [event_dict, ...] (from ICS feeds)
+        self.cal_events_all = {}
+        self.ics_events = {}
         self.ics_feeds = load_json(ICS_FEEDS_FILE, [])
-        saved = load_json(CAL_PREFS_FILE, {})
-        raw = saved.get("selected")
-        self.cal_selected = set(raw) if raw else None
         self._refresh_ics_feeds()
-        if not HAS_EVENTKIT:
-            return
-        self.cal_store = EKEventStore.alloc().init()
-
-        def on_auth(granted, error):
-            if granted:
-                self.root.after(0, self._refresh_cal_events)
-
-        try:
-            self.cal_store.requestFullAccessToEventsWithCompletion_(on_auth)
-        except AttributeError:
-            self.cal_store.requestAccessToEntityType_completion_(EKEntityTypeEvent, on_auth)
-
-    def _nsdate_to_dt(self, nsdate):
-        return datetime.fromtimestamp(float(nsdate.timeIntervalSince1970()))
-
-    def _date_to_nsdate(self, d):
-        ts = datetime(d.year, d.month, d.day).timestamp()
-        return NSDate.dateWithTimeIntervalSince1970_(ts)
-
-    def _cal_color(self, ek_cal):
-        try:
-            c = ek_cal.color()
-            r = int(c.redComponent() * 255)
-            g = int(c.greenComponent() * 255)
-            b = int(c.blueComponent() * 255)
-            # darken very light colors so white text stays readable
-            if r + g + b > 600:
-                r, g, b = int(r * 0.7), int(g * 0.7), int(b * 0.7)
-            return f"#{r:02x}{g:02x}{b:02x}"
-        except Exception:
-            return "#5B8DB8"
-
-    def _refresh_cal_events(self):
-        if not self.cal_store:
-            return
-        today = date.today()
-        fetch_start = today - timedelta(days=7)
-        fetch_end   = today + timedelta(days=60)
-        start_ns = self._date_to_nsdate(fetch_start)
-        end_ns   = self._date_to_nsdate(fetch_end + timedelta(days=1))
-
-        def fetch():
-            result = {}
-            try:
-                pred = self.cal_store.predicateForEventsWithStartDate_endDate_calendars_(
-                    start_ns, end_ns, None)
-                events = self.cal_store.eventsMatchingPredicate_(pred) or []
-                for ev in events:
-                    try:
-                        cal_id   = str(ev.calendar().calendarIdentifier())
-                        start_dt = self._nsdate_to_dt(ev.startDate())
-                        end_dt   = self._nsdate_to_dt(ev.endDate())
-                        all_day  = bool(ev.isAllDay())
-                        title    = str(ev.title() or "(No title)")
-                        cal_name = str(ev.calendar().title() or "")
-                        color    = self._cal_color(ev.calendar())
-                        entry = {"title": title, "start": start_dt, "end": end_dt,
-                                 "all_day": all_day, "calendar": cal_name,
-                                 "color": color, "cal_id": cal_id}
-                        result.setdefault(start_dt.date().isoformat(), []).append(entry)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-            self.root.after(0, self._on_cal_loaded, result)
-
-        threading.Thread(target=fetch, daemon=True).start()
-
-    def _on_cal_loaded(self, result):
-        # Store ALL events unfiltered; get_cal_events() applies the selection at render time
-        self.cal_events_all = result
-        if self.active_section == "week":
-            self._render_week()
-        elif self.active_section == "day":
-            self._render_agenda()
 
     def get_cal_events(self, date_key):
-        ek_evs = self.cal_events_all.get(date_key, [])
-        if self.cal_selected is not None:
-            if len(self.cal_selected) == 0:
-                ek_evs = []
-            else:
-                ek_evs = [e for e in ek_evs if e["cal_id"] in self.cal_selected]
-        ics_evs = self.ics_events.get(date_key, [])
-        return ek_evs + ics_evs
+        return self.ics_events.get(date_key, [])
 
     def _refresh_ics_feeds(self):
         if not self.ics_feeds:
@@ -566,65 +474,6 @@ class TaskwellApp:
             self._render_week()
         elif self.active_section == "day":
             self._render_agenda()
-
-    def _cal_chooser(self):
-        if not self.cal_store:
-            messagebox.showinfo("Calendars", "Calendar access not available.", parent=self.root)
-            return
-        cals = list(self.cal_store.calendarsForEntityType_(EKEntityTypeEvent) or [])
-        if not cals:
-            messagebox.showinfo("Calendars", "No calendars found.", parent=self.root)
-            return
-
-        dlg = tk.Toplevel(self.root)
-        dlg.title("Choose Calendars")
-        dlg.geometry("320x400")
-        dlg.resizable(False, False)
-        dlg.configure(bg=PAPER)
-        dlg.transient(self.root)
-        dlg.lift()
-        dlg.focus_force()
-
-        tk.Label(dlg, text="Show calendars:", font=FONT_SANS_BOLD, bg=PAPER, fg=INK,
-                 anchor="w").pack(fill=tk.X, padx=20, pady=(16, 8))
-
-        vars_map = {}
-
-        scroll_f = tk.Frame(dlg, bg=PAPER)
-        scroll_f.pack(fill=tk.BOTH, expand=True, padx=20)
-
-        for cal in sorted(cals, key=lambda c: str(c.title())):
-            cal_id = str(cal.calendarIdentifier())
-            title  = str(cal.title() or "")
-            color  = self._cal_color(cal)
-            checked = self.cal_selected is None or cal_id in self.cal_selected
-            var = tk.BooleanVar(value=checked)
-            vars_map[cal_id] = var
-            row = tk.Frame(scroll_f, bg=PAPER)
-            row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text="●", fg=color, bg=PAPER, font=FONT_SANS_SM).pack(side=tk.LEFT)
-            tk.Checkbutton(row, text=title, variable=var, bg=PAPER, fg=INK,
-                           font=FONT_SANS_SM, activebackground=PAPER,
-                           selectcolor=CREAM_DARK).pack(side=tk.LEFT, padx=6)
-
-        def save():
-            selection = {cid for cid, v in vars_map.items() if v.get()}
-            dlg.destroy()
-            self.cal_selected = selection
-            save_json(CAL_PREFS_FILE, {"selected": list(selection)})
-            self._render_week()
-            self._render_agenda()
-
-        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
-
-        btn_row = tk.Frame(dlg, bg=PAPER)
-        btn_row.pack(pady=16, padx=20, fill=tk.X)
-        tk.Button(btn_row, text="Cancel", bg=CREAM, fg=INK, font=FONT_SANS,
-                  relief=tk.RAISED, padx=14, pady=6, cursor="hand2",
-                  activebackground=CREAM_DARK, command=dlg.destroy).pack(side=tk.LEFT)
-        tk.Button(btn_row, text="Save", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
-                  relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
-                  activebackground=self.accent, command=save).pack(side=tk.RIGHT)
 
     # ── List context helpers ──
     def _ics_feeds_dialog(self):
@@ -704,12 +553,14 @@ class TaskwellApp:
             threading.Thread(target=fetch, daemon=True).start()
 
         entry.bind('<Return>', lambda e: add_feed())
-        tk.Button(add_frame, text="Add Feed", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
+        tk.Button(add_frame, text="Add Feed", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
                   relief=tk.FLAT, padx=12, pady=4, cursor="hand2",
                   command=add_feed).pack(pady=6)
-        tk.Button(dlg, text="Done", bg=CREAM, fg=INK, font=FONT_SANS,
-                  relief=tk.RAISED, padx=16, pady=4, cursor="hand2",
-                  command=dlg.destroy).pack(pady=(0, 14))
+        btn_row = tk.Frame(dlg, bg=PAPER)
+        btn_row.pack(pady=(0, 14))
+        tk.Button(btn_row, text="Save & Close", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
+                  relief=tk.FLAT, padx=20, pady=6, cursor="hand2",
+                  command=dlg.destroy).pack(side=tk.LEFT, padx=6)
 
     def get_list_ctx(self, lst):
         return lst.get("context") or "work"
@@ -723,17 +574,25 @@ class TaskwellApp:
     # UI BUILD
     # ════════════════════════
     def _build_ui(self):
+        self._is_narrow = False
+
+        # Status bar always at very bottom
+        statusbar = tk.Frame(self.root, bg=CREAM_DARK)
+        statusbar.pack(side=tk.BOTTOM, fill=tk.X)
+        tk.Label(statusbar, text=f"Taskwell · v {BUILD_TIMESTAMP}",
+                 bg=CREAM_DARK, fg=INK_FAINT, font=("Helvetica Neue", 10),
+                 anchor="center", pady=3).pack(fill=tk.X)
+        self.status_var = tk.StringVar()
+        tk.Label(statusbar, textvariable=self.status_var,
+                 bg=CREAM_DARK, fg=INK_FAINT, font=FONT_SANS_SM,
+                 anchor="e", padx=10).pack(fill=tk.X)
+
         self.sidebar = tk.Frame(self.root, bg=self.rail_bg, width=76)
         self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
         self.sidebar.pack_propagate(False)
 
         self.main_frame = tk.Frame(self.root, bg=PAPER)
         self.main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self.status_var = tk.StringVar()
-        tk.Label(self.root, textvariable=self.status_var,
-                 bg=CREAM_DARK, fg=INK_FAINT, font=FONT_SANS_SM,
-                 anchor="e", padx=10).pack(side=tk.BOTTOM, fill=tk.X)
 
         self.sections = {}
         self._init_global_scroll()
@@ -743,53 +602,114 @@ class TaskwellApp:
         self._build_day()
         self._build_inbox()
         self._show_section("hub")
-        # Hub is the opening tab; set active scroll now that canvas exists
         self._active_scroll = (self.hub_canvas, 'y')
+
+        self.root.bind('<Configure>', self._on_resize)
+
+    NARROW_WIDTH = 650
+    WIDE_WIDTH   = 1000  # 3-column threshold
+
+    def _grid_cols(self):
+        w = self.root.winfo_width()
+        if w < self.NARROW_WIDTH: return 1
+        if w >= self.WIDE_WIDTH:  return 3
+        return 2
+
+    def _on_resize(self, event):
+        if event.widget is not self.root:
+            return
+        narrow = event.width < self.NARROW_WIDTH
+        cols   = self._grid_cols()
+        reflow = narrow != self._is_narrow
+        self._is_narrow = narrow
+        if reflow:
+            self.sidebar.pack_forget()
+            self.main_frame.pack_forget()
+            if narrow:
+                self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+                self.sidebar.configure(width=0, height=56)
+                self.sidebar.pack_propagate(True)
+                self.sidebar.pack(side=tk.BOTTOM, fill=tk.X)
+            else:
+                self.sidebar.configure(width=76, height=0)
+                self.sidebar.pack_propagate(False)
+                self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
+                self.main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._build_sidebar()
+        # Re-render hub if column count changed
+        prev_cols = getattr(self, '_last_cols', None)
+        if cols != prev_cols:
+            self._last_cols = cols
+            if self.active_section == 'hub':
+                self._render_hub()
 
     def _build_sidebar(self):
         for w in self.sidebar.winfo_children():
             w.destroy()
-
         bg = self.rail_bg
+        narrow = self._is_narrow
 
-        # App mark — clicking shows 'all'
-        mark_bg = CREAM
-        mark = tk.Label(self.sidebar, text="✓", bg=mark_bg, fg=self.accent,
+        if narrow:
+            self._build_sidebar_narrow(bg)
+        else:
+            self._build_sidebar_wide(bg)
+
+    def _build_sidebar_wide(self, bg):
+        mark = tk.Label(self.sidebar, text="✓", bg=CREAM, fg=self.accent,
                         font=("Georgia", 14, "bold"), width=2, pady=6, cursor="hand2",
                         relief=tk.RAISED if self.current_context == "all" else tk.FLAT)
         mark.pack(pady=(16, 8), padx=10)
         mark.bind("<Button-1>", lambda e: self._set_context("all"))
 
-        # Work / Home context switcher
         for ctx, icon, label in [("work", "⊛", "Work"), ("home", "⌂", "Home")]:
             is_active = self.current_context == ctx
             f = tk.Frame(self.sidebar, bg=CREAM if is_active else bg, cursor="hand2")
             f.pack(pady=2, padx=8, fill=tk.X)
             f.bind("<Button-1>", lambda e, c=ctx: self._set_context(c))
             for text, font in [(icon, ("Helvetica Neue", 16)), (label, FONT_SANS_SM)]:
-                lbl = tk.Label(f, text=text, bg=CREAM if is_active else bg,
-                               fg=INK, font=font, pady=2)
+                lbl = tk.Label(f, text=text, bg=CREAM if is_active else bg, fg=INK, font=font, pady=2)
                 lbl.pack()
                 lbl.bind("<Button-1>", lambda e, c=ctx: self._set_context(c))
 
         tk.Frame(self.sidebar, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=12, pady=8)
 
-        # Tab buttons
         self.tab_buttons = {}
-        tabs = [
-            ("hub",   "⊞",  "Hub"),
-            ("week",  "◫",  "Week"),
-            ("day",   "◷",  "Day"),
-            ("inbox", "✉",  "Inbox"),
-        ]
-        for key, icon, label in tabs:
+        for key, icon, label in [("hub","⊞","Hub"),("week","◫","Week"),("day","◷","Day"),("inbox","✉","Inbox")]:
             is_active = self.active_section == key
             f = tk.Frame(self.sidebar, bg=ROSE_PALE if is_active else bg, cursor="hand2")
             f.pack(pady=3, padx=8, fill=tk.X)
             f.bind("<Button-1>", lambda e, k=key: self._show_section(k))
             for text, font in [(icon, ("Helvetica Neue", 18)), (label, FONT_SANS_SM)]:
-                lbl = tk.Label(f, text=text, bg=ROSE_PALE if is_active else bg,
-                               fg=INK, font=font, pady=3)
+                lbl = tk.Label(f, text=text, bg=ROSE_PALE if is_active else bg, fg=INK, font=font, pady=3)
+                lbl.pack()
+                lbl.bind("<Button-1>", lambda e, k=key: self._show_section(k))
+            self.tab_buttons[key] = f
+
+    def _build_sidebar_narrow(self, bg):
+        # Horizontal bottom bar matching web mobile layout
+        mark = tk.Label(self.sidebar, text="✓", bg=CREAM, fg=self.accent,
+                        font=("Georgia", 13, "bold"), padx=8, pady=6, cursor="hand2",
+                        relief=tk.RAISED if self.current_context == "all" else tk.FLAT)
+        mark.pack(side=tk.LEFT, padx=(6, 2), pady=4)
+        mark.bind("<Button-1>", lambda e: self._set_context("all"))
+
+        for ctx, icon in [("work", "⊛"), ("home", "⌂")]:
+            is_active = self.current_context == ctx
+            f = tk.Label(self.sidebar, text=icon, bg=CREAM if is_active else bg,
+                         fg=INK, font=("Helvetica Neue", 18), padx=6, pady=4, cursor="hand2")
+            f.pack(side=tk.LEFT, padx=2)
+            f.bind("<Button-1>", lambda e, c=ctx: self._set_context(c))
+
+        tk.Frame(self.sidebar, bg=CREAM_DARK, width=1).pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=8)
+
+        self.tab_buttons = {}
+        for key, icon, label in [("hub","⊞","Hub"),("week","◫","Week"),("day","◷","Day"),("inbox","✉","Inbox")]:
+            is_active = self.active_section == key
+            f = tk.Frame(self.sidebar, bg=ROSE_PALE if is_active else bg, cursor="hand2")
+            f.pack(side=tk.LEFT, padx=3, pady=4)
+            f.bind("<Button-1>", lambda e, k=key: self._show_section(k))
+            for text, font in [(icon, ("Helvetica Neue", 16)), (label, ("Helvetica Neue", 8))]:
+                lbl = tk.Label(f, text=text, bg=ROSE_PALE if is_active else bg, fg=INK, font=font, padx=6)
                 lbl.pack()
                 lbl.bind("<Button-1>", lambda e, k=key: self._show_section(k))
             self.tab_buttons[key] = f
@@ -868,7 +788,9 @@ class TaskwellApp:
         self.hub_scroll_frame = tk.Frame(self.hub_canvas, bg=PAPER)
         self.hub_scroll_frame.bind("<Configure>",
             lambda e: self.hub_canvas.configure(scrollregion=self.hub_canvas.bbox("all")))
-        self.hub_canvas.create_window((0, 0), window=self.hub_scroll_frame, anchor="nw")
+        self._hub_win = self.hub_canvas.create_window((0, 0), window=self.hub_scroll_frame, anchor="nw")
+        self.hub_canvas.bind("<Configure>",
+            lambda e: self.hub_canvas.itemconfig(self._hub_win, width=e.width))
         self.hub_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hub_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -919,16 +841,17 @@ class TaskwellApp:
                          font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
                          ).pack(anchor="w", padx=20, pady=16)
             else:
+                cols = self._grid_cols()
                 grid = tk.Frame(self.hub_scroll_frame, bg=PAPER)
                 grid.pack(fill=tk.X, padx=20, pady=(8, 0))
-                grid.columnconfigure(0, weight=1, uniform="col")
-                grid.columnconfigure(1, weight=1, uniform="col")
+                for c in range(cols):
+                    grid.columnconfigure(c, weight=1, uniform="col")
                 for i, lst in enumerate(visible):
-                    r, c = divmod(i, 2)
+                    r, c = divmod(i, cols)
                     cell = tk.Frame(grid, bg=CREAM, highlightthickness=1,
                                     highlightbackground=CREAM_DARK)
                     cell.grid(row=r, column=c, sticky="nsew",
-                              padx=(0, 6 if c == 0 else 0), pady=(0, 6))
+                              padx=(0, 6 if c < cols - 1 else 0), pady=(0, 6))
                     self._render_list_block(cell, lst)
         else:
             for sec in WORK_SECTIONS:
@@ -973,18 +896,18 @@ class TaskwellApp:
                      ).pack(anchor="w", padx=14, pady=4)
             return
 
-        # 2-column grid
+        cols = self._grid_cols()
         grid = tk.Frame(sec_frame, bg=PAPER)
         grid.pack(fill=tk.X)
-        grid.columnconfigure(0, weight=1, uniform="col")
-        grid.columnconfigure(1, weight=1, uniform="col")
+        for c in range(cols):
+            grid.columnconfigure(c, weight=1, uniform="col")
 
         for i, lst in enumerate(sec_lists):
-            r, c = divmod(i, 2)
+            r, c = divmod(i, cols)
             cell = tk.Frame(grid, bg=CREAM, bd=0,
                             highlightthickness=1, highlightbackground=CREAM_DARK)
-            cell.grid(row=r, column=c, sticky="nsew", padx=(0 if c else 0, 6 if c == 0 else 0),
-                      pady=(0, 6))
+            cell.grid(row=r, column=c, sticky="nsew",
+                      padx=(0, 6 if c < cols - 1 else 0), pady=(0, 6))
             self._render_list_block(cell, lst)
 
     def _render_list_block(self, parent, lst):
@@ -1058,27 +981,30 @@ class TaskwellApp:
                 self._make_task_row(block, t, done=True)
 
         # Task input row — at the bottom
+        input_row = tk.Frame(block, bg=CREAM_DARK, height=1)
+        input_row.pack(fill=tk.X, padx=10, pady=(4, 0))
         input_row = tk.Frame(block, bg=bg)
-        input_row.pack(fill=tk.X, pady=(6, 8), padx=10)
+        input_row.pack(fill=tk.X, padx=10, pady=(0, 6))
 
-        task_entry = tk.Entry(input_row, font=FONT_SANS_SM, bg=PAPER, fg=INK,
-                              relief=tk.FLAT, bd=0, insertbackground=INK)
-        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, ipadx=6)
-        task_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
-                             highlightcolor=self.accent)
+        task_entry = tk.Entry(input_row, font=("Georgia", 10), bg=PAPER, fg=INK_SOFT,
+                              relief=tk.FLAT, bd=0, insertbackground=INK,
+                              highlightthickness=1, highlightbackground=CREAM_DARK,
+                              highlightcolor=self.accent)
+        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=2, ipadx=4)
 
         due_var = make_date_var()
-        due_entry = tk.Entry(input_row, textvariable=due_var, font=FONT_SANS_SM, bg=PAPER, fg=INK,
-                             relief=tk.FLAT, bd=0, insertbackground=INK, width=8)
-        due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=4, ipadx=4)
-        due_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
-                            highlightcolor=self.accent)
+        due_entry = tk.Entry(input_row, textvariable=due_var, font=("Helvetica Neue", 9),
+                             bg=PAPER, fg=INK_SOFT,
+                             relief=tk.FLAT, bd=0, insertbackground=INK, width=7,
+                             highlightthickness=1, highlightbackground=CREAM_DARK,
+                             highlightcolor=self.accent)
+        due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2, ipadx=3)
 
         def add(lid=list_id, te=task_entry, dv=due_var):
             self._add_task(lid, te, dv)
 
         task_entry.bind("<Return>", lambda e: add())
-        tk.Button(input_row, text="+", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
+        tk.Button(input_row, text="+", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
                   relief=tk.FLAT, padx=8, pady=3, cursor="hand2",
                   activebackground=self.accent, command=add).pack(side=tk.LEFT, padx=(4, 0))
 
@@ -1325,7 +1251,7 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=lambda: self._week_nav(-1)).pack(side=tk.LEFT)
-        self.today_btn = tk.Button(nav, text="Today", bg=self.accent, fg=PAPER, font=FONT_SANS_SM,
+        self.today_btn = tk.Button(nav, text="Today", bg=self.accent, fg=INK, font=FONT_SANS_SM,
                                    relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                                    command=lambda: self._week_nav(0))
         # Today button packed conditionally in _render_week
@@ -1333,14 +1259,10 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=lambda: self._week_nav(1)).pack(side=tk.LEFT, padx=(6, 0))
-        tk.Button(nav, text="+ ICS Feed", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+        tk.Button(nav, text="Calendar Feeds", bg=CREAM, fg=INK, font=FONT_SANS_SM,
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
-                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT, padx=(0, 6))
-        tk.Button(nav, text="Calendars ▾", bg=CREAM, fg=INK, font=FONT_SANS_SM,
-                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
-                  activebackground=CREAM_DARK,
-                  command=self._cal_chooser).pack(side=tk.RIGHT)
+                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT)
 
         # List filter tabs
         self.week_filter_frame = tk.Frame(frame, bg=PAPER)
@@ -1523,12 +1445,12 @@ class TaskwellApp:
                 ev_f = tk.Frame(col, bg=ev["color"], padx=5, pady=3)
                 ev_f.pack(fill=tk.X, pady=1)
                 tk.Label(ev_f, text=ev["title"], font=FONT_SANS_BOLD_SM,
-                         bg=ev["color"], fg="white", wraplength=130,
+                         bg=ev["color"], fg=INK, wraplength=130,
                          anchor="w", justify=tk.LEFT).pack(anchor="w")
                 if not ev["all_day"]:
                     t_str = ev["start"].strftime("%-I:%M") + "–" + ev["end"].strftime("%-I:%M %p")
                     tk.Label(ev_f, text=t_str, font=FONT_SANS_SM,
-                             bg=ev["color"], fg="white").pack(anchor="w")
+                             bg=ev["color"], fg=INK_SOFT).pack(anchor="w")
 
             # Whole column is a drop target
             self._bind_drop(col, key)
@@ -1610,14 +1532,10 @@ class TaskwellApp:
         tk.Label(hdr, text="Day", font=FONT_SERIF_TITLE, bg=PAPER, fg=INK).pack(side=tk.LEFT)
         self.day_subtitle = tk.Label(hdr, text="", font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT)
         self.day_subtitle.pack(side=tk.LEFT, padx=(10, 0), pady=(6, 0))
-        tk.Button(hdr, text="Calendars ▾", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+        tk.Button(hdr, text="Calendar Feeds", bg=CREAM, fg=INK, font=FONT_SANS_SM,
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
-                  command=self._cal_chooser).pack(side=tk.RIGHT)
-        tk.Button(hdr, text="+ ICS Feed", bg=CREAM, fg=INK, font=FONT_SANS_SM,
-                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
-                  activebackground=CREAM_DARK,
-                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT, padx=(0, 6))
+                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT)
 
         # Split view: agenda (left) + mini-cal (right)
         split = tk.Frame(frame, bg=PAPER)
@@ -1807,15 +1725,10 @@ class TaskwellApp:
                     time_str = (ev["start"].strftime("%-I:%M") +
                                 "–" + ev["end"].strftime("%-I:%M %p"))
                 tk.Label(row, text=time_str, font=FONT_SANS_SM, bg=ev["color"],
-                         fg="white", padx=8, pady=4, width=14, anchor="w").pack(side=tk.LEFT)
+                         fg=INK_SOFT, padx=8, pady=4, width=14, anchor="w").pack(side=tk.LEFT)
                 tk.Label(row, text=ev["title"], font=FONT_SERIF_SM, bg=ev["color"],
-                         fg="white", padx=4, pady=4, anchor="w"
+                         fg=INK, padx=4, pady=4, anchor="w"
                          ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        elif HAS_EVENTKIT and not self.cal_store:
-            tk.Label(self.day_scroll_frame,
-                     text="Calendar access not granted. Check System Settings → Privacy → Calendars.",
-                     font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, wraplength=380, justify=tk.LEFT
-                     ).pack(anchor="w", padx=20, pady=(12, 8))
 
         self.day_canvas.configure(scrollregion=self.day_canvas.bbox("all"))
 
@@ -1881,7 +1794,9 @@ class TaskwellApp:
         self.inbox_scroll_frame = tk.Frame(self.inbox_canvas, bg=PAPER)
         self.inbox_scroll_frame.bind("<Configure>",
             lambda e: self.inbox_canvas.configure(scrollregion=self.inbox_canvas.bbox("all")))
-        self.inbox_canvas.create_window((0, 0), window=self.inbox_scroll_frame, anchor="nw")
+        self._inbox_win = self.inbox_canvas.create_window((0, 0), window=self.inbox_scroll_frame, anchor="nw")
+        self.inbox_canvas.bind("<Configure>",
+            lambda e: self.inbox_canvas.itemconfig(self._inbox_win, width=e.width))
         self.inbox_canvas.configure(yscrollcommand=inbox_scroll.set)
         inbox_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.inbox_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1891,13 +1806,19 @@ class TaskwellApp:
         for w in self.inbox_scroll_frame.winfo_children():
             w.destroy()
 
-        if not self.inbox_items:
+        ctx = self.current_context
+        visible = [item for item in self.inbox_items
+                   if ctx == "all" or item.get("context", "work") == ctx]
+
+        if not visible:
+            label = "No items." if not self.inbox_items else f"No {ctx} items."
             tk.Label(self.inbox_scroll_frame,
-                     text="No items. Add tasks you need to assign to a list.",
+                     text=label + " Add tasks you need to assign to a list.",
                      font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
                      ).pack(anchor="w", padx=20, pady=16)
         else:
-            for i, item in enumerate(self.inbox_items):
+            for i, item in enumerate(visible):
+                i = self.inbox_items.index(item)  # real index for mutations
                 done = item.get("done", False)
                 row = tk.Frame(self.inbox_scroll_frame, bg=PAPER)
                 row.pack(fill=tk.X, padx=20)
@@ -1933,7 +1854,8 @@ class TaskwellApp:
         if not val:
             return
         self.inbox_entry.delete(0, tk.END)
-        self.inbox_items.insert(0, {"text": val, "done": False})
+        ctx = self.current_context if self.current_context != "all" else "work"
+        self.inbox_items.insert(0, {"text": val, "done": False, "context": ctx})
         save_json(INBOX_FILE, self.inbox_items)
         self._render_inbox()
 
@@ -2025,7 +1947,7 @@ def _show_login(root):
     status.pack(pady=8)
 
     btn = tk.Button(win, text="Sign in with Google", font=("Helvetica Neue", 13, "bold"),
-                    bg=SAGE, fg="white", relief="flat", padx=16, pady=8, cursor="hand2",
+                    bg=SAGE, fg=INK, relief="flat", padx=16, pady=8, cursor="hand2",
                     command=lambda: _do_login(win, btn, status, root))
     btn.pack(pady=4)
 

@@ -1641,11 +1641,14 @@ function renderAgenda() {
 function renderInbox() {
   const list = document.getElementById('inboxList');
   list.innerHTML = '';
-  if (inboxItems.length === 0) {
-    list.innerHTML = '<div class="no-tasks">No items. Add tasks you need to assign to a list.</div>';
+  const visible = inboxItems.map((item, i) => ({ item, i }))
+    .filter(({ item }) => currentContext === 'all' || (item.context || 'work') === currentContext);
+  if (visible.length === 0) {
+    const msg = inboxItems.length === 0 ? 'No items.' : `No ${currentContext} items.`;
+    list.innerHTML = `<div class="no-tasks">${msg} Add tasks you need to assign to a list.</div>`;
     return;
   }
-  inboxItems.forEach((item, i) => {
+  visible.forEach(({ item, i }) => {
     const row = document.createElement('div');
     row.className = 'inbox-item';
 
@@ -1674,7 +1677,8 @@ function addInboxItem() {
   const inp = document.getElementById('inboxInput');
   const val = inp.value.trim(); if (!val) return;
   inp.value = '';
-  inboxItems.unshift({ text: val, done: false });
+  const ctx = currentContext === 'all' ? 'work' : currentContext;
+  inboxItems.unshift({ text: val, done: false, context: ctx });
   saveInbox(); renderInbox();
 }
 
