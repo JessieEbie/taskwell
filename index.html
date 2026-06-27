@@ -791,18 +791,23 @@ function parseICS(text, feedColor) {
 async function fetchFeed(feed) {
   const url = feed.url.replace(/^webcal:\/\//i, 'https://');
   try {
-    const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const r = await fetch(CORS_PROXY + encodeURIComponent(url), { signal: controller.signal });
+    clearTimeout(timer);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const text = await r.text();
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS feed');
     if (!feed.name || feed.name === 'Loading…') {
       const m = text.match(/X-WR-CALNAME:(.+)/);
-      if (m) { feed.name = m[1].trim(); saveCalFeeds(); }
-      else feed.name = 'Calendar';
+      feed.name = m ? m[1].trim() : 'Calendar';
+      saveCalFeeds();
     }
     return parseICS(text, feed.color);
   } catch(e) {
+    if (feed.name === 'Loading…') { feed.name = '⚠ Could not load'; saveCalFeeds(); }
     console.error('Cal feed error:', feed.url, e);
-    showToast('Could not load calendar feed');
+    showToast('Could not load calendar feed: ' + e.message);
     return {};
   }
 }
