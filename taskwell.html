@@ -357,20 +357,16 @@
     <div class="login-logo">✓</div>
     <h1 class="login-title">Taskwell</h1>
     <div id="loginStep1">
-      <p class="login-sub">Enter your email to sign in</p>
+      <p class="login-sub">Enter your email — we'll send a sign-in link</p>
       <div class="login-error" id="loginErr1"></div>
       <input class="login-input" id="loginEmail" type="email" placeholder="you@example.com"
              inputmode="email" autocomplete="email"
              onkeydown="if(event.key==='Enter') sendLoginCode()" />
-      <button class="btn-login" id="btnSendCode" onclick="sendLoginCode()">Send code</button>
+      <button class="btn-login" id="btnSendCode" onclick="sendLoginCode()">Send link</button>
     </div>
     <div id="loginStep2" style="display:none">
-      <p class="login-sub">Check your email for a 6-digit code</p>
+      <p class="login-sub">Check your email and click the <strong>Sign in</strong> link. Then come back here — you'll be signed in automatically.</p>
       <div class="login-error" id="loginErr2"></div>
-      <input class="login-input" id="loginCode" type="text" placeholder="123456"
-             maxlength="6" inputmode="numeric" autocomplete="one-time-code"
-             onkeydown="if(event.key==='Enter') verifyLoginCode()" />
-      <button class="btn-login" id="btnVerify" onclick="verifyLoginCode()">Sign in</button>
       <button class="login-back" onclick="showLoginStep1()">← Try a different email</button>
     </div>
   </div>
@@ -656,42 +652,19 @@ async function sendLoginCode() {
   btn.disabled = true; btn.textContent = 'Sending…';
   document.getElementById('loginErr1').textContent = '';
   try {
+    const redirectTo = window.location.href.split('#')[0];
     const r = await fetch(`${SB_URL}/auth/v1/otp`, {
       method: 'POST',
       headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, create_user: true })
+      body: JSON.stringify({ email, create_user: true, options: { redirect_to: redirectTo } })
     });
-    if (!r.ok) throw new Error('Could not send code. Check your email address.');
+    if (!r.ok) throw new Error('Could not send link. Check your email address.');
     document.getElementById('loginStep1').style.display = 'none';
     document.getElementById('loginStep2').style.display = '';
-    setTimeout(() => document.getElementById('loginCode').focus(), 50);
   } catch(e) {
     document.getElementById('loginErr1').textContent = e.message;
   }
-  btn.disabled = false; btn.textContent = 'Send code';
-}
-
-async function verifyLoginCode() {
-  const email = document.getElementById('loginEmail').value.trim();
-  const token = document.getElementById('loginCode').value.trim();
-  if (!token) return;
-  const btn = document.getElementById('btnVerify');
-  btn.disabled = true; btn.textContent = 'Verifying…';
-  document.getElementById('loginErr2').textContent = '';
-  try {
-    const r = await fetch(`${SB_URL}/auth/v1/verify`, {
-      method: 'POST',
-      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'email', email, token })
-    });
-    if (!r.ok) throw new Error('Invalid or expired code. Try again.');
-    saveSession(await r.json());
-    document.getElementById('loginScreen').classList.add('hidden');
-    await boot();
-  } catch(e) {
-    document.getElementById('loginErr2').textContent = e.message;
-    btn.disabled = false; btn.textContent = 'Sign in';
-  }
+  btn.disabled = false; btn.textContent = 'Send link';
 }
 
 function signOut() {
