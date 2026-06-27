@@ -297,9 +297,72 @@ def _parse_ics_dt(val, tzid=None):
             pass
     return None
 
+def _expand_rrule(dtstart, rrule_str, duration, entry_template, events, min_d, max_d):
+    """Expand a recurring event into events dict for dates within [min_d, max_d]."""
+    from datetime import timedelta
+    rr = {}
+    for part in rrule_str.split(';'):
+        if '=' in part:
+            k, v = part.split('=', 1)
+            rr[k.strip()] = v.strip()
+    freq = rr.get('FREQ', 'WEEKLY')
+    interval = int(rr.get('INTERVAL', 1))
+    max_count = int(rr.get('COUNT', 500))
+    until = None
+    if 'UNTIL' in rr:
+        u = _parse_ics_dt(rr['UNTIL'].replace('Z', '').replace('T', '').ljust(15, '0')[:15])
+        if u:
+            until = u.date() if hasattr(u, 'date') else u
+
+    cursor = dtstart.date() if hasattr(dtstart, 'date') else dtstart
+
+    # Fast-forward to near min_d to avoid exhausting max_count on old events
+    if cursor < min_d:
+        if freq == 'DAILY':
+            days = (min_d - cursor).days
+            cursor += timedelta(days=(days // interval) * interval)
+        elif freq == 'WEEKLY':
+            weeks = (min_d - cursor).days // 7
+            cursor += timedelta(weeks=(weeks // interval) * interval)
+        elif freq == 'MONTHLY':
+            months = (min_d.year - cursor.year) * 12 + (min_d.month - cursor.month)
+            months = max(0, months - 1)
+            cursor = cursor.replace(year=cursor.year + (cursor.month + (months // interval) * interval - 1) // 12,
+                                    month=(cursor.month + (months // interval) * interval - 1) % 12 + 1)
+        elif freq == 'YEARLY':
+            years = max(0, min_d.year - cursor.year - 1)
+            cursor = cursor.replace(year=cursor.year + (years // interval) * interval)
+
+    n = 0
+    while cursor <= max_d and n < max_count:
+        if until and cursor > until:
+            break
+        if cursor >= min_d:
+            occ_start = datetime.combine(cursor, dtstart.time()) if hasattr(dtstart, 'time') else datetime(cursor.year, cursor.month, cursor.day)
+            occ_end = occ_start + duration
+            entry = dict(entry_template, start=occ_start, end=occ_end)
+            events.setdefault(cursor.isoformat(), []).append(entry)
+        n += 1
+        if freq == 'DAILY':
+            cursor += timedelta(days=interval)
+        elif freq == 'WEEKLY':
+            cursor += timedelta(weeks=interval)
+        elif freq == 'MONTHLY':
+            m = cursor.month - 1 + interval
+            cursor = cursor.replace(year=cursor.year + m // 12, month=m % 12 + 1)
+        elif freq == 'YEARLY':
+            cursor = cursor.replace(year=cursor.year + interval)
+        else:
+            break
+
 def parse_ics_mac(text, color):
     """Parse ICS text → dict of date_str -> [event_dict]"""
+    from datetime import timedelta, date as _date
     events = {}
+    today = datetime.now().date()
+    min_d = today - timedelta(days=14)
+    max_d = today + timedelta(days=180)
+
     # Unfold RFC 5545 continuation lines (CRLF + whitespace → nothing)
     text = text.replace('\r\n', '\n').replace('\r', '\n')
     text = __import__('re').sub(r'\n[ \t]', '', text)
@@ -317,16 +380,22 @@ def parse_ics_mac(text, color):
             if dtstart:
                 all_day = len(str(ev.get('DTSTART_RAW','')).strip()) == 8
                 dtend = ev.get('DTEND') or dtstart
-                key = dtstart.date().isoformat()
+                duration = (dtend - dtstart) if isinstance(dtend, datetime) and isinstance(dtstart, datetime) else timedelta(0)
                 entry = {'title': title, 'start': dtstart, 'end': dtend,
                          'all_day': all_day, 'calendar': ev.get('CAL_NAME',''),
                          'color': color, 'cal_id': 'ics_' + color}
-                events.setdefault(key, []).append(entry)
+                if ev.get('RRULE'):
+                    _expand_rrule(dtstart, ev['RRULE'], duration, entry, events, min_d, max_d)
+                else:
+                    key = dtstart.date().isoformat()
+                    if min_d <= dtstart.date() <= max_d:
+                        events.setdefault(key, []).append(entry)
         elif in_event:
             if ':' in line:
                 k, _, v = line.partition(':')
                 k = k.split(';')[0].strip()
                 if k == 'SUMMARY': ev['SUMMARY'] = v.strip()
+                elif k == 'RRULE': ev['RRULE'] = v.strip()
                 elif k in ('DTSTART','DTEND'):
                     raw = line.split(':',1)[1].strip()
                     ev[k+'_RAW'] = raw

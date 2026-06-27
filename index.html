@@ -797,6 +797,22 @@ function expandEvent(ev, minD, maxD) {
     }
   } else {
     const cursor = new Date(startDate);
+    // Fast-forward to near minD so old recurring events don't exhaust maxCount
+    if (cursor < minD) {
+      if (freq === 'DAILY') {
+        const days = Math.floor((minD - cursor) / 86400000);
+        cursor.setDate(cursor.getDate() + Math.floor(days / interval) * interval);
+      } else if (freq === 'WEEKLY') {
+        const weeks = Math.floor((minD - cursor) / (7 * 86400000));
+        cursor.setDate(cursor.getDate() + Math.floor(weeks / interval) * interval * 7);
+      } else if (freq === 'MONTHLY') {
+        const months = (minD.getFullYear() - cursor.getFullYear()) * 12 + (minD.getMonth() - cursor.getMonth());
+        cursor.setMonth(cursor.getMonth() + Math.floor(Math.max(0, months - 1) / interval) * interval);
+      } else if (freq === 'YEARLY') {
+        const years = minD.getFullYear() - cursor.getFullYear();
+        cursor.setFullYear(cursor.getFullYear() + Math.floor(Math.max(0, years - 1) / interval) * interval);
+      }
+    }
     let n = 0;
     while (cursor <= maxD && n < maxCount) {
       const cs = new Date(cursor); cs.setHours(0,0,0,0);
