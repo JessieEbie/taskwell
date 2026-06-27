@@ -13,8 +13,10 @@ OPTIONS = {
         'CFBundleShortVersionString': '1.0',
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
+        'NSCalendarsUsageDescription': 'Taskwell reads your calendars to show events alongside your tasks.',
+        'NSCalendarsFullAccessUsageDescription': 'Taskwell reads your calendars to show events alongside your tasks.',
     },
-    'packages': ['tkinter'],
+    'packages': ['tkinter', 'objc', 'Foundation', 'EventKit'],
 }
 
 setup(

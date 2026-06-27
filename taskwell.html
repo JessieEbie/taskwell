@@ -12,19 +12,22 @@
       --cream: #F5F0E8; --cream-dark: #EDE6D6;
       --rose: #C4907A; --rose-dark: #A67055; --rose-pale: #E8C4B4;
       --ink: #2E2118; --ink-soft: #6B5744; --ink-faint: #B8A898;
-      --sage: #86EFAC; --sage-dark: #4ADE80; --sage-pale: #DCFCE7;
+      --sage: #9CAF9A; --sage-dark: #7A9478; --sage-pale: #D8E5D6;
+      --khaki: #C4B99A; --khaki-pale: #EDE7DA;
+      --brown: #A67B5B;
       --rust: #B85C38; --paper: #FAF7F2;
+      --rose: #C4A4A0; --rose-dark: #A67B5B; --rose-pale: #EDE0DB;
       --accent: var(--rose); --accent-dark: var(--rose-dark); --accent-pale: var(--rose-pale);
-      --rail-bg: var(--rose);
+      --rail-bg: var(--brown);
       --tab-w: 64px;
     }
     body.ctx-home {
       --accent: var(--sage); --accent-dark: var(--sage-dark); --accent-pale: var(--sage-pale);
-      --rail-bg: #DCFCE7;
+      --rail-bg: var(--sage);
     }
     body.ctx-all {
-      --accent: #93C5FD; --accent-dark: #60A5FA; --accent-pale: #DBEAFE;
-      --rail-bg: #DBEAFE;
+      --accent: var(--khaki); --accent-dark: #9A8E78; --accent-pale: var(--khaki-pale);
+      --rail-bg: var(--khaki);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -202,24 +205,12 @@
                     margin-bottom: 6px; border-left: 3px solid var(--accent); }
     .agenda-event-time { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); margin-bottom: 2px; }
     .agenda-event-title { font-size: 13px; color: var(--ink); }
-    .agenda-event.google { border-left-color: #4285F4; }
-    .agenda-event.outlook { border-left-color: #0078D4; }
     .agenda-task { background: var(--cream); border-radius: 8px; padding: 8px 10px;
                    margin-bottom: 6px; display: flex; align-items: center; gap: 8px; border: none; }
     .agenda-task-info { flex: 1; }
     .agenda-task-title { font-size: 13px; color: var(--ink); }
     .agenda-task-list { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); margin-top: 1px; }
     .agenda-empty { font-family: Georgia, serif; font-size: 13px; font-style: italic; color: var(--ink-faint); padding: 20px 0; }
-    .cal-connect-section { padding: 10px 12px 12px; border-top: 1px solid var(--cream-dark); }
-    .cal-connect-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
-                         letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
-    .cal-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
-               border-radius: 8px; border: 1.5px solid var(--cream-dark); background: var(--cream);
-               color: var(--ink); font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
-               cursor: pointer; margin-bottom: 6px; text-align: left; }
-    .cal-btn:hover { background: var(--cream-dark); }
-    .cal-btn.connected { border-color: var(--sage); color: var(--sage-dark); }
-    .cal-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
 
     /* ── INBOX ── */
     #inbox .inbox-inner { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 14px 20px 20px; }
@@ -393,17 +384,6 @@
           </div>
           <div class="mini-cal-grid" id="miniCalGrid"></div>
         </div>
-        <div class="cal-connect-section">
-          <div class="cal-connect-label">Calendars</div>
-          <button class="cal-btn" id="googleCalBtn" onclick="connectGoogle()">
-            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Connect Google Calendar
-          </button>
-          <button class="cal-btn" id="msCalBtn" onclick="connectOutlook()">
-            <svg viewBox="0 0 24 24" stroke="currentColor" fill="none"><rect x="2" y="2" width="10" height="10" rx="1"/><rect x="12" y="2" width="10" height="10" rx="1"/><rect x="2" y="12" width="10" height="10" rx="1"/><rect x="12" y="12" width="10" height="10" rx="1"/></svg>
-            Connect Outlook
-          </button>
-        </div>
       </div>
     </div>
   </section>
@@ -482,11 +462,6 @@ const HDRS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
 const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
 
 // Calendar OAuth — fill in your client IDs to enable calendar sync.
-// Google: https://console.cloud.google.com → Create OAuth 2.0 Client (Web App)
-// Microsoft: https://portal.azure.com → App registrations
-const GOOGLE_CLIENT_ID = '';
-const MS_CLIENT_ID = '';
-
 // ── State ──
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
@@ -495,8 +470,6 @@ let currentContext = localStorage.getItem('tw_context') || 'work';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
-let googleConnected = false, msConnected = false;
-let googleEvents = [], msEvents = [];
 
 // ── Helpers ──
 function getVisibleLists() {
@@ -606,7 +579,7 @@ function renderHub() {
   // All mode: banner + Home section always shown + work sections
   if (currentContext === 'all') {
     const banner = document.createElement('div');
-    banner.style.cssText = 'background:#DBEAFE;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#2E2118;';
+    banner.style.cssText = 'background:#EDE7DA;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#2E2118;';
     banner.textContent = 'Showing all contexts — Home + Work';
     area.appendChild(banner);
     const homeLists = lists.filter(l => (l.context || 'work') === 'home');
@@ -1122,24 +1095,6 @@ function renderAgenda() {
   title.textContent = sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   agenda.appendChild(title);
 
-  // Calendar events
-  const allEvents = [...googleEvents, ...msEvents]
-    .filter(e => e.date === selectedDay)
-    .sort((a,b) => (a.time||'').localeCompare(b.time||''));
-
-  if (allEvents.length > 0) {
-    const lbl = document.createElement('div');
-    lbl.className = 'agenda-section-label'; lbl.textContent = 'Calendar Events';
-    agenda.appendChild(lbl);
-    allEvents.forEach(ev => {
-      const el = document.createElement('div');
-      el.className = `agenda-event ${ev.source}`;
-      el.innerHTML = `${ev.time ? `<div class="agenda-event-time">${ev.time}</div>` : ''}
-                      <div class="agenda-event-title">${ev.title}</div>`;
-      agenda.appendChild(el);
-    });
-  }
-
   // Tasks due/assigned this day
   const visListIds = new Set(getVisibleLists().map(l => l.id));
   const dayTasks = tasks.filter(t =>
@@ -1168,37 +1123,12 @@ function renderAgenda() {
     });
   }
 
-  if (allEvents.length === 0 && dayTasks.length === 0) {
+  if (dayTasks.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'agenda-empty';
     empty.textContent = 'Nothing scheduled for this day.';
     agenda.appendChild(empty);
   }
-
-  if (!googleConnected && !msConnected) {
-    const note = document.createElement('div');
-    note.style.cssText = 'margin-top:20px;font-family:Helvetica Neue,sans-serif;font-size:11px;color:var(--ink-faint);line-height:1.5;';
-    note.textContent = 'Connect Google Calendar or Outlook in the sidebar to see calendar events here.';
-    agenda.appendChild(note);
-  }
-}
-
-// ── Calendar Sync ──
-function connectGoogle() {
-  if (!GOOGLE_CLIENT_ID) {
-    alert('To enable Google Calendar sync:\n\n1. Go to https://console.cloud.google.com\n2. Create a project and enable the Google Calendar API\n3. Create an OAuth 2.0 Client ID (Web Application)\n4. Add this page\'s URL as an authorized redirect URI\n5. Paste the client ID into the GOOGLE_CLIENT_ID constant at the top of the script');
-    return;
-  }
-  showToast('Opening Google sign-in…');
-  // OAuth PKCE flow would be implemented here with the provided client ID
-}
-
-function connectOutlook() {
-  if (!MS_CLIENT_ID) {
-    alert('To enable Outlook Calendar sync:\n\n1. Go to https://portal.azure.com → App registrations\n2. Register a new app and add this page\'s URL as a redirect URI\n3. Grant Calendar.Read permission\n4. Paste the Application (client) ID into the MS_CLIENT_ID constant at the top of the script');
-    return;
-  }
-  showToast('Opening Microsoft sign-in…');
 }
 
 // ══════════════════════════════

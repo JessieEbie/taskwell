@@ -14,10 +14,18 @@ import os
 from datetime import date, timedelta, datetime
 import calendar as cal_module
 
+try:
+    from EventKit import EKEventStore, EKEntityTypeEvent
+    from Foundation import NSDate
+    HAS_EVENTKIT = True
+except ImportError:
+    HAS_EVENTKIT = False
+
 # ── Config ──
 SUPABASE_URL = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
 SUPABASE_KEY = "sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU"
-INBOX_FILE = os.path.expanduser("~/.taskwell_inbox.json")
+INBOX_FILE   = os.path.expanduser("~/.taskwell_inbox.json")
+CAL_PREFS_FILE = os.path.expanduser("~/.taskwell_cal_prefs.json")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -26,20 +34,23 @@ HEADERS = {
     "Prefer": "return=representation"
 }
 
-# ── Colors ──
+# ── Colors (earthy palette) ──
 CREAM      = "#F5F0E8"
 CREAM_DARK = "#EDE6D6"
-ROSE       = "#C4907A"
-ROSE_DARK  = "#A67055"
-ROSE_PALE  = "#E8C4B4"
+PAPER      = "#FAF7F2"
 INK        = "#2E2118"
 INK_SOFT   = "#6B5744"
 INK_FAINT  = "#B8A898"
-SAGE       = "#9CAF88"
-SAGE_DARK  = "#6B9B6F"
-SAGE_PALE  = "#D4E8D0"
 RUST       = "#B85C38"
-PAPER      = "#FAF7F2"
+
+# Palette-derived accent sets
+BROWN      = "#A67B5B"   # warm brown  — work rail
+ROSE       = "#C4A4A0"   # dusty rose  — work accent
+ROSE_PALE  = "#EDE0DB"   # blush       — work pale
+SAGE       = "#9CAF9A"   # sage green  — home accent/rail
+SAGE_PALE  = "#D8E5D6"   # light sage  — home pale
+KHAKI      = "#C4B99A"   # warm khaki  — all rail/accent
+KHAKI_PALE = "#EDE7DA"   # light khaki — all pale
 
 FONT_SERIF       = ("Georgia", 13)
 FONT_SERIF_TITLE = ("Georgia", 22)
@@ -172,35 +183,197 @@ class TaskwellApp:
         self._build_ui()
         self.status_var.set("Connecting…")
         self._load_data()
+        self._init_calendar()
 
     # ── Accent colors based on context ──
     @property
     def accent(self):
-        return SAGE if self.current_context == "home" else ROSE
+        if self.current_context == "home": return SAGE
+        if self.current_context == "all":  return KHAKI
+        return ROSE
 
     @property
     def accent_pale(self):
-        return SAGE_PALE if self.current_context == "home" else ROSE_PALE
+        if self.current_context == "home": return SAGE_PALE
+        if self.current_context == "all":  return KHAKI_PALE
+        return ROSE_PALE
 
     @property
     def rail_bg(self):
-        return SAGE_DARK if self.current_context == "home" else ROSE
+        if self.current_context == "home": return SAGE
+        if self.current_context == "all":  return KHAKI
+        return BROWN
 
     # ── Scroll helpers ──
-    def _setup_scroll(self, canvas, orient='y'):
-        """Bind trackpad/mousewheel scroll to canvas using enter/leave so child widgets don't block it."""
-        def _scroll(e):
-            delta = -1 if e.delta > 0 else 1
-            if orient == 'y':
-                canvas.yview_scroll(delta, "units")
-            else:
-                canvas.xview_scroll(delta, "units")
-        def _enter(e):
-            canvas.bind_all('<MouseWheel>', _scroll)
-        def _leave(e):
-            canvas.unbind_all('<MouseWheel>')
-        canvas.bind('<Enter>', _enter)
-        canvas.bind('<Leave>', _leave)
+    def _init_global_scroll(self):
+        """Bind a single root-level scroll handler; always scrolls the active tab's canvas."""
+        self._active_scroll = None  # (canvas, orient) for the currently visible tab
+
+        def _do_scroll(e):
+            if not self._active_scroll:
+                return
+            canvas, orient = self._active_scroll
+            raw = e.delta
+            if raw == 0:
+                return
+            # macOS trackpad sends small values (±1–5); Windows wheel sends ±120.
+            amt = int(-raw) if abs(raw) < 120 else int(-raw / 40)
+            if amt == 0:
+                amt = 1 if raw < 0 else -1
+            try:
+                if orient == 'y':
+                    canvas.yview_scroll(amt, "units")
+                else:
+                    canvas.xview_scroll(amt, "units")
+            except Exception:
+                pass
+
+        self.root.bind_all('<MouseWheel>', _do_scroll)
+
+    def _register_scroll(self, canvas, orient='y'):
+        pass  # kept for call-site compatibility; routing is now done via _active_scroll
+
+    # ── Calendar (EventKit) ──
+    def _init_calendar(self):
+        self.cal_store = None
+        self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered)
+        self.cal_selected = set(load_json(CAL_PREFS_FILE, {}).get("selected", []))
+        if not HAS_EVENTKIT:
+            return
+        self.cal_store = EKEventStore.alloc().init()
+
+        def on_auth(granted, error):
+            if granted:
+                self.root.after(0, self._refresh_cal_events)
+
+        try:
+            self.cal_store.requestFullAccessToEventsWithCompletion_(on_auth)
+        except AttributeError:
+            self.cal_store.requestAccessToEntityType_completion_(EKEntityTypeEvent, on_auth)
+
+    def _nsdate_to_dt(self, nsdate):
+        return datetime.fromtimestamp(float(nsdate.timeIntervalSince1970()))
+
+    def _date_to_nsdate(self, d):
+        ts = datetime(d.year, d.month, d.day).timestamp()
+        return NSDate.dateWithTimeIntervalSince1970_(ts)
+
+    def _cal_color(self, ek_cal):
+        try:
+            c = ek_cal.color()
+            r = int(c.redComponent() * 255)
+            g = int(c.greenComponent() * 255)
+            b = int(c.blueComponent() * 255)
+            # darken very light colors so white text stays readable
+            if r + g + b > 600:
+                r, g, b = int(r * 0.7), int(g * 0.7), int(b * 0.7)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return "#5B8DB8"
+
+    def _refresh_cal_events(self):
+        if not self.cal_store:
+            return
+        today = date.today()
+        fetch_start = today - timedelta(days=7)
+        fetch_end   = today + timedelta(days=60)
+        start_ns = self._date_to_nsdate(fetch_start)
+        end_ns   = self._date_to_nsdate(fetch_end + timedelta(days=1))
+
+        def fetch():
+            result = {}
+            try:
+                pred = self.cal_store.predicateForEventsWithStartDate_endDate_calendars_(
+                    start_ns, end_ns, None)
+                events = self.cal_store.eventsMatchingPredicate_(pred) or []
+                for ev in events:
+                    try:
+                        cal_id   = str(ev.calendar().calendarIdentifier())
+                        start_dt = self._nsdate_to_dt(ev.startDate())
+                        end_dt   = self._nsdate_to_dt(ev.endDate())
+                        all_day  = bool(ev.isAllDay())
+                        title    = str(ev.title() or "(No title)")
+                        cal_name = str(ev.calendar().title() or "")
+                        color    = self._cal_color(ev.calendar())
+                        entry = {"title": title, "start": start_dt, "end": end_dt,
+                                 "all_day": all_day, "calendar": cal_name,
+                                 "color": color, "cal_id": cal_id}
+                        result.setdefault(start_dt.date().isoformat(), []).append(entry)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            self.root.after(0, self._on_cal_loaded, result)
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _on_cal_loaded(self, result):
+        # Store ALL events unfiltered; get_cal_events() applies the selection at render time
+        self.cal_events_all = result
+        if self.active_section == "week":
+            self._render_week()
+        elif self.active_section == "day":
+            self._render_agenda()
+
+    def get_cal_events(self, date_key):
+        """Return calendar events for date_key, filtered by cal_selected."""
+        evs = self.cal_events_all.get(date_key, [])
+        if not self.cal_selected:
+            return evs
+        return [e for e in evs if e["cal_id"] in self.cal_selected]
+
+    def _cal_chooser(self):
+        if not self.cal_store:
+            messagebox.showinfo("Calendars", "Calendar access not available.", parent=self.root)
+            return
+        cals = list(self.cal_store.calendarsForEntityType_(EKEntityTypeEvent) or [])
+        if not cals:
+            messagebox.showinfo("Calendars", "No calendars found.", parent=self.root)
+            return
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Choose Calendars")
+        dlg.geometry("320x400")
+        dlg.resizable(False, False)
+        dlg.configure(bg=PAPER)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        tk.Label(dlg, text="Show calendars:", font=FONT_SANS_BOLD, bg=PAPER, fg=INK,
+                 anchor="w").pack(fill=tk.X, padx=20, pady=(16, 8))
+
+        vars_map = {}
+        scroll_f = tk.Frame(dlg, bg=PAPER)
+        scroll_f.pack(fill=tk.BOTH, expand=True, padx=20)
+
+        for cal in sorted(cals, key=lambda c: str(c.title())):
+            cal_id = str(cal.calendarIdentifier())
+            title  = str(cal.title() or "")
+            color  = self._cal_color(cal)
+            checked = not self.cal_selected or cal_id in self.cal_selected
+            var = tk.BooleanVar(value=checked)
+            vars_map[cal_id] = var
+            row = tk.Frame(scroll_f, bg=PAPER)
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text="●", fg=color, bg=PAPER, font=FONT_SANS_SM).pack(side=tk.LEFT)
+            tk.Checkbutton(row, text=title, variable=var, bg=PAPER, fg=INK,
+                           font=FONT_SANS_SM, activebackground=PAPER,
+                           selectcolor=CREAM_DARK).pack(side=tk.LEFT, padx=6)
+
+        def save():
+            selected = {cal_id for cal_id, var in vars_map.items() if var.get()}
+            self.cal_selected = selected
+            save_json(CAL_PREFS_FILE, {"selected": list(selected)})
+            dlg.destroy()
+            # Re-render immediately using cached events; no re-fetch needed
+            if self.active_section == "week":
+                self._render_week()
+            elif self.active_section == "day":
+                self._render_agenda()
+
+        tk.Button(dlg, text="Done", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
+                  relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
+                  command=save).pack(pady=16)
 
     # ── List context helpers ──
     def get_list_ctx(self, lst):
@@ -228,12 +401,15 @@ class TaskwellApp:
                  anchor="e", padx=10).pack(side=tk.BOTTOM, fill=tk.X)
 
         self.sections = {}
+        self._init_global_scroll()
         self._build_sidebar()
         self._build_hub()
         self._build_week()
         self._build_day()
         self._build_inbox()
         self._show_section("hub")
+        # Hub is the opening tab; set active scroll now that canvas exists
+        self._active_scroll = (self.hub_canvas, 'y')
 
     def _build_sidebar(self):
         for w in self.sidebar.winfo_children():
@@ -290,6 +466,14 @@ class TaskwellApp:
         if name in self.sections:
             self.sections[name].pack(fill=tk.BOTH, expand=True)
         self._build_sidebar()  # rebuild to update active highlights
+        # Route trackpad scroll to the active tab's canvas
+        scroll_map = {
+            'hub':   (self.hub_canvas,    'y'),
+            'week':  (self._week_canvas,  'x'),
+            'day':   (self.day_canvas,    'y'),
+            'inbox': (self.inbox_canvas,  'y'),
+        }
+        self._active_scroll = scroll_map.get(name)
         if name == "week":
             self._render_week()
         elif name == "hub":
@@ -302,10 +486,18 @@ class TaskwellApp:
 
     def _set_context(self, ctx):
         self.current_context = ctx
+        self.sidebar.configure(bg=self.rail_bg)
         self._build_sidebar()
-        self._render_hub()
-        if self.active_section == "week":
+        sec = self.active_section
+        if sec == "hub":
+            self._render_hub()
+        elif sec == "week":
             self._render_week()
+        elif sec == "day":
+            self._render_mini_cal()
+            self._render_agenda()
+        elif sec == "inbox":
+            self._render_inbox()
 
     # ════════════════════════
     # HUB
@@ -345,7 +537,7 @@ class TaskwellApp:
         self.hub_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hub_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._setup_scroll(self.hub_canvas, 'y')
+        self._register_scroll(self.hub_canvas, 'y')
 
     def _collapse_all(self):
         for s in WORK_SECTIONS:
@@ -371,7 +563,22 @@ class TaskwellApp:
         self.hub_subtitle.configure(
             text="Your task lists" if not visible else f"{len(visible)} list{'s' if len(visible) != 1 else ''}")
 
-        if self.current_context == "home":
+        if self.current_context == "all":
+            # Banner so "all" mode is visually distinct
+            banner = tk.Frame(self.hub_scroll_frame, bg=KHAKI_PALE, padx=16, pady=6)
+            banner.pack(fill=tk.X, padx=20, pady=(6, 12))
+            tk.Label(banner, text="Showing all contexts — Home + Work",
+                     font=FONT_SANS_SM, bg=KHAKI_PALE, fg=INK).pack(anchor="w")
+
+            home_lists = [l for l in self.lists if self.get_list_ctx(l) == "home"]
+            self._render_section_block(self.hub_scroll_frame, "Home", "__home", home_lists)
+            for sec in WORK_SECTIONS:
+                sec_lists = [l for l in self.lists
+                             if l.get("section", "Misc") == sec and self.get_list_ctx(l) == "work"]
+                if sec_lists:
+                    self._render_section_block(self.hub_scroll_frame, sec, sec, sec_lists)
+
+        elif self.current_context == "home":
             if not visible:
                 tk.Label(self.hub_scroll_frame, text="No home lists yet. Create one!",
                          font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
@@ -380,12 +587,6 @@ class TaskwellApp:
                 for lst in visible:
                     self._render_list_block(self.hub_scroll_frame, lst)
         else:
-            # In 'all' mode, show Home group first
-            if self.current_context == "all":
-                home_lists = [l for l in self.lists if self.get_list_ctx(l) == "home"]
-                if home_lists:
-                    self._render_section_block(self.hub_scroll_frame, "Home", "__home", home_lists)
-
             for sec in WORK_SECTIONS:
                 sec_lists = [l for l in self.lists
                              if l.get("section", "Misc") == sec and self.get_list_ctx(l) == "work"]
@@ -815,7 +1016,7 @@ class TaskwellApp:
         self._week_canvas.bind("<Configure>",
             lambda e: self._week_canvas.itemconfig(self._week_inner_id, height=e.height))
         # Trackpad horizontal scroll
-        self._setup_scroll(self._week_canvas, 'x')
+        self._register_scroll(self._week_canvas, 'x')
 
     def _week_nav(self, delta):
         if delta == 0:
@@ -951,10 +1152,26 @@ class TaskwellApp:
                               relief=tk.RAISED, padx=4, pady=1, cursor="hand2",
                               command=unassign).pack(anchor="e", pady=(2, 0))
 
-                    # Make card draggable (to move between days)
+                    # Make card draggable — skip Button children so Remove still works
                     self._bind_drag(t_card, t["id"])
                     for child in t_card.winfo_children():
-                        self._bind_drag(child, t["id"])
+                        if not isinstance(child, tk.Button):
+                            self._bind_drag(child, t["id"])
+
+            # Calendar events for this day
+            cal_day = sorted(self.get_cal_events(key), key=lambda e: (e["all_day"], e["start"]))
+            if cal_day:
+                tk.Frame(col, bg=CREAM_DARK, height=1).pack(fill=tk.X, pady=(4, 2))
+            for ev in cal_day:
+                ev_f = tk.Frame(col, bg=ev["color"], padx=5, pady=3)
+                ev_f.pack(fill=tk.X, pady=1)
+                tk.Label(ev_f, text=ev["title"], font=FONT_SANS_BOLD_SM,
+                         bg=ev["color"], fg="white", wraplength=130,
+                         anchor="w", justify=tk.LEFT).pack(anchor="w")
+                if not ev["all_day"]:
+                    t_str = ev["start"].strftime("%-I:%M") + "–" + ev["end"].strftime("%-I:%M %p")
+                    tk.Label(ev_f, text=t_str, font=FONT_SANS_SM,
+                             bg=ev["color"], fg="white").pack(anchor="w")
 
             # Whole column is a drop target
             self._bind_drop(col, key)
@@ -1036,6 +1253,10 @@ class TaskwellApp:
         tk.Label(hdr, text="Day", font=FONT_SERIF_TITLE, bg=PAPER, fg=INK).pack(side=tk.LEFT)
         self.day_subtitle = tk.Label(hdr, text="", font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT)
         self.day_subtitle.pack(side=tk.LEFT, padx=(10, 0), pady=(6, 0))
+        tk.Button(hdr, text="Calendars ▾", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+                  activebackground=CREAM_DARK,
+                  command=self._cal_chooser).pack(side=tk.RIGHT)
 
         # Split view: agenda (left) + mini-cal (right)
         split = tk.Frame(frame, bg=PAPER)
@@ -1053,7 +1274,7 @@ class TaskwellApp:
         self.day_canvas.configure(yscrollcommand=day_scroll.set)
         day_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.day_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._setup_scroll(self.day_canvas, 'y')
+        self._register_scroll(self.day_canvas, 'y')
 
         # Sidebar: mini-cal
         sidebar = tk.Frame(split, bg=CREAM, width=200)
@@ -1077,16 +1298,7 @@ class TaskwellApp:
         self.mini_cal_grid_frame = tk.Frame(sidebar, bg=CREAM)
         self.mini_cal_grid_frame.pack(fill=tk.X, padx=8)
 
-        # Calendar connect note
-        tk.Frame(sidebar, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=10, pady=(8, 0))
-        tk.Label(sidebar, text="CALENDARS", font=FONT_SANS_SM, bg=CREAM, fg=INK_FAINT
-                 ).pack(anchor="w", padx=10, pady=(8, 4))
-        for label, cmd in [("Connect Google Calendar", self._cal_google_info),
-                            ("Connect Outlook",         self._cal_outlook_info)]:
-            tk.Button(sidebar, text=label, bg=CREAM, fg=INK, font=FONT_SANS_SM,
-                      relief=tk.RAISED, padx=8, pady=4, cursor="hand2",
-                      activebackground=CREAM_DARK, command=cmd).pack(
-                fill=tk.X, padx=10, pady=(0, 4))
+        # Calendar connect note removed — EventKit handles it natively
 
     def _render_mini_cal(self):
         for w in self.mini_cal_grid_frame.winfo_children():
@@ -1212,16 +1424,37 @@ class TaskwellApp:
                 if lst:
                     tk.Label(info, text=lst["name"], font=FONT_SANS_SM, bg=CREAM,
                              fg=INK_FAINT, anchor="w").pack(anchor="w")
-        else:
+        elif not self.get_cal_events(self.selected_day):
             tk.Label(self.day_scroll_frame,
                      text="Nothing scheduled for this day.",
                      font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
                      ).pack(anchor="w", padx=20, pady=16)
 
-        tk.Label(self.day_scroll_frame,
-                 text="Connect Google Calendar or Outlook to see calendar events here.",
-                 font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, wraplength=380, justify=tk.LEFT
-                 ).pack(anchor="w", padx=20, pady=(20, 8))
+        # Calendar events
+        cal_day = sorted(self.get_cal_events(self.selected_day),
+                         key=lambda e: (not e["all_day"], e["start"]))
+        if cal_day:
+            tk.Label(self.day_scroll_frame, text="CALENDAR",
+                     font=FONT_SANS_BOLD_SM, bg=PAPER, fg=INK_FAINT
+                     ).pack(anchor="w", padx=20, pady=(12, 4))
+            for ev in cal_day:
+                row = tk.Frame(self.day_scroll_frame, bg=ev["color"])
+                row.pack(fill=tk.X, padx=20, pady=2)
+                if ev["all_day"]:
+                    time_str = "All day"
+                else:
+                    time_str = (ev["start"].strftime("%-I:%M") +
+                                "–" + ev["end"].strftime("%-I:%M %p"))
+                tk.Label(row, text=time_str, font=FONT_SANS_SM, bg=ev["color"],
+                         fg="white", padx=8, pady=4, width=14, anchor="w").pack(side=tk.LEFT)
+                tk.Label(row, text=ev["title"], font=FONT_SERIF_SM, bg=ev["color"],
+                         fg="white", padx=4, pady=4, anchor="w"
+                         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        elif HAS_EVENTKIT and not self.cal_store:
+            tk.Label(self.day_scroll_frame,
+                     text="Calendar access not granted. Check System Settings → Privacy → Calendars.",
+                     font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, wraplength=380, justify=tk.LEFT
+                     ).pack(anchor="w", padx=20, pady=(12, 8))
 
         self.day_canvas.configure(scrollregion=self.day_canvas.bbox("all"))
 
@@ -1291,7 +1524,7 @@ class TaskwellApp:
         self.inbox_canvas.configure(yscrollcommand=inbox_scroll.set)
         inbox_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.inbox_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self._setup_scroll(self.inbox_canvas, 'y')
+        self._register_scroll(self.inbox_canvas, 'y')
 
     def _render_inbox(self):
         for w in self.inbox_scroll_frame.winfo_children():
