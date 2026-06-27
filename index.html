@@ -901,8 +901,8 @@ async function boot() {
   }
 
   // Require auth
-  alert('authSession after callback: ' + JSON.stringify(authSession)?.slice(0,200));
   if (!authSession) { showLoginScreen(); return; }
+  document.getElementById('loginScreen').classList.add('hidden');
 
   // Refresh if token expires within 5 min
   if (authSession.expires_at && Date.now() > authSession.expires_at - 300000) {
