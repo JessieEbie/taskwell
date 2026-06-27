@@ -656,10 +656,9 @@ class TaskwellApp:
         hdr = tk.Frame(sec_frame, bg=PAPER, cursor="hand2")
         hdr.pack(fill=tk.X, pady=(0, 8))
         tk.Frame(hdr, bg=self.accent, width=3).pack(side=tk.LEFT, fill=tk.Y)
-        lbl = tk.Label(hdr, text=display_name.upper(),
-                       font=("Helvetica Neue", 10, "bold"), bg=PAPER, fg=INK_SOFT,
-                       anchor="w", padx=10, pady=4, cursor="hand2",
-                       letter_spacing=2 if False else 0)  # letter_spacing not supported, just bold
+        lbl = tk.Label(hdr, text=display_name,
+                       font=("Helvetica Neue", 15, "bold"), bg=PAPER, fg=INK,
+                       anchor="w", padx=10, pady=4, cursor="hand2")
         lbl.pack(side=tk.LEFT)
         arrow_lbl = tk.Label(hdr, text="▾" if not collapsed else "▸",
                              font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, cursor="hand2")
@@ -716,8 +715,8 @@ class TaskwellApp:
             tk.Label(lhdr, text="●", bg=bg, fg=dot_color, font=FONT_SANS_SM
                      ).pack(side=tk.LEFT, padx=(0, 4))
 
-        name_lbl = tk.Label(lhdr, text=lst["name"], font=FONT_SANS_BOLD,
-                            bg=bg, fg=INK, anchor="w", cursor="hand2")
+        name_lbl = tk.Label(lhdr, text=lst["name"], font=("Helvetica Neue", 12),
+                            bg=bg, fg=INK_SOFT, anchor="w", cursor="hand2")
         name_lbl.pack(side=tk.LEFT)
 
         if open_tasks:

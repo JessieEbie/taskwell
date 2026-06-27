@@ -93,15 +93,14 @@
                    user-select: none; margin-bottom: 10px; }
     .section-hdr-bar { width: 3px; background: var(--accent); border-radius: 2px; align-self: stretch; flex-shrink: 0; }
     .section-hdr-left { display: flex; align-items: center; gap: 6px; font-family: 'Helvetica Neue', sans-serif;
-                        font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-                        color: var(--ink-soft); padding: 4px 10px; }
+                        font-size: 15px; font-weight: 700; color: var(--ink); padding: 4px 10px; }
     .section-hdr-right { display: none; }
     .section-body { display: flex; flex-wrap: wrap; gap: 10px; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
                   flex: 1 1 240px; min-width: 220px; max-width: 100%; overflow: hidden; }
     .list-hdr { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
                 padding: 10px 12px 6px; }
-    .list-name { font-family: 'Helvetica Neue', sans-serif; font-size: 13px; font-weight: 700; color: var(--ink); flex: 1; }
+    .list-name { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink-soft); flex: 1; }
     .list-count { background: var(--accent-pale); color: var(--ink); font-size: 10px;
                   font-family: 'Helvetica Neue', sans-serif; padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
     .list-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -111,13 +110,13 @@
     .list-del:hover { color: var(--rust); }
     .list-body { padding: 0 12px 10px; }
     .task-input-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-    .task-input { flex: 1; min-width: 120px; padding: 7px 10px; border: 1.5px solid var(--cream-dark);
-                  border-radius: 8px; background: var(--cream); font-family: Georgia, serif;
-                  font-size: 13px; color: var(--ink); outline: none; }
+    .task-input { flex: 1; min-width: 120px; padding: 5px 8px; border: 1px solid var(--cream-dark);
+                  border-radius: 6px; background: var(--paper); font-family: Georgia, serif;
+                  font-size: 12px; color: var(--ink); outline: none; }
     .task-input:focus { border-color: var(--accent); }
-    .due-input { padding: 7px 8px; border: 1.5px solid var(--cream-dark); border-radius: 8px;
-                 background: var(--cream); font-family: 'Helvetica Neue', sans-serif;
-                 font-size: 11px; color: var(--ink); outline: none; width: 96px; }
+    .due-input { padding: 5px 6px; border: 1px solid var(--cream-dark); border-radius: 6px;
+                 background: var(--paper); font-family: 'Helvetica Neue', sans-serif;
+                 font-size: 11px; color: var(--ink); outline: none; width: 80px; }
     .due-input:focus { border-color: var(--accent); }
     .task-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--cream-dark); }
     .task-check { width: 18px; height: 18px; border: 1.5px solid var(--accent); border-radius: 50%;
@@ -893,21 +892,6 @@ function makeListBlock(lst) {
     const body = document.createElement('div');
     body.className = 'list-body';
 
-    const inputRow = document.createElement('div');
-    inputRow.className = 'task-input-row';
-    inputRow.innerHTML = `
-      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" inputmode="text" autocomplete="off" />
-      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
-      <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">Add</button>`;
-    body.appendChild(inputRow);
-
-    setTimeout(() => {
-      const ti = document.getElementById(`ti_${lst.id}`);
-      const td = document.getElementById(`td_${lst.id}`);
-      if (ti) ti.onkeydown = e => { if (e.key === 'Enter') addTask(lst.id); };
-      if (td) wireAutoDate(td);
-    }, 0);
-
     if (openTasks.length === 0) {
       const emp = document.createElement('div');
       emp.className = 'no-tasks'; emp.textContent = 'No open tasks';
@@ -928,7 +912,21 @@ function makeListBlock(lst) {
       body.appendChild(doneSection);
     }
 
-    body.appendChild(Object.assign(document.createElement('hr'), {className: 'divider'}));
+    const inputRow = document.createElement('div');
+    inputRow.className = 'task-input-row';
+    inputRow.innerHTML = `
+      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" inputmode="text" autocomplete="off" />
+      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+      <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">+</button>`;
+    body.appendChild(inputRow);
+
+    setTimeout(() => {
+      const ti = document.getElementById(`ti_${lst.id}`);
+      const td = document.getElementById(`td_${lst.id}`);
+      if (ti) ti.onkeydown = e => { if (e.key === 'Enter') addTask(lst.id); };
+      if (td) wireAutoDate(td);
+    }, 0);
+
     block.appendChild(body);
   }
   return block;
