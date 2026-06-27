@@ -47,9 +47,10 @@ def save_json(path, data):
 SUPABASE_URL   = "https://vblmnfjbtoeeytmzgbaf.supabase.co"
 SUPABASE_KEY   = "sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU"
 ALLOWED_EMAIL  = "jessieebie@gmail.com"
-INBOX_FILE     = os.path.expanduser("~/.taskwell_inbox.json")
-CAL_PREFS_FILE = os.path.expanduser("~/.taskwell_cal_prefs.json")
-AUTH_FILE      = os.path.expanduser("~/.taskwell_auth.json")
+INBOX_FILE      = os.path.expanduser("~/.taskwell_inbox.json")
+CAL_PREFS_FILE  = os.path.expanduser("~/.taskwell_cal_prefs.json")
+AUTH_FILE       = os.path.expanduser("~/.taskwell_auth.json")
+ICS_FEEDS_FILE  = os.path.expanduser("~/.taskwell_ics_feeds.json")
 OAUTH_PORT     = 54321
 OAUTH_REDIRECT = f"http://localhost:{OAUTH_PORT}"
 
@@ -276,6 +277,67 @@ def make_date_var(trace_write=None):
     return var
 
 
+# ── ICS Feed parsing ──
+ICS_CAL_COLORS = ['#9CAF9A','#C4A4A0','#A67B5B','#C4B99A','#7A9478','#B8A898']
+
+def _parse_ics_dt(val, tzid=None):
+    val = val.strip().replace('Z','')
+    for fmt in ('%Y%m%dT%H%M%S','%Y%m%d'):
+        try: return datetime.strptime(val, fmt)
+        except: pass
+    return None
+
+def parse_ics_mac(text, color):
+    """Parse ICS text → dict of date_str -> [event_dict]"""
+    events = {}
+    lines = text.replace('\r\n',' \n').replace('\r','\n').splitlines()
+    # Unfold continuation lines
+    unfolded = []
+    for line in lines:
+        if line.startswith((' ','\t')) and unfolded:
+            unfolded[-1] += line.strip()
+        else:
+            unfolded.append(line)
+    in_event = False
+    ev = {}
+    for line in unfolded:
+        if line == 'BEGIN:VEVENT':
+            in_event = True; ev = {}
+        elif line == 'END:VEVENT' and in_event:
+            in_event = False
+            dtstart = ev.get('DTSTART')
+            title = ev.get('SUMMARY','(No title)')
+            if dtstart:
+                all_day = len(str(ev.get('DTSTART_RAW','')).strip()) == 8
+                dtend = ev.get('DTEND') or dtstart
+                key = dtstart.date().isoformat()
+                entry = {'title': title, 'start': dtstart, 'end': dtend,
+                         'all_day': all_day, 'calendar': ev.get('CAL_NAME',''),
+                         'color': color, 'cal_id': 'ics_' + color}
+                events.setdefault(key, []).append(entry)
+        elif in_event:
+            if ':' in line:
+                k, _, v = line.partition(':')
+                k = k.split(';')[0].strip()
+                if k == 'SUMMARY': ev['SUMMARY'] = v.strip()
+                elif k in ('DTSTART','DTEND'):
+                    raw = line.split(':',1)[1].strip()
+                    ev[k+'_RAW'] = raw
+                    ev[k] = _parse_ics_dt(raw)
+    return events
+
+def fetch_ics_feed(feed):
+    url = feed['url'].replace('webcal://','https://')
+    req = urllib.request.Request(url, headers={'User-Agent': 'Taskwell/1.0'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        text = r.read().decode('utf-8', errors='replace')
+    if 'BEGIN:VCALENDAR' not in text:
+        raise ValueError('Not a valid ICS feed')
+    if not feed.get('name') or feed['name'] in ('Loading…', '⚠ Could not load'):
+        m = __import__('re').search(r'X-WR-CALNAME:(.+)', text)
+        feed['name'] = m.group(1).strip() if m else 'Calendar'
+    return parse_ics_mac(text, feed['color'])
+
 # ════════════════════════════════════════
 # MAIN APP
 # ════════════════════════════════════════
@@ -385,14 +447,16 @@ class TaskwellApp:
     def _register_scroll(self, canvas, orient='y'):
         pass  # kept for call-site compatibility; routing is now done via _active_scroll
 
-    # ── Calendar (EventKit) ──
+    # ── Calendar (EventKit + ICS) ──
     def _init_calendar(self):
         self.cal_store = None
-        self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered)
+        self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered, EventKit)
+        self.ics_events = {}      # date_str -> [event_dict, ...] (from ICS feeds)
+        self.ics_feeds = load_json(ICS_FEEDS_FILE, [])
         saved = load_json(CAL_PREFS_FILE, {})
         raw = saved.get("selected")
-        # None or empty list from old code = no real selection → show all (None sentinel)
         self.cal_selected = set(raw) if raw else None
+        self._refresh_ics_feeds()
         if not HAS_EVENTKIT:
             return
         self.cal_store = EKEventStore.alloc().init()
@@ -471,16 +535,37 @@ class TaskwellApp:
             self._render_agenda()
 
     def get_cal_events(self, date_key):
-        """Return calendar events for date_key, filtered by cal_selected.
-        Empty cal_selected means no preference saved yet — show all calendars."""
-        evs = self.cal_events_all.get(date_key, [])
-        # cal_selected is None only before any preference is ever saved;
-        # an empty set means the user explicitly unchecked everything.
-        if self.cal_selected is None:
-            return evs
-        if len(self.cal_selected) == 0:
-            return []
-        return [e for e in evs if e["cal_id"] in self.cal_selected]
+        ek_evs = self.cal_events_all.get(date_key, [])
+        if self.cal_selected is not None:
+            if len(self.cal_selected) == 0:
+                ek_evs = []
+            else:
+                ek_evs = [e for e in ek_evs if e["cal_id"] in self.cal_selected]
+        ics_evs = self.ics_events.get(date_key, [])
+        return ek_evs + ics_evs
+
+    def _refresh_ics_feeds(self):
+        if not self.ics_feeds:
+            return
+        def fetch():
+            merged = {}
+            for feed in self.ics_feeds:
+                try:
+                    evs = fetch_ics_feed(feed)
+                    for k, arr in evs.items():
+                        merged.setdefault(k, []).extend(arr)
+                except Exception as e:
+                    print(f"ICS feed error {feed.get('url')}: {e}")
+            self.root.after(0, self._on_ics_loaded, merged)
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _on_ics_loaded(self, result):
+        self.ics_events = result
+        save_json(ICS_FEEDS_FILE, self.ics_feeds)
+        if self.active_section == "week":
+            self._render_week()
+        elif self.active_section == "day":
+            self._render_agenda()
 
     def _cal_chooser(self):
         if not self.cal_store:
@@ -542,6 +627,90 @@ class TaskwellApp:
                   activebackground=self.accent, command=save).pack(side=tk.RIGHT)
 
     # ── List context helpers ──
+    def _ics_feeds_dialog(self):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("ICS Calendar Feeds")
+        dlg.geometry("400x360")
+        dlg.resizable(False, False)
+        dlg.configure(bg=PAPER)
+        dlg.transient(self.root)
+        dlg.lift(); dlg.focus_force()
+
+        list_frame = tk.Frame(dlg, bg=PAPER)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(16, 0))
+
+        def refresh_list():
+            for w in list_frame.winfo_children(): w.destroy()
+            if not self.ics_feeds:
+                tk.Label(list_frame, text="No feeds added yet.", font=FONT_SANS_SM,
+                         bg=PAPER, fg=INK_FAINT).pack(anchor="w")
+            for i, feed in enumerate(self.ics_feeds):
+                row = tk.Frame(list_frame, bg=PAPER)
+                row.pack(fill=tk.X, pady=2)
+                color = feed.get('color', SAGE)
+                tk.Label(row, text="●", fg=color, bg=PAPER, font=FONT_SANS_SM).pack(side=tk.LEFT)
+                tk.Label(row, text=feed.get('name', feed['url'])[:40], font=FONT_SANS_SM,
+                         bg=PAPER, fg=INK).pack(side=tk.LEFT, padx=6)
+                idx = i
+                tk.Button(row, text="✕", bg=PAPER, fg=INK_FAINT, font=FONT_SANS_SM,
+                          relief=tk.FLAT, cursor="hand2",
+                          command=lambda i=idx: remove_feed(i)).pack(side=tk.RIGHT)
+
+        def remove_feed(i):
+            self.ics_feeds.pop(i)
+            save_json(ICS_FEEDS_FILE, self.ics_feeds)
+            self.ics_events = {}
+            refresh_list()
+            self._render_week(); self._render_agenda()
+
+        refresh_list()
+
+        add_frame = tk.Frame(dlg, bg=PAPER)
+        add_frame.pack(fill=tk.X, padx=20, pady=(12, 0))
+        tk.Label(add_frame, text="Add ICS feed URL:", font=FONT_SANS_SM, bg=PAPER, fg=INK).pack(anchor="w")
+        url_var = tk.StringVar()
+        entry = tk.Entry(add_frame, textvariable=url_var, font=FONT_SANS_SM, bg=CREAM,
+                         relief=tk.FLAT, highlightthickness=1, highlightbackground=CREAM_DARK)
+        entry.pack(fill=tk.X, pady=4)
+        status = tk.Label(add_frame, text="", font=FONT_SANS_SM, bg=PAPER, fg=RUST)
+        status.pack(anchor="w")
+
+        def add_feed():
+            url = url_var.get().strip()
+            if not url: return
+            color = ICS_CAL_COLORS[len(self.ics_feeds) % len(ICS_CAL_COLORS)]
+            feed = {'url': url, 'name': 'Loading…', 'color': color}
+            self.ics_feeds.append(feed)
+            save_json(ICS_FEEDS_FILE, self.ics_feeds)
+            url_var.set('')
+            status.config(text="Fetching…")
+            refresh_list()
+            def fetch():
+                try:
+                    evs = fetch_ics_feed(feed)
+                    for k, arr in evs.items():
+                        self.ics_events.setdefault(k, []).extend(arr)
+                    self.root.after(0, lambda: (
+                        status.config(text=f"Added: {feed['name']}"),
+                        refresh_list(),
+                        self._render_week(), self._render_agenda()
+                    ))
+                except Exception as e:
+                    feed['name'] = '⚠ Could not load'
+                    self.root.after(0, lambda: (
+                        status.config(text=f"Error: {e}"),
+                        refresh_list()
+                    ))
+            threading.Thread(target=fetch, daemon=True).start()
+
+        entry.bind('<Return>', lambda e: add_feed())
+        tk.Button(add_frame, text="Add Feed", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
+                  relief=tk.FLAT, padx=12, pady=4, cursor="hand2",
+                  command=add_feed).pack(pady=6)
+        tk.Button(dlg, text="Done", bg=CREAM, fg=INK, font=FONT_SANS,
+                  relief=tk.RAISED, padx=16, pady=4, cursor="hand2",
+                  command=dlg.destroy).pack(pady=(0, 14))
+
     def get_list_ctx(self, lst):
         return lst.get("context") or "work"
 
@@ -1437,6 +1606,10 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=self._cal_chooser).pack(side=tk.RIGHT)
+        tk.Button(hdr, text="+ ICS Feed", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+                  activebackground=CREAM_DARK,
+                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT, padx=(0, 6))
 
         # Split view: agenda (left) + mini-cal (right)
         split = tk.Frame(frame, bg=PAPER)
