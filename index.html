@@ -154,7 +154,7 @@
             user-select: none; transition: all .15s; touch-action: none; }
     .chip:hover { background: var(--accent-pale); }
     .chip.dragging { opacity: .5; }
-    .week-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; padding: 10px 20px 16px; -webkit-overflow-scrolling: touch; }
+    .week-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; padding: 10px 20px 16px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; touch-action: pan-x; }
     .week-grid { display: flex; gap: 8px; height: 100%; min-width: max-content; }
     .day-col { width: 160px; flex-shrink: 0; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
     .day-col.today { border: 2px solid var(--accent); }
