@@ -35,9 +35,9 @@ ROSE_PALE  = "#E8C4B4"
 INK        = "#2E2118"
 INK_SOFT   = "#6B5744"
 INK_FAINT  = "#B8A898"
-SAGE       = "#7A9E7E"
-SAGE_DARK  = "#5C7E60"
-SAGE_PALE  = "#B8D4BA"
+SAGE       = "#9CAF88"
+SAGE_DARK  = "#6B9B6F"
+SAGE_PALE  = "#D4E8D0"
 RUST       = "#B85C38"
 PAPER      = "#FAF7F2"
 
@@ -186,6 +186,22 @@ class TaskwellApp:
     def rail_bg(self):
         return SAGE_DARK if self.current_context == "home" else ROSE
 
+    # ── Scroll helpers ──
+    def _setup_scroll(self, canvas, orient='y'):
+        """Bind trackpad/mousewheel scroll to canvas using enter/leave so child widgets don't block it."""
+        def _scroll(e):
+            delta = -1 if e.delta > 0 else 1
+            if orient == 'y':
+                canvas.yview_scroll(delta, "units")
+            else:
+                canvas.xview_scroll(delta, "units")
+        def _enter(e):
+            canvas.bind_all('<MouseWheel>', _scroll)
+        def _leave(e):
+            canvas.unbind_all('<MouseWheel>')
+        canvas.bind('<Enter>', _enter)
+        canvas.bind('<Leave>', _leave)
+
     # ── List context helpers ──
     def get_list_ctx(self, lst):
         return lst.get("context") or "work"
@@ -329,8 +345,7 @@ class TaskwellApp:
         self.hub_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.hub_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.hub_canvas.bind("<MouseWheel>",
-            lambda e: self.hub_canvas.yview_scroll(-1*(e.delta//120), "units"))
+        self._setup_scroll(self.hub_canvas, 'y')
 
     def _collapse_all(self):
         for s in WORK_SECTIONS:
@@ -800,8 +815,7 @@ class TaskwellApp:
         self._week_canvas.bind("<Configure>",
             lambda e: self._week_canvas.itemconfig(self._week_inner_id, height=e.height))
         # Trackpad horizontal scroll
-        self._week_canvas.bind("<MouseWheel>",
-            lambda e: self._week_canvas.xview_scroll(-1*(e.delta//120), "units"))
+        self._setup_scroll(self._week_canvas, 'x')
 
     def _week_nav(self, delta):
         if delta == 0:
@@ -1039,8 +1053,7 @@ class TaskwellApp:
         self.day_canvas.configure(yscrollcommand=day_scroll.set)
         day_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.day_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.day_canvas.bind("<MouseWheel>",
-            lambda e: self.day_canvas.yview_scroll(-1*(e.delta//120), "units"))
+        self._setup_scroll(self.day_canvas, 'y')
 
         # Sidebar: mini-cal
         sidebar = tk.Frame(split, bg=CREAM, width=200)
@@ -1278,8 +1291,7 @@ class TaskwellApp:
         self.inbox_canvas.configure(yscrollcommand=inbox_scroll.set)
         inbox_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.inbox_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.inbox_canvas.bind("<MouseWheel>",
-            lambda e: self.inbox_canvas.yview_scroll(-1*(e.delta//120), "units"))
+        self._setup_scroll(self.inbox_canvas, 'y')
 
     def _render_inbox(self):
         for w in self.inbox_scroll_frame.winfo_children():
