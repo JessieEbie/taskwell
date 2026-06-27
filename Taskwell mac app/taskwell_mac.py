@@ -265,8 +265,9 @@ class TaskwellApp:
         self.cal_store = None
         self.cal_events_all = {}  # date_str -> [event_dict, ...] (unfiltered)
         saved = load_json(CAL_PREFS_FILE, {})
-        # None = no preference ever saved (show all); set = explicit selection (may be empty)
-        self.cal_selected = set(saved["selected"]) if "selected" in saved else None
+        raw = saved.get("selected")
+        # None or empty list from old code = no real selection → show all (None sentinel)
+        self.cal_selected = set(raw) if raw else None
         if not HAS_EVENTKIT:
             return
         self.cal_store = EKEventStore.alloc().init()
@@ -399,13 +400,22 @@ class TaskwellApp:
             self.cal_selected = selected
             save_json(CAL_PREFS_FILE, {"selected": list(selected)})
             dlg.destroy()
-            # Always re-render both views so changes are visible wherever the user looks
             self._render_week()
             self._render_agenda()
 
-        tk.Button(dlg, text="Done", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
+        def cancel():
+            dlg.destroy()
+
+        dlg.protocol("WM_DELETE_WINDOW", cancel)
+
+        btn_row = tk.Frame(dlg, bg=PAPER)
+        btn_row.pack(pady=16, padx=20, fill=tk.X)
+        tk.Button(btn_row, text="Cancel", bg=CREAM, fg=INK, font=FONT_SANS,
+                  relief=tk.RAISED, padx=14, pady=6, cursor="hand2",
+                  activebackground=CREAM_DARK, command=cancel).pack(side=tk.LEFT)
+        tk.Button(btn_row, text="Save", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
                   relief=tk.RAISED, padx=20, pady=6, cursor="hand2",
-                  command=save).pack(pady=16)
+                  activebackground=self.accent, command=save).pack(side=tk.RIGHT)
 
     # ── List context helpers ──
     def get_list_ctx(self, lst):
@@ -616,8 +626,17 @@ class TaskwellApp:
                          font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
                          ).pack(anchor="w", padx=20, pady=16)
             else:
-                for lst in visible:
-                    self._render_list_block(self.hub_scroll_frame, lst)
+                grid = tk.Frame(self.hub_scroll_frame, bg=PAPER)
+                grid.pack(fill=tk.X, padx=20, pady=(8, 0))
+                grid.columnconfigure(0, weight=1, uniform="col")
+                grid.columnconfigure(1, weight=1, uniform="col")
+                for i, lst in enumerate(visible):
+                    r, c = divmod(i, 2)
+                    cell = tk.Frame(grid, bg=CREAM, highlightthickness=1,
+                                    highlightbackground=CREAM_DARK)
+                    cell.grid(row=r, column=c, sticky="nsew",
+                              padx=(0, 6 if c == 0 else 0), pady=(0, 6))
+                    self._render_list_block(cell, lst)
         else:
             for sec in WORK_SECTIONS:
                 sec_lists = [l for l in self.lists
@@ -629,43 +648,52 @@ class TaskwellApp:
 
     def _render_section_block(self, parent, display_name, key, sec_lists):
         collapsed = self.section_collapsed.get(key, False)
-        open_count = sum(
-            len([t for t in self.tasks if t["list_id"] == l["id"] and not t.get("completed")])
-            for l in sec_lists
-        )
 
         sec_frame = tk.Frame(parent, bg=PAPER)
-        sec_frame.pack(fill=tk.X, padx=20, pady=(14, 0))
+        sec_frame.pack(fill=tk.X, padx=20, pady=(18, 0))
 
-        hdr = tk.Frame(sec_frame, bg=CREAM_DARK, cursor="hand2")
-        hdr.pack(fill=tk.X)
-
-        arrow = "▶" if collapsed else "▼"
-        lbl = tk.Label(hdr, text=f"{arrow}  {display_name.upper()}",
-                       font=FONT_SANS_BOLD_SM, bg=CREAM_DARK, fg=INK,
-                       anchor="w", padx=10, pady=6, cursor="hand2")
+        # Section header: accent-colored left bar + all-caps label
+        hdr = tk.Frame(sec_frame, bg=PAPER, cursor="hand2")
+        hdr.pack(fill=tk.X, pady=(0, 8))
+        tk.Frame(hdr, bg=self.accent, width=3).pack(side=tk.LEFT, fill=tk.Y)
+        lbl = tk.Label(hdr, text=display_name.upper(),
+                       font=("Helvetica Neue", 10, "bold"), bg=PAPER, fg=INK_SOFT,
+                       anchor="w", padx=10, pady=4, cursor="hand2",
+                       letter_spacing=2 if False else 0)  # letter_spacing not supported, just bold
         lbl.pack(side=tk.LEFT)
-        if open_count > 0:
-            tk.Label(hdr, text=f"{open_count} open",
-                     font=FONT_SANS_SM, bg=CREAM, fg=INK, padx=10).pack(side=tk.RIGHT)
+        arrow_lbl = tk.Label(hdr, text="▾" if not collapsed else "▸",
+                             font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, cursor="hand2")
+        arrow_lbl.pack(side=tk.LEFT)
 
         def toggle(k=key):
             self.section_collapsed[k] = not self.section_collapsed.get(k, False)
             self._render_hub()
 
-        hdr.bind("<Button-1>", lambda e: toggle())
-        lbl.bind("<Button-1>", lambda e: toggle())
+        for w in (hdr, lbl, arrow_lbl):
+            w.bind("<Button-1>", lambda e: toggle())
 
         if collapsed:
             return
 
         if not sec_lists:
-            tk.Label(sec_frame, text="No lists yet",
-                     font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
-                     ).pack(anchor="w", padx=12, pady=8)
-        else:
-            for lst in sec_lists:
-                self._render_list_block(sec_frame, lst)
+            tk.Label(sec_frame, text="No lists yet — add one above",
+                     font=("Georgia", 11, "italic"), bg=PAPER, fg=INK_FAINT
+                     ).pack(anchor="w", padx=14, pady=4)
+            return
+
+        # 2-column grid
+        grid = tk.Frame(sec_frame, bg=PAPER)
+        grid.pack(fill=tk.X)
+        grid.columnconfigure(0, weight=1, uniform="col")
+        grid.columnconfigure(1, weight=1, uniform="col")
+
+        for i, lst in enumerate(sec_lists):
+            r, c = divmod(i, 2)
+            cell = tk.Frame(grid, bg=CREAM, bd=0,
+                            highlightthickness=1, highlightbackground=CREAM_DARK)
+            cell.grid(row=r, column=c, sticky="nsew", padx=(0 if c else 0, 6 if c == 0 else 0),
+                      pady=(0, 6))
+            self._render_list_block(cell, lst)
 
     def _render_list_block(self, parent, lst):
         list_id = lst["id"]
@@ -674,110 +702,112 @@ class TaskwellApp:
         open_tasks  = [t for t in list_tasks if not t.get("completed")]
         done_tasks  = [t for t in list_tasks if t.get("completed")]
         lctx = self.get_list_ctx(lst)
+        bg = parent.cget("bg")
 
-        block = tk.Frame(parent, bg=PAPER)
-        block.pack(fill=tk.X, padx=10, pady=(8, 0))
+        block = tk.Frame(parent, bg=bg)
+        block.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        lhdr = tk.Frame(block, bg=PAPER, cursor="hand2")
-        lhdr.pack(fill=tk.X)
+        lhdr = tk.Frame(block, bg=bg, cursor="hand2")
+        lhdr.pack(fill=tk.X, padx=10, pady=(8, 4))
 
-        arrow_lbl = tk.Label(lhdr, text="▶" if collapsed else "▼",
-                             font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT, cursor="hand2")
-        arrow_lbl.pack(side=tk.LEFT, padx=(0, 4))
-
-        # Context dot (in 'all' mode)
+        # Context dot in all-mode
         if self.current_context == "all":
             dot_color = SAGE if lctx == "home" else ROSE
-            dot = tk.Label(lhdr, text="●", bg=PAPER, fg=dot_color, font=FONT_SANS_SM)
-            dot.pack(side=tk.LEFT, padx=(0, 4))
+            tk.Label(lhdr, text="●", bg=bg, fg=dot_color, font=FONT_SANS_SM
+                     ).pack(side=tk.LEFT, padx=(0, 4))
 
         name_lbl = tk.Label(lhdr, text=lst["name"], font=FONT_SANS_BOLD,
-                            bg=PAPER, fg=INK, anchor="w", cursor="hand2")
+                            bg=bg, fg=INK, anchor="w", cursor="hand2")
         name_lbl.pack(side=tk.LEFT)
 
         if open_tasks:
             tk.Label(lhdr, text=str(len(open_tasks)),
                      font=FONT_SANS_SM, bg=self.accent_pale, fg=INK,
-                     padx=6, pady=1).pack(side=tk.LEFT, padx=(6, 0))
+                     padx=5, pady=1).pack(side=tk.LEFT, padx=(6, 0))
 
-        tk.Button(lhdr, text="Delete list", bg=PAPER, fg=INK_FAINT,
+        tk.Button(lhdr, text="✕", bg=bg, fg=INK_FAINT,
                   font=FONT_SANS_SM, relief=tk.FLAT, bd=0, cursor="hand2",
                   activeforeground=RUST,
                   command=lambda lid=list_id, ln=lst["name"]: self._delete_list(lid, ln)
-                  ).pack(side=tk.RIGHT, padx=(0, 4))
+                  ).pack(side=tk.RIGHT)
+
+        arrow_lbl = tk.Label(lhdr, text="▾" if not collapsed else "▸",
+                             font=FONT_SANS_SM, bg=bg, fg=INK_FAINT, cursor="hand2")
+        arrow_lbl.pack(side=tk.RIGHT, padx=(0, 4))
 
         def toggle_lst(lid=list_id):
             self.list_collapsed[lid] = not self.list_collapsed.get(lid, False)
             self._render_hub()
 
-        for w in [lhdr, arrow_lbl, name_lbl]:
+        for w in [lhdr, name_lbl, arrow_lbl]:
             w.bind("<Button-1>", lambda e: toggle_lst())
 
         if collapsed:
             return
 
         # Task input row
-        input_row = tk.Frame(block, bg=PAPER)
-        input_row.pack(fill=tk.X, pady=(4, 0), padx=16)
+        input_row = tk.Frame(block, bg=bg)
+        input_row.pack(fill=tk.X, pady=(0, 6), padx=10)
 
-        task_entry = tk.Entry(input_row, font=FONT_SANS, bg=CREAM, fg=INK,
+        task_entry = tk.Entry(input_row, font=FONT_SANS, bg=PAPER, fg=INK,
                               relief=tk.FLAT, bd=0, insertbackground=INK)
-        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5, ipadx=8)
+        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5, ipadx=6)
         task_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
                              highlightcolor=self.accent)
 
         due_var = make_date_var()
-        due_entry = tk.Entry(input_row, textvariable=due_var, font=FONT_SANS_SM, bg=CREAM, fg=INK,
-                             relief=tk.FLAT, bd=0, insertbackground=INK, width=10)
-        due_entry.pack(side=tk.LEFT, padx=(6, 0), ipady=4, ipadx=4)
+        due_entry = tk.Entry(input_row, textvariable=due_var, font=FONT_SANS_SM, bg=PAPER, fg=INK,
+                             relief=tk.FLAT, bd=0, insertbackground=INK, width=8)
+        due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=4, ipadx=4)
         due_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
                             highlightcolor=self.accent)
-        tk.Label(input_row, text="MM/DD/YY", font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT
-                 ).pack(side=tk.LEFT, padx=(4, 0))
+        task_entry.bind("<FocusIn>", lambda e: due_entry.configure(
+            highlightbackground=CREAM_DARK) if not due_entry.get() else None)
 
         def add(lid=list_id, te=task_entry, dv=due_var):
             self._add_task(lid, te, dv)
 
         task_entry.bind("<Return>", lambda e: add())
-        tk.Button(input_row, text="Add", bg=CREAM, fg=INK, font=FONT_SANS_BOLD,
-                  relief=tk.RAISED, padx=6, pady=3, cursor="hand2",
-                  activebackground=CREAM_DARK, command=add).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Button(input_row, text="+", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
+                  relief=tk.FLAT, padx=8, pady=3, cursor="hand2",
+                  activebackground=self.accent, command=add).pack(side=tk.LEFT, padx=(4, 0))
 
         if not open_tasks:
-            tk.Label(block, text="No open tasks",
-                     font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
-                     ).pack(anchor="w", padx=16, pady=4)
+            tk.Label(block, text="No tasks yet",
+                     font=("Georgia", 11, "italic"), bg=bg, fg=INK_FAINT
+                     ).pack(anchor="w", padx=10, pady=(0, 8))
         else:
             for t in open_tasks:
                 self._make_task_row(block, t)
 
         if done_tasks:
-            done_hdr = tk.Frame(block, bg=PAPER)
-            done_hdr.pack(fill=tk.X, padx=16, pady=(6, 0))
+            done_hdr = tk.Frame(block, bg=bg)
+            done_hdr.pack(fill=tk.X, padx=10, pady=(4, 0))
             tk.Label(done_hdr, text=f"{len(done_tasks)} completed",
-                     font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
-            tk.Button(done_hdr, text="Clear completed", bg=CREAM, fg=INK,
-                      font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
-                      activebackground=CREAM_DARK,
+                     font=FONT_SANS_SM, bg=bg, fg=INK_FAINT).pack(side=tk.LEFT)
+            tk.Button(done_hdr, text="Clear", bg=bg, fg=INK_FAINT,
+                      font=FONT_SANS_SM, relief=tk.FLAT, bd=0, padx=0, pady=2, cursor="hand2",
+                      activeforeground=RUST,
                       command=lambda lid=list_id: self._clear_completed(lid)).pack(side=tk.RIGHT)
             for t in done_tasks:
                 self._make_task_row(block, t, done=True)
 
-        tk.Frame(block, bg=CREAM_DARK, height=1).pack(fill=tk.X, pady=(8, 0))
+        tk.Frame(block, bg=bg, height=8).pack(fill=tk.X)  # bottom padding
 
     def _make_task_row(self, parent, task, done=False):
-        row = tk.Frame(parent, bg=PAPER)
-        row.pack(fill=tk.X, padx=16, pady=1)
+        bg = parent.cget("bg")
+        row = tk.Frame(parent, bg=bg)
+        row.pack(fill=tk.X, padx=10, pady=1)
 
         check_var = tk.BooleanVar(value=done)
-        tk.Checkbutton(row, variable=check_var, bg=PAPER, activebackground=PAPER,
+        tk.Checkbutton(row, variable=check_var, bg=bg, activebackground=bg,
                        fg=self.accent, selectcolor=self.accent, relief=tk.FLAT, bd=0, cursor="hand2",
                        command=lambda tid=task["id"], v=check_var: self._toggle_task(tid, v)
                        ).pack(side=tk.LEFT)
 
         fg   = INK_FAINT if done else INK
-        font = ("Georgia", 12, "overstrike") if done else ("Georgia", 12)
-        tk.Label(row, text=task["title"], font=font, bg=PAPER, fg=fg,
+        font = ("Georgia", 11, "overstrike") if done else ("Georgia", 11)
+        tk.Label(row, text=task["title"], font=font, bg=bg, fg=fg,
                  anchor="w").pack(side=tk.LEFT, padx=(2, 0))
 
         # Due date badge
@@ -788,31 +818,28 @@ class TaskwellApp:
                 today    = date.today()
                 diff     = (due_date - today).days
                 if diff < 0:
-                    bg2, fg2, txt = RUST, PAPER, f"Overdue {due_date.strftime('%m/%d/%y')}"
+                    bg2, fg2, txt = RUST, PAPER, f"Overdue"
                 elif diff == 0:
                     bg2, fg2, txt = self.accent_pale, INK, "Today"
                 elif diff == 1:
-                    bg2, fg2, txt = CREAM_DARK, INK, "Tomorrow"
+                    bg2, fg2, txt = CREAM_DARK, INK, "Tmrw"
                 else:
-                    bg2, fg2, txt = CREAM_DARK, INK_SOFT, due_date.strftime("%m/%d/%y")
+                    bg2, fg2, txt = CREAM_DARK, INK_SOFT, due_date.strftime("%-m/%-d")
                 tk.Label(row, text=txt, bg=bg2, fg=fg2, font=FONT_SANS_SM,
-                         padx=6, pady=1).pack(side=tk.LEFT, padx=(8, 0))
+                         padx=5, pady=1).pack(side=tk.LEFT, padx=(6, 0))
             except:
                 pass
 
-        # Edit button
-        tk.Button(row, text="✎", bg=PAPER, fg=INK_FAINT, font=FONT_SANS,
+        tk.Button(row, text="×", bg=bg, fg=INK_FAINT,
+                  font=FONT_SANS, relief=tk.FLAT, bd=0, cursor="hand2",
+                  activeforeground=RUST,
+                  command=lambda tid=task["id"]: self._delete_task(tid)
+                  ).pack(side=tk.RIGHT)
+        tk.Button(row, text="✎", bg=bg, fg=INK_FAINT, font=FONT_SANS_SM,
                   relief=tk.FLAT, bd=0, cursor="hand2",
                   activeforeground=self.accent,
                   command=lambda tid=task["id"]: self._open_edit_task(tid)
                   ).pack(side=tk.RIGHT, padx=(0, 2))
-
-        # Delete button
-        tk.Button(row, text="×", bg=PAPER, fg=INK_FAINT,
-                  font=("Helvetica Neue", 16, "bold"), relief=tk.FLAT, bd=0, cursor="hand2",
-                  activeforeground=RUST,
-                  command=lambda tid=task["id"]: self._delete_task(tid)
-                  ).pack(side=tk.RIGHT)
 
     def _add_task(self, list_id, entry_widget, due_var):
         title = entry_widget.get().strip()
