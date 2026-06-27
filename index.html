@@ -920,6 +920,15 @@ async function boot() {
     if (!authSession.user_id) { authSession.user_id = payload.sub; localStorage.setItem('tw_auth', JSON.stringify(authSession)); }
   } catch(e) { /* JWT decode failed, proceed anyway */ }
 
+  // Forward token to Mac app if launched from desktop
+  const macCallback = new URLSearchParams(window.location.search).get('mac_callback');
+  if (macCallback) {
+    try {
+      await fetch(`http://localhost:54321?access_token=${encodeURIComponent(authSession.access_token)}&refresh_token=${encodeURIComponent(authSession.refresh_token||'')}&user_id=${encodeURIComponent(authSession.user_id||'')}`, { mode: 'no-cors' });
+    } catch(e) { /* Mac app server may have already closed */ }
+    history.replaceState(null, '', window.location.pathname);
+  }
+
   document.getElementById('loginScreen').classList.add('hidden');
 
   // Refresh if token expires within 5 min

@@ -123,7 +123,6 @@ def is_logged_in():
     return bool(_auth.get("access_token"))
 
 def login_with_google(on_success, on_error):
-    verifier, challenge = _pkce_pair()
     result_holder = [None]
 
     class _Handler(BaseHTTPRequestHandler):
@@ -131,13 +130,18 @@ def login_with_google(on_success, on_error):
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
-            code = params.get('code', [None])[0]
+            token = (params.get('access_token', [None])[0])
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
+            self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            if code:
+            if token:
                 self.wfile.write(b'<html><body><h2>Signed in! You can close this tab.</h2></body></html>')
-                result_holder[0] = code
+                result_holder[0] = {
+                    'access_token': token,
+                    'refresh_token': params.get('refresh_token', [None])[0],
+                    'user_id': params.get('user_id', [None])[0],
+                }
             else:
                 self.wfile.write(b'<html><body><h2>Sign-in failed. Please try again.</h2></body></html>')
             threading.Thread(target=self.server.shutdown, daemon=True).start()
@@ -145,22 +149,19 @@ def login_with_google(on_success, on_error):
     def _run():
         try:
             server = HTTPServer(('localhost', OAUTH_PORT), _Handler)
-            redirect_enc = urllib.parse.quote(OAUTH_REDIRECT, safe='')
-            url = (f"{SUPABASE_URL}/auth/v1/authorize?provider=google"
-                   f"&redirect_to={redirect_enc}"
-                   f"&code_challenge={challenge}&code_challenge_method=S256")
-            webbrowser.open(url)
+            web_url = f"https://jessieebie.github.io/taskwell/?mac_callback=1"
+            webbrowser.open(web_url)
             server.serve_forever()
-            code = result_holder[0]
-            if not code:
+            data = result_holder[0]
+            if not data:
                 on_error("Sign-in cancelled or failed.")
                 return
-            data = _exchange_code(code, verifier)
             email, uid = _decode_jwt_email(data.get("access_token", ""))
             if email != ALLOWED_EMAIL:
                 on_error(f"Access denied for {email}.")
                 return
-            data["user_id"] = uid
+            if uid and not data.get('user_id'):
+                data['user_id'] = uid
             _save_auth(data)
             on_success()
         except Exception as e:
