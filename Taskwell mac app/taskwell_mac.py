@@ -55,6 +55,10 @@ OAUTH_REDIRECT = f"http://localhost:{OAUTH_PORT}"
 # ── Auth state ──
 _auth = load_json(AUTH_FILE, {}) if os.path.exists(AUTH_FILE) else {}
 
+def _get_user_id():
+    return (_get_user_id()
+            or _auth.get("user", {}).get("id"))
+
 def _auth_headers():
     token = _auth.get("access_token", SUPABASE_KEY)
     return {
@@ -1076,7 +1080,7 @@ class TaskwellApp:
         if self.active_section == "week":
             self._render_week()
         body = {"list_id": list_id, "title": title, "completed": False,
-                "due_date": due_date, "user_id": _auth.get("user_id")}
+                "due_date": due_date, "user_id": _get_user_id()}
         api_bg("POST", "tasks", body,
                callback=lambda r, e: self.root.after(0, self._on_task_added, tmp_id, r, e))
 
@@ -1228,7 +1232,7 @@ class TaskwellApp:
             section = "Misc" if is_home else section_var.get()
             context = "home" if is_home else "work"
             dialog.destroy()
-            api_bg("POST", "lists", {"name": name, "section": section, "context": context, "user_id": _auth.get("user_id")},
+            api_bg("POST", "lists", {"name": name, "section": section, "context": context, "user_id": _get_user_id()},
                    callback=lambda r, e: self.root.after(0, self._on_list_created, r, e))
 
         name_entry.bind("<Return>", lambda e: confirm())
@@ -1916,7 +1920,7 @@ class TaskwellApp:
             save_json(INBOX_FILE, self.inbox_items)
             self._render_inbox()
             api_bg("POST", "tasks",
-                   {"list_id": chosen["id"], "title": item["text"], "completed": False, "user_id": _auth.get("user_id")},
+                   {"list_id": chosen["id"], "title": item["text"], "completed": False, "user_id": _get_user_id()},
                    callback=lambda r, e: self.root.after(0, self._on_task_added, r, e))
 
         btn_row = tk.Frame(dialog, bg=PAPER)
