@@ -744,37 +744,10 @@ class TaskwellApp:
         if collapsed:
             return
 
-        # Task input row
-        input_row = tk.Frame(block, bg=bg)
-        input_row.pack(fill=tk.X, pady=(0, 6), padx=10)
-
-        task_entry = tk.Entry(input_row, font=FONT_SANS, bg=PAPER, fg=INK,
-                              relief=tk.FLAT, bd=0, insertbackground=INK)
-        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=5, ipadx=6)
-        task_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
-                             highlightcolor=self.accent)
-
-        due_var = make_date_var()
-        due_entry = tk.Entry(input_row, textvariable=due_var, font=FONT_SANS_SM, bg=PAPER, fg=INK,
-                             relief=tk.FLAT, bd=0, insertbackground=INK, width=8)
-        due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=4, ipadx=4)
-        due_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
-                            highlightcolor=self.accent)
-        task_entry.bind("<FocusIn>", lambda e: due_entry.configure(
-            highlightbackground=CREAM_DARK) if not due_entry.get() else None)
-
-        def add(lid=list_id, te=task_entry, dv=due_var):
-            self._add_task(lid, te, dv)
-
-        task_entry.bind("<Return>", lambda e: add())
-        tk.Button(input_row, text="+", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
-                  relief=tk.FLAT, padx=8, pady=3, cursor="hand2",
-                  activebackground=self.accent, command=add).pack(side=tk.LEFT, padx=(4, 0))
-
         if not open_tasks:
             tk.Label(block, text="No tasks yet",
                      font=("Georgia", 11, "italic"), bg=bg, fg=INK_FAINT
-                     ).pack(anchor="w", padx=10, pady=(0, 8))
+                     ).pack(anchor="w", padx=10, pady=(0, 4))
         else:
             for t in open_tasks:
                 self._make_task_row(block, t)
@@ -790,6 +763,31 @@ class TaskwellApp:
                       command=lambda lid=list_id: self._clear_completed(lid)).pack(side=tk.RIGHT)
             for t in done_tasks:
                 self._make_task_row(block, t, done=True)
+
+        # Task input row — at the bottom
+        input_row = tk.Frame(block, bg=bg)
+        input_row.pack(fill=tk.X, pady=(6, 8), padx=10)
+
+        task_entry = tk.Entry(input_row, font=FONT_SANS_SM, bg=PAPER, fg=INK,
+                              relief=tk.FLAT, bd=0, insertbackground=INK)
+        task_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, ipadx=6)
+        task_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
+                             highlightcolor=self.accent)
+
+        due_var = make_date_var()
+        due_entry = tk.Entry(input_row, textvariable=due_var, font=FONT_SANS_SM, bg=PAPER, fg=INK,
+                             relief=tk.FLAT, bd=0, insertbackground=INK, width=8)
+        due_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=4, ipadx=4)
+        due_entry.configure(highlightthickness=1, highlightbackground=CREAM_DARK,
+                            highlightcolor=self.accent)
+
+        def add(lid=list_id, te=task_entry, dv=due_var):
+            self._add_task(lid, te, dv)
+
+        task_entry.bind("<Return>", lambda e: add())
+        tk.Button(input_row, text="+", bg=self.accent, fg="white", font=FONT_SANS_BOLD,
+                  relief=tk.FLAT, padx=8, pady=3, cursor="hand2",
+                  activebackground=self.accent, command=add).pack(side=tk.LEFT, padx=(4, 0))
 
         tk.Frame(block, bg=bg, height=8).pack(fill=tk.X)  # bottom padding
 
