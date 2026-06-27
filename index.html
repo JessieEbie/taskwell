@@ -128,7 +128,7 @@
     .task-text { flex: 1; font-size: 13px; color: var(--ink); }
     .task-text.done { text-decoration: line-through; color: var(--ink-faint); }
     .due-badge { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; padding: 2px 7px; border-radius: 10px; flex-shrink: 0; }
-    .due-badge.overdue { background: var(--rust); color: white; }
+    .due-badge.overdue { background: var(--rust); color: var(--paper); }
     .due-badge.today { background: var(--accent-pale); color: var(--ink); }
     .due-badge.soon { background: var(--cream-dark); color: var(--ink-soft); }
     .task-edit { background: none; border: none; color: var(--ink-faint); font-size: 14px; cursor: pointer; padding: 0 2px; flex-shrink: 0; line-height: 1; }
@@ -196,11 +196,11 @@
                     padding: 4px 2px; border-radius: 6px; cursor: pointer; color: var(--ink); position: relative; }
     .mini-cal-day:hover { background: var(--cream-dark); }
     .mini-cal-day.is-today { background: var(--accent-pale); font-weight: 700; }
-    .mini-cal-day.is-selected { background: var(--accent); color: white; }
+    .mini-cal-day.is-selected { background: var(--accent); color: var(--ink); }
     .mini-cal-day.other-month { color: var(--ink-faint); }
     .mini-cal-day.has-tasks::after { content: '·'; display: block; font-size: 14px; color: var(--accent);
                                       line-height: .6; margin-top: -2px; }
-    .mini-cal-day.is-selected::after { color: white; }
+    .mini-cal-day.is-selected::after { color: var(--ink); }
     .agenda-day-title { font-size: 20px; font-weight: normal; color: var(--ink); margin-bottom: 14px; }
     .agenda-section-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                              letter-spacing: .08em; color: var(--ink-faint); margin: 12px 0 6px; }
@@ -217,7 +217,7 @@
 
     /* ── CAL EVENTS ── */
     .cal-event { border-radius: 4px; padding: 3px 7px; margin-bottom: 4px; font-size: 11px;
-                 font-family: 'Helvetica Neue', sans-serif; color: white; display: flex;
+                 font-family: 'Helvetica Neue', sans-serif; color: var(--ink); display: flex;
                  align-items: center; gap: 4px; overflow: hidden; }
     .cal-event-time { font-size: 9px; opacity: .85; white-space: nowrap; flex-shrink: 0; }
     .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -288,7 +288,7 @@
                   width: 100%; max-width: 320px; box-shadow: 0 20px 60px rgba(46,33,24,.15);
                   text-align: center; }
     .login-logo { width: 52px; height: 52px; background: var(--accent); border-radius: 14px;
-                  font-size: 26px; color: white; display: flex; align-items: center;
+                  font-size: 26px; color: var(--ink); display: flex; align-items: center;
                   justify-content: center; margin: 0 auto 14px; font-family: Georgia, serif; font-weight: normal; }
     .login-title { font-size: 24px; font-weight: normal; color: var(--ink); margin-bottom: 6px; }
     .login-sub { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-soft);
