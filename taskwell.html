@@ -639,7 +639,7 @@ function showLoginScreen() {
 
 function signInWithGoogle() {
   const redirectTo = window.location.href.split('#')[0];
-  window.location.href = `${SB_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+  window.location.href = `${SB_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&flow_type=implicit`;
 }
 
 function signOut() {
@@ -867,8 +867,9 @@ function removeCalFeed(i) {
 
 // ── Boot ──
 async function boot() {
-  // Handle magic-link redirect (access_token in URL hash)
+  // Handle OAuth callback — token in hash (implicit) or code in query (PKCE)
   const hash = window.location.hash;
+  const qp = new URLSearchParams(window.location.search);
   if (hash.includes('access_token')) {
     const params = new URLSearchParams(hash.slice(1));
     const access_token = params.get('access_token');
@@ -877,6 +878,16 @@ async function boot() {
                     expires_in: parseInt(params.get('expires_in') || '3600') });
       history.replaceState(null, '', window.location.pathname);
     }
+  } else if (qp.get('code')) {
+    try {
+      const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=pkce`, {
+        method: 'POST',
+        headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_code: qp.get('code'), code_verifier: sessionStorage.getItem('pkce_verifier') || '' })
+      });
+      if (r.ok) { saveSession(await r.json()); }
+    } catch(e) { console.error('PKCE exchange failed', e); }
+    history.replaceState(null, '', window.location.pathname);
   }
 
   // Require auth
