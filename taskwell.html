@@ -12,7 +12,7 @@
       --cream: #F5F0E8; --cream-dark: #EDE6D6;
       --rose: #C4907A; --rose-dark: #A67055; --rose-pale: #E8C4B4;
       --ink: #2E2118; --ink-soft: #6B5744; --ink-faint: #B8A898;
-      --sage: #9CAF88; --sage-dark: #6B9B6F; --sage-pale: #D4E8D0;
+      --sage: #86EFAC; --sage-dark: #4ADE80; --sage-pale: #DCFCE7;
       --rust: #B85C38; --paper: #FAF7F2;
       --accent: var(--rose); --accent-dark: var(--rose-dark); --accent-pale: var(--rose-pale);
       --rail-bg: var(--rose);
@@ -20,7 +20,11 @@
     }
     body.ctx-home {
       --accent: var(--sage); --accent-dark: var(--sage-dark); --accent-pale: var(--sage-pale);
-      --rail-bg: var(--sage-dark);
+      --rail-bg: #DCFCE7;
+    }
+    body.ctx-all {
+      --accent: #93C5FD; --accent-dark: #60A5FA; --accent-pale: #DBEAFE;
+      --rail-bg: #DBEAFE;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -599,12 +603,19 @@ function renderHub() {
     return;
   }
 
-  // Show Home group at top in 'all' mode
+  // All mode: banner + Home section always shown + work sections
   if (currentContext === 'all') {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#DBEAFE;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#2E2118;';
+    banner.textContent = 'Showing all contexts — Home + Work';
+    area.appendChild(banner);
     const homeLists = lists.filter(l => (l.context || 'work') === 'home');
-    if (homeLists.length > 0) {
-      area.appendChild(makeSectionBlock('HOME', '__home', homeLists, true));
-    }
+    area.appendChild(makeSectionBlock('HOME', '__home', homeLists, true));
+    WORK_SECTIONS.forEach(sec => {
+      const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work');
+      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, sec, secLists, false));
+    });
+    return;
   }
 
   // Work sections
