@@ -1605,7 +1605,9 @@ class TaskwellApp:
         self.day_scroll_frame = tk.Frame(self.day_canvas, bg=PAPER)
         self.day_scroll_frame.bind("<Configure>",
             lambda e: self.day_canvas.configure(scrollregion=self.day_canvas.bbox("all")))
-        self.day_canvas.create_window((0, 0), window=self.day_scroll_frame, anchor="nw")
+        self._day_win = self.day_canvas.create_window((0, 0), window=self.day_scroll_frame, anchor="nw")
+        self.day_canvas.bind("<Configure>",
+            lambda e: self.day_canvas.itemconfig(self._day_win, width=e.width))
         self.day_canvas.configure(yscrollcommand=day_scroll.set)
         day_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.day_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
