@@ -612,6 +612,8 @@ class TaskwellApp:
         self._active_scroll = (self.hub_canvas, 'y')
 
         self.root.bind('<Configure>', self._on_resize)
+        # After startup settles, ensure sidebar is on the correct side
+        self.root.after(200, self._fix_layout)
 
     NARROW_WIDTH = 650
     WIDE_WIDTH   = 1000  # 3-column threshold
@@ -649,6 +651,26 @@ class TaskwellApp:
             self._last_cols = cols
             if self.active_section == 'hub':
                 self._render_hub()
+
+    def _fix_layout(self):
+        """Correct the sidebar position after startup geometry settles."""
+        w = self.root.winfo_width()
+        narrow = w < self.NARROW_WIDTH
+        if narrow != self._is_narrow:
+            self._is_narrow = narrow
+            self.sidebar.pack_forget()
+            self.main_frame.pack_forget()
+            if narrow:
+                self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+                self.sidebar.configure(width=0, height=56)
+                self.sidebar.pack_propagate(True)
+                self.sidebar.pack(side=tk.BOTTOM, fill=tk.X)
+            else:
+                self.sidebar.configure(width=76, height=0)
+                self.sidebar.pack_propagate(False)
+                self.sidebar.pack(side=tk.LEFT, fill=tk.Y)
+                self.main_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._build_sidebar()
 
     def _build_sidebar(self):
         for w in self.sidebar.winfo_children():
