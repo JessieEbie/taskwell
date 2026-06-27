@@ -143,8 +143,9 @@
     .divider { border: none; border-top: 1px solid var(--cream-dark); margin: 6px 0; }
 
     /* ── WEEK ── */
-    #week .week-controls { padding: 10px 20px 0; flex-shrink: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .week-nav-row { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    #week .week-controls { padding: 10px 20px 0; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+    .week-nav-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px; border-radius: 8px; flex-shrink: 0; }
     .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                      letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
@@ -344,14 +345,29 @@
       .ctx-switcher { flex-direction: row; width: auto; margin-bottom: 0; }
       .rail-divider { width: 1px; height: 28px; background: rgba(255,255,255,0.25); margin: 0 4px; }
       .app-mark { margin-bottom: 0; margin-right: 4px; }
-      .main { order: 1; }
+      .main { order: 1; overflow: hidden; }
+      .section { padding: 0; }
       .day-sidebar { display: none; }
-      .page-header { padding: 12px 14px 0; }
-      .page-title { font-size: 22px; }
+      .page-header { padding: 10px 12px 0; flex-wrap: wrap; gap: 4px; }
+      .page-title { font-size: 20px; }
+      .hub-controls { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }
+      .section-body { gap: 8px; }
+      .list-block { flex: 1 1 100%; min-width: 0; }
+      #week .week-controls { padding: 8px 12px 0; }
+      .week-nav-row { flex-wrap: wrap; gap: 4px; }
+      .week-lists-row { gap: 4px; }
+      .week-scroll { padding: 8px 12px 12px; }
+      .day-col { width: 140px; }
+      #week .pending-area { margin: 8px 12px 0; }
+      .day-agenda { padding: 10px 12px; }
+      .hub-scroll { padding: 10px 12px; }
+      .scroll-area { padding: 10px 12px; }
+      .modal-box { padding: 20px 16px; width: calc(100vw - 32px); max-width: none; }
     }
     @media (min-width: 621px) and (max-width: 960px) {
       .day-sidebar { width: 176px; }
       .tab-w { --tab-w: 56px; }
+      .list-block { flex: 1 1 280px; }
     }
   </style>
 </head>
@@ -1292,19 +1308,20 @@ function renderWeek() {
   const ctrl = document.getElementById('weekControls');
   ctrl.innerHTML = '';
 
-  // Navigation buttons
+  // Navigation + Calendars row
   const navRow = document.createElement('div');
   navRow.className = 'week-nav-row';
   navRow.innerHTML = `
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
-    <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>`;
+    <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
+    <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
-  // List filter
+  // List filter row (separate line)
   const visLists = getVisibleLists();
   const filterRow = document.createElement('div');
-  filterRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+  filterRow.className = 'week-lists-row';
   [['all','All'], ...visLists.map(l => [l.id, l.name])].forEach(([key, label]) => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-sm' + (activeWeekList === key ? ' btn-primary' : '');

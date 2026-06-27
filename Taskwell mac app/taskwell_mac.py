@@ -1333,6 +1333,14 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=lambda: self._week_nav(1)).pack(side=tk.LEFT, padx=(6, 0))
+        tk.Button(nav, text="+ ICS Feed", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+                  activebackground=CREAM_DARK,
+                  command=self._ics_feeds_dialog).pack(side=tk.RIGHT, padx=(0, 6))
+        tk.Button(nav, text="Calendars ▾", bg=CREAM, fg=INK, font=FONT_SANS_SM,
+                  relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+                  activebackground=CREAM_DARK,
+                  command=self._cal_chooser).pack(side=tk.RIGHT)
 
         # List filter tabs
         self.week_filter_frame = tk.Frame(frame, bg=PAPER)
