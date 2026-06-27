@@ -424,7 +424,6 @@
     <svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
     <span>Inbox</span>
   </button>
-  <div id="railClock" style="margin-top:auto; padding-bottom:4px; text-align:center; color:rgba(46,33,24,0.6); font-family:'Helvetica Neue',sans-serif; font-size:9px; line-height:1.5; flex-shrink:0;"></div>
   <button class="signout-btn" title="Sign out" onclick="signOut()">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
@@ -916,20 +915,6 @@ function removeCalFeed(i) {
 }
 
 // ── Boot ──
-function startClock() {
-  const el = document.getElementById('railClock');
-  if (!el) return;
-  function tick() {
-    const now = new Date();
-    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const mons = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const h = now.getHours(), m = String(now.getMinutes()).padStart(2,'0');
-    const ampm = h >= 12 ? 'pm' : 'am';
-    el.innerHTML = `${days[now.getDay()]} ${mons[now.getMonth()]} ${now.getDate()}<br>${h%12||12}:${m} ${ampm}`;
-  }
-  tick();
-  setInterval(tick, 30000);
-}
 
 async function boot() {
   // Handle OAuth callback — token in hash (implicit) or code in query (PKCE)
@@ -983,7 +968,6 @@ async function boot() {
   }
 
   document.getElementById('loginScreen').classList.add('hidden');
-  startClock();
 
   // Refresh if token expires within 5 min
   if (authSession.expires_at && Date.now() > authSession.expires_at - 300000) {
