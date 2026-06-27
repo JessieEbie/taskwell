@@ -203,6 +203,15 @@
     .mini-cal-day.has-tasks::after { content: '·'; display: block; font-size: 14px; color: var(--accent);
                                       line-height: .6; margin-top: -2px; }
     .mini-cal-day.is-selected::after { color: var(--ink); }
+    .upcoming-divider { border-top: 1px solid var(--cream-dark); margin: 4px 16px 0; }
+    .upcoming-section { padding: 10px 16px 16px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+    .upcoming-day-label { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
+                          color: var(--ink-soft); text-transform: uppercase; letter-spacing: .05em;
+                          margin: 10px 0 4px; }
+    .upcoming-day-label:first-child { margin-top: 0; }
+    .upcoming-event { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: var(--ink);
+                      padding: 2px 0; display: flex; gap: 6px; }
+    .upcoming-event-time { color: var(--ink-faint); flex-shrink: 0; }
     .agenda-day-title { font-size: 20px; font-weight: normal; color: var(--ink); margin-bottom: 14px; }
     .agenda-section-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                              letter-spacing: .08em; color: var(--ink-faint); margin: 12px 0 6px; }
@@ -479,6 +488,8 @@
           </div>
           <div class="mini-cal-grid" id="miniCalGrid"></div>
         </div>
+        <div class="upcoming-divider"></div>
+        <div class="upcoming-section" id="upcomingSection"></div>
       </div>
     </div>
   </section>
@@ -1568,6 +1579,37 @@ function renderMiniCal() {
   if (sub) {
     const sd = new Date(selectedDay + 'T00:00:00');
     sub.textContent = sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  }
+
+  // Upcoming events
+  const upcoming = document.getElementById('upcomingSection');
+  if (!upcoming) return;
+  upcoming.innerHTML = '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  let shown = 0;
+  for (let offset = 0; offset < 8; offset++) {
+    const day = new Date(today); day.setDate(today.getDate() + offset);
+    const key = dateKey(day);
+    const evs = (calEvents[key] || []).slice().sort((a,b) => (a.allDay ? -1 : 1) - (b.allDay ? -1 : 1) || (a.time||'').localeCompare(b.time||''));
+    if (!evs.length) continue;
+    const label = offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' :
+      day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+    const hdr = document.createElement('div');
+    hdr.className = 'upcoming-day-label'; hdr.textContent = label;
+    upcoming.appendChild(hdr);
+    evs.forEach(ev => {
+      const row = document.createElement('div');
+      row.className = 'upcoming-event';
+      row.innerHTML = `<span class="upcoming-event-time">${ev.allDay ? 'All day' : (ev.time||'')}</span><span>${ev.title}</span>`;
+      upcoming.appendChild(row);
+    });
+    shown++;
+  }
+  if (!shown) {
+    const empty = document.createElement('div');
+    empty.className = 'upcoming-event'; empty.style.color = 'var(--ink-faint)';
+    empty.textContent = 'No upcoming events';
+    upcoming.appendChild(empty);
   }
 }
 

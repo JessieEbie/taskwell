@@ -1800,16 +1800,16 @@ class TaskwellApp:
                      ).pack(anchor="w", padx=20, pady=(12, 4))
             for ev in cal_day:
                 row = tk.Frame(self.day_scroll_frame, bg=ev["color"])
-                row.pack(fill=tk.X, padx=20, pady=2)
+                row.pack(fill=tk.X, padx=10, pady=2)
                 if ev["all_day"]:
                     time_str = "All day"
                 else:
                     time_str = (ev["start"].strftime("%-I:%M") +
                                 "–" + ev["end"].strftime("%-I:%M %p"))
                 tk.Label(row, text=time_str, font=FONT_SANS_SM, bg=ev["color"],
-                         fg=INK_SOFT, padx=8, pady=4, width=14, anchor="w").pack(side=tk.LEFT)
+                         fg=INK_SOFT, padx=10, pady=6, anchor="w").pack(side=tk.LEFT)
                 tk.Label(row, text=ev["title"], font=FONT_SERIF_SM, bg=ev["color"],
-                         fg=INK, padx=4, pady=4, anchor="w"
+                         fg=INK, padx=6, pady=6, anchor="w"
                          ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         self.day_canvas.configure(scrollregion=self.day_canvas.bbox("all"))
