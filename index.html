@@ -164,20 +164,20 @@
     .day-hdr { padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;
                background: var(--cream-dark); flex-shrink: 0; }
     .day-col.today .day-hdr { background: var(--accent-pale); }
-    .day-hdr-name { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 700;
+    .day-hdr-name { font-family: 'Helvetica Neue', sans-serif; font-size: 14px; font-weight: 700;
                     color: var(--ink); text-transform: uppercase; letter-spacing: .05em; }
-    .day-hdr-date { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); }
+    .day-hdr-date { font-family: 'Helvetica Neue', sans-serif; font-size: 13px; color: var(--ink-soft); }
     .day-body { flex: 1; background: var(--cream); padding: 8px; overflow-y: auto;
                 min-height: 200px; transition: background .15s; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
     .day-body.drag-over { background: var(--accent-pale); }
     .day-empty { font-family: Georgia, serif; font-size: 11px; font-style: italic; color: var(--ink-faint); padding: 6px 0; }
     .week-task { background: var(--paper); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: grab; touch-action: none; }
     .week-task.dragging { opacity: .5; }
-    .week-task-title { font-size: 12px; color: var(--ink); margin-bottom: 2px; }
+    .week-task-title { font-size: 14px; color: var(--ink); margin-bottom: 2px; }
     .week-task-title.done { text-decoration: line-through; color: var(--ink-faint); }
     .week-task-meta { display: flex; align-items: center; gap: 4px; }
-    .week-task-list { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); flex: 1; }
-    .week-task-date { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); }
+    .week-task-list { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); flex: 1; }
+    .week-task-date { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); }
     .week-task-remove { background: none; border: none; color: var(--ink-faint); font-size: 13px; cursor: pointer; padding: 0; }
     .week-task-remove:hover { color: var(--rust); }
 
@@ -218,10 +218,10 @@
     .agenda-empty { font-family: Georgia, serif; font-size: 13px; font-style: italic; color: var(--ink-faint); padding: 20px 0; }
 
     /* ── CAL EVENTS ── */
-    .cal-event { border-radius: 4px; padding: 3px 7px; margin-bottom: 4px; font-size: 11px;
+    .cal-event { border-radius: 4px; padding: 4px 8px; margin-bottom: 4px; font-size: 13px;
                  font-family: 'Helvetica Neue', sans-serif; color: var(--ink); display: flex;
                  align-items: center; gap: 4px; overflow: hidden; }
-    .cal-event-time { font-size: 9px; opacity: .85; white-space: nowrap; flex-shrink: 0; }
+    .cal-event-time { font-size: 11px; opacity: .85; white-space: nowrap; flex-shrink: 0; }
     .cal-event-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .agenda-cal-event { background: var(--cream); border-radius: 8px; padding: 8px 12px;
                         margin-bottom: 6px; }
