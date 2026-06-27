@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# py2app build output
+Taskwell mac app/build/
+Taskwell mac app/dist/
