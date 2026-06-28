@@ -56,7 +56,7 @@ OAUTH_REDIRECT = f"http://localhost:{OAUTH_PORT}"
 _auth = load_json(AUTH_FILE, {}) if os.path.exists(AUTH_FILE) else {}
 
 def _get_user_id():
-    return (_get_user_id()
+    return (_auth.get("user_id")
             or _auth.get("user", {}).get("id"))
 
 def _auth_headers():
@@ -327,7 +327,7 @@ def _expand_rrule(dtstart, rrule_str, duration, entry_template, events, min_d, m
     max_count = int(rr.get('COUNT', 500))
     until = None
     if 'UNTIL' in rr:
-        u = _parse_ics_dt(rr['UNTIL'].replace('Z', '').replace('T', '').ljust(15, '0')[:15])
+        u = _parse_ics_dt(rr['UNTIL'][:8])  # just YYYYMMDD
         if u:
             until = u.date() if hasattr(u, 'date') else u
 
