@@ -582,8 +582,12 @@
     <label class="modal-label">Add ICS feed URL</label>
     <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
            onkeydown="if(event.key==='Enter') addCalFeed()" />
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="modal-input" id="calFeedUser" placeholder="Username (if required)" style="flex:1;margin-top:0" />
+      <input class="modal-input" id="calFeedPass" placeholder="Password (if required)" type="password" style="flex:1;margin-top:0" />
+    </div>
     <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;font-family:'Helvetica Neue',sans-serif">
-      Paste your secret ICS link from Google Calendar, iCloud, or Outlook settings.
+      Paste your ICS link. Leave username/password blank for public or secret-URL feeds.
     </div>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
@@ -895,7 +899,10 @@ async function fetchFeed(feed) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10000);
-      const proxyUrl = proxy + (encode ? encodeURIComponent(url) : url);
+      let proxyUrl = proxy + (encode ? encodeURIComponent(url) : url);
+      if (proxy.includes('supabase.co') && feed.username) {
+        proxyUrl += `&username=${encodeURIComponent(feed.username)}&password=${encodeURIComponent(feed.password || '')}`;
+      }
       const fetchOpts = { signal: controller.signal };
       if (proxy.includes('supabase.co') && authSession?.access_token) {
         fetchOpts.headers = { 'Authorization': `Bearer ${authSession.access_token}` };
@@ -965,11 +972,16 @@ async function addCalFeed() {
   const inp = document.getElementById('calFeedUrl');
   const url = inp.value.trim();
   if (!url) return;
+  const username = document.getElementById('calFeedUser').value.trim();
+  const password = document.getElementById('calFeedPass').value.trim();
   const color = CAL_COLORS[calFeeds.length % CAL_COLORS.length];
-  const feed = { id: Date.now().toString(), url, name: 'Loading…', color };
+  const feed = { id: Date.now().toString(), url, name: 'Loading…', color,
+    ...(username ? { username, password } : {}) };
   calFeeds.push(feed);
   await saveCalFeeds();
   inp.value = '';
+  document.getElementById('calFeedUser').value = '';
+  document.getElementById('calFeedPass').value = '';
   renderCalFeedsList();
   const evs = await fetchFeed(feed);
   Object.entries(evs).forEach(([dk, arr]) => {

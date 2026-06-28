@@ -426,7 +426,10 @@ def parse_ics_mac(text, color):
 
 def fetch_ics_feed(feed):
     url = feed['url'].replace('webcal://','https://')
-    req = urllib.request.Request(url, headers={'User-Agent': 'Taskwell/1.0'})
+    proxy_url = (f"{SUPABASE_URL}/functions/v1/ics-proxy?url={urllib.parse.quote(url, safe='')}")
+    if feed.get('username'):
+        proxy_url += f"&username={urllib.parse.quote(feed['username'])}&password={urllib.parse.quote(feed.get('password',''))}"
+    req = urllib.request.Request(proxy_url, headers={**_auth_headers(), 'User-Agent': 'Taskwell/1.0'})
     with urllib.request.urlopen(req, timeout=15) as r:
         text = r.read().decode('utf-8', errors='replace')
     if 'BEGIN:VCALENDAR' not in text:
