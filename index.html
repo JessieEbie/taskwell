@@ -1117,16 +1117,52 @@ async function fetchFeed(feed) {
   return {};
 }
 
-async function fetchAllFeeds() {
-  if (calFeeds.length === 0) return;
-  calEvents = {};
-  await Promise.all(calFeeds.map(async feed => {
-    const evs = await fetchFeed(feed);
-    Object.entries(evs).forEach(([dk, arr]) => {
+async function fetchGoogleCalendarEvents() {
+  if (!googleTokens) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 14);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 90);
+  const params = new URLSearchParams({
+    timeMin: minD.toISOString(), timeMax: maxD.toISOString(),
+    singleEvents: 'true', orderBy: 'startTime', maxResults: '500'
+  });
+  try {
+    const res = await gcalApi('GET', `calendars/primary/events?${params}`);
+    const color = '#4285F4';
+    (res.items || []).forEach(item => {
+      if (item.status === 'cancelled') return;
+      const startVal = item.start?.dateTime || item.start?.date;
+      const allDay = !item.start?.dateTime;
+      let timeStr = null;
+      let dk;
+      if (allDay) {
+        dk = startVal; // already YYYY-MM-DD
+      } else {
+        const dt = new Date(startVal);
+        dk = dateKey(dt);
+        const h = dt.getHours(), m = String(dt.getMinutes()).padStart(2,'0');
+        timeStr = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
+      }
+      const endVal = item.end?.dateTime || item.end?.date;
       if (!calEvents[dk]) calEvents[dk] = [];
-      calEvents[dk].push(...arr);
+      calEvents[dk].push({ title: item.summary || '(No title)', time: timeStr, allDay, color,
+        gcalId: item.id, endTime: endVal });
     });
-  }));
+  } catch(e) { console.error('Google Calendar fetch failed:', e); }
+}
+
+async function fetchAllFeeds() {
+  calEvents = {};
+  await Promise.all([
+    ...calFeeds.map(async feed => {
+      const evs = await fetchFeed(feed);
+      Object.entries(evs).forEach(([dk, arr]) => {
+        if (!calEvents[dk]) calEvents[dk] = [];
+        calEvents[dk].push(...arr);
+      });
+    }),
+    fetchGoogleCalendarEvents()
+  ]);
   renderWeek(); renderAgenda();
 }
 
