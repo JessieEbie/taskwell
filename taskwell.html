@@ -611,7 +611,7 @@ let currentContext = localStorage.getItem('tw_context') || 'work';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
-let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
+let calFeeds = [];
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 
@@ -703,13 +703,14 @@ function signOut() {
   showLoginScreen();
 }
 
-async function api(method, path, body) {
+async function api(method, path, body, extraHeaders) {
+  const headers = { ...authHeaders(), ...extraHeaders };
   const r = await fetch(SB_URL + '/rest/v1/' + path, {
-    method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined });
+    method, headers, body: body ? JSON.stringify(body) : undefined });
   if (r.status === 401) {
     if (await refreshSession()) {
       const r2 = await fetch(SB_URL + '/rest/v1/' + path, {
-        method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined });
+        method, headers: { ...authHeaders(), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined });
       if (!r2.ok) throw new Error(await r2.text());
       if (r2.status === 204) return null;
       return r2.json();
@@ -732,7 +733,16 @@ const CORS_PROXIES = [
 ];
 const WEEKDAY_IDX = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
 
-function saveCalFeeds() { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); }
+async function saveCalFeeds() {
+  await api('POST', 'user_settings', { user_id: authSession.user_id, cal_feeds: calFeeds },
+    { 'Prefer': 'resolution=merge-duplicates' });
+}
+async function loadCalFeeds() {
+  try {
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds`);
+    calFeeds = (rows && rows[0]?.cal_feeds) || [];
+  } catch(e) { calFeeds = []; }
+}
 
 function parseDTVal(val) {
   if (!val) return null;
@@ -898,7 +908,7 @@ async function fetchFeed(feed) {
       if (!feed.name || feed.name === 'Loading…' || feed.name === '⚠ Could not load') {
         const m = text.match(/X-WR-CALNAME:(.+)/);
         feed.name = m ? m[1].trim() : 'Calendar';
-        saveCalFeeds();
+        await saveCalFeeds();
       }
       return parseICS(text, feed.color);
     } catch(e) {
@@ -906,7 +916,7 @@ async function fetchFeed(feed) {
       feed.name = '⚠ Trying…'; renderCalFeedsList();
     }
   }
-  feed.name = '⚠ Could not load'; saveCalFeeds(); renderCalFeedsList();
+  feed.name = '⚠ Could not load'; await saveCalFeeds(); renderCalFeedsList();
   console.error('Cal feed error:', feed.url, lastErr);
   showToast('Could not load: ' + (lastErr?.message || 'unknown error'));
   return {};
@@ -958,7 +968,7 @@ async function addCalFeed() {
   const color = CAL_COLORS[calFeeds.length % CAL_COLORS.length];
   const feed = { id: Date.now().toString(), url, name: 'Loading…', color };
   calFeeds.push(feed);
-  saveCalFeeds();
+  await saveCalFeeds();
   inp.value = '';
   renderCalFeedsList();
   const evs = await fetchFeed(feed);
@@ -970,9 +980,9 @@ async function addCalFeed() {
   renderWeek(); renderAgenda();
 }
 
-function removeCalFeed(i) {
+async function removeCalFeed(i) {
   calFeeds.splice(i, 1);
-  saveCalFeeds();
+  await saveCalFeeds();
   renderCalFeedsList();
   fetchAllFeeds();
 }
@@ -1043,7 +1053,8 @@ async function boot() {
   try {
     [lists, tasks] = await Promise.all([
       api('GET','lists?order=created_at.asc'),
-      api('GET','tasks?order=created_at.asc')
+      api('GET','tasks?order=created_at.asc'),
+      loadCalFeeds()
     ]);
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();

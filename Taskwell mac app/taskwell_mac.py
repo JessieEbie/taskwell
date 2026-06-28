@@ -201,21 +201,38 @@ FONT_SANS_BOLD_SM = ("Helvetica Neue", 10, "bold")
 WORK_SECTIONS = ["Service", "Teaching", "Research", "Misc"]
 
 # ── API ──
-def api(method, path, body=None):
+def api(method, path, body=None, extra_headers=None):
     url = f"{SUPABASE_URL}/rest/v1/{path}"
     data = json.dumps(body).encode() if body else None
+    def make_req():
+        h = {**_auth_headers(), **(extra_headers or {})}
+        return urllib.request.Request(url, data=data, headers=h, method=method)
     try:
-        req = urllib.request.Request(url, data=data, headers=_auth_headers(), method=method)
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(make_req(), timeout=10) as r:
             content = r.read()
             return json.loads(content) if content else None
     except urllib.error.HTTPError as e:
         if e.code == 401 and _refresh_token():
-            req = urllib.request.Request(url, data=data, headers=_auth_headers(), method=method)
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(make_req(), timeout=10) as r:
                 content = r.read()
                 return json.loads(content) if content else None
         raise
+
+def load_cal_feeds():
+    try:
+        rows = api('GET', f'user_settings?user_id=eq.{_get_user_id()}&select=cal_feeds')
+        return (rows[0]['cal_feeds'] if rows else None) or []
+    except:
+        return load_json(ICS_FEEDS_FILE, [])
+
+def save_cal_feeds(feeds):
+    try:
+        api('POST', 'user_settings',
+            {'user_id': _get_user_id(), 'cal_feeds': feeds},
+            {'Prefer': 'resolution=merge-duplicates'})
+    except:
+        pass
+    save_json(ICS_FEEDS_FILE, feeds)
 
 def api_bg(method, path, body=None, callback=None):
     def run():
@@ -535,11 +552,19 @@ class TaskwellApp:
     def _init_calendar(self):
         self.cal_events_all = {}
         self.ics_events = {}
-        self.ics_feeds = load_json(ICS_FEEDS_FILE, [])
-        self._refresh_ics_feeds()
+        self.ics_feeds = []
+        threading.Thread(target=self._load_cal_feeds_bg, daemon=True).start()
 
     def get_cal_events(self, date_key):
         return self.ics_events.get(date_key, [])
+
+    def _load_cal_feeds_bg(self):
+        feeds = load_cal_feeds()
+        self.root.after(0, self._on_cal_feeds_loaded, feeds)
+
+    def _on_cal_feeds_loaded(self, feeds):
+        self.ics_feeds = feeds
+        self._refresh_ics_feeds()
 
     def _refresh_ics_feeds(self):
         if not self.ics_feeds:
@@ -558,7 +583,7 @@ class TaskwellApp:
 
     def _on_ics_loaded(self, result):
         self.ics_events = result
-        save_json(ICS_FEEDS_FILE, self.ics_feeds)
+        threading.Thread(target=save_cal_feeds, args=(self.ics_feeds,), daemon=True).start()
         if self.active_section == "week":
             self._render_week()
         elif self.active_section == "day":
@@ -598,7 +623,7 @@ class TaskwellApp:
 
         def remove_feed(i):
             self.ics_feeds.pop(i)
-            save_json(ICS_FEEDS_FILE, self.ics_feeds)
+            threading.Thread(target=save_cal_feeds, args=(self.ics_feeds,), daemon=True).start()
             self.ics_events = {}
             refresh_list()
             self._render_week(); self._render_agenda()
@@ -621,7 +646,7 @@ class TaskwellApp:
             color = ICS_CAL_COLORS[len(self.ics_feeds) % len(ICS_CAL_COLORS)]
             feed = {'url': url, 'name': 'Loading…', 'color': color}
             self.ics_feeds.append(feed)
-            save_json(ICS_FEEDS_FILE, self.ics_feeds)
+            threading.Thread(target=save_cal_feeds, args=(self.ics_feeds,), daemon=True).start()
             url_var.set('')
             status.config(text="Fetching…")
             refresh_list()
