@@ -70,13 +70,6 @@ def main():
 
     def on_loaded():
         _window.evaluate_js(f'window.__GCAL_REDIRECT_PORT__ = {PORT};')
-        # Force reload once to bypass stale WKWebView disk cache
-        _window.evaluate_js(
-            'if (!sessionStorage.getItem("tw_reloaded")) {'
-            '  sessionStorage.setItem("tw_reloaded","1");'
-            '  location.reload(true);'
-            '}'
-        )
 
     _window.events.loaded += on_loaded
 
