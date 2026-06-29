@@ -1092,8 +1092,16 @@ function parseTimeInput(str, date) {
 
 function renderCalTargetPicker(isNew) {
   const row = document.getElementById('calTargetRow');
-  row.style.display = 'none';
-  targetCal = 'google';
+  if (!isNew || !googleTokens) { row.style.display = 'none'; return; }
+  row.style.display = 'flex';
+  row.innerHTML = '';
+  [{ id: 'google', label: 'Personal' }, { id: 'google_work', label: 'Work' }].forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm' + (targetCal === opt.id ? ' btn-primary' : '');
+    btn.textContent = opt.label;
+    btn.onclick = () => { targetCal = opt.id; renderCalTargetPicker(true); };
+    row.appendChild(btn);
+  });
 }
 
 function openNewCalEvent(date, startStr = '', endStr = '') {
@@ -1164,7 +1172,8 @@ async function saveCalEvent() {
     } else {
       // Google Calendar
       let id = editingCalEventId;
-      const calId = editingCalEventId ? (editingCalSource === 'google_work' ? WORK_CAL_ID : 'primary') : WORK_CAL_ID;
+      const isWork = editingCalEventId ? editingCalSource === 'google_work' : targetCal === 'google_work';
+      const calId = isWork ? WORK_CAL_ID : 'primary';
       if (editingCalEventUID && !id) {
         const res = await gcalApi('GET', `calendars/${encodeURIComponent(calId)}/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
         id = res?.items?.[0]?.id;
