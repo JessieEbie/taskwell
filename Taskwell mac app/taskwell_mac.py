@@ -535,6 +535,11 @@ class TaskwellApp:
         self.selected_day    = date.today().isoformat()
         self.mini_month      = date.today().replace(day=1)
 
+        # Calendar state (must be set before _build_ui calls _render_agenda)
+        self.ics_events     = {}
+        self.google_events  = {}
+        self.ics_feeds      = []
+
         # Drag state
         self._drag_task_id  = None
         self._drag_window   = None
@@ -2156,7 +2161,8 @@ class TaskwellApp:
                         pass
                     self.root.after(0, on_success)
                 except Exception as e:
-                    self.root.after(0, lambda: error_lbl.config(text=f"Error: {e}"))
+                    msg = str(e)
+                    self.root.after(0, lambda m=msg: error_lbl.config(text=f"Error: {m}"))
 
             def on_success():
                 dlg.destroy()
@@ -2358,7 +2364,8 @@ class TaskwellApp:
                 tasks = api("GET", "tasks?order=created_at.asc")
                 self.root.after(0, self._on_data_loaded, lists, tasks)
             except Exception as e:
-                self.root.after(0, lambda: self.status_var.set(f"Connection error: {e}"))
+                msg = str(e)
+                self.root.after(0, lambda m=msg: self.status_var.set(f"Connection error: {m}"))
         threading.Thread(target=fetch, daemon=True).start()
 
     def _on_data_loaded(self, lists, tasks):
