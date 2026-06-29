@@ -762,13 +762,15 @@ async function api(method, path, body, extraHeaders) {
         method, headers: { ...authHeaders(), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined });
       if (!r2.ok) throw new Error(await r2.text());
       if (r2.status === 204) return null;
-      return r2.json();
+      const txt2 = await r2.text();
+      return txt2 ? JSON.parse(txt2) : null;
     }
     signOut(); throw new Error('Session expired');
   }
   if (!r.ok) throw new Error(await r.text());
   if (r.status === 204) return null;
-  return r.json();
+  const txt = await r.text();
+  return txt ? JSON.parse(txt) : null;
 }
 
 // ── Calendar Feeds ──
@@ -2333,7 +2335,7 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
 }
 
 boot();
