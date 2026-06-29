@@ -614,6 +614,7 @@
 <div class="modal-overlay" id="calEventModal">
   <div class="modal">
     <div class="modal-title" id="calEventModalTitle">New Event</div>
+    <div id="calTargetRow" style="display:none;gap:6px;margin-bottom:8px"></div>
     <input class="modal-input" id="calEventTitle" placeholder="Title" />
     <input class="modal-input" id="calEventLocation" placeholder="Location (optional)" />
     <div style="display:flex;gap:8px;margin-top:6px">
@@ -657,6 +658,7 @@ let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let editingCalEventId = null;
 let editingCalEventUID = null;
 let editingCalSource = null; // 'google' or 'outlook'
+let targetCal = 'google'; // 'google' or 'outlook_email'
 const GCAL_CLIENT_ID = '795130412746-pqedeeqo0mhvcqofi65tnsr264abiksh.apps.googleusercontent.com';
 const GCAL_REDIRECT = 'https://jessieebie.github.io/taskwell/';
 const OUTLOOK_CLIENT_ID = ''; // filled in after Azure app registration
@@ -1019,9 +1021,28 @@ function parseTimeInput(str, date) {
   return dt;
 }
 
+function renderCalTargetPicker(isNew) {
+  const row = document.getElementById('calTargetRow');
+  const options = [];
+  if (googleTokens) options.push({ id: 'google', label: 'Google Calendar' });
+  if (outlookEmail) options.push({ id: 'outlook_email', label: 'Outlook (via email)' });
+  if (options.length < 2 || !isNew) { row.style.display = 'none'; return; }
+  if (!options.find(o => o.id === targetCal)) targetCal = options[0].id;
+  row.style.display = 'flex';
+  row.innerHTML = '';
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm' + (targetCal === opt.id ? ' btn-primary' : '');
+    btn.textContent = opt.label;
+    btn.onclick = () => { targetCal = opt.id; renderCalTargetPicker(true); };
+    row.appendChild(btn);
+  });
+}
+
 function openNewCalEvent(date, startStr = '', endStr = '') {
-  if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
-  editingCalEventId = null; editingCalEventUID = null; editingCalSource = googleTokens ? 'google' : 'outlook';
+  if (!googleTokens && !outlookEmail) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
+  editingCalEventId = null; editingCalEventUID = null; editingCalSource = null;
+  targetCal = googleTokens ? 'google' : 'outlook_email';
   document.getElementById('calEventModalTitle').textContent = 'New Event';
   document.getElementById('calEventTitle').value = '';
   document.getElementById('calEventLocation').value = '';
@@ -1030,6 +1051,7 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
   document.getElementById('calEventStart').value = startStr;
   document.getElementById('calEventEnd').value = endStr;
   document.getElementById('calEventDeleteBtn').style.display = 'none';
+  renderCalTargetPicker(true);
   openModal('calEventModal');
   setTimeout(() => document.getElementById('calEventTitle').focus(), 50);
 }
@@ -1039,6 +1061,7 @@ function openEditCalEvent(ev, dateKey) {
   editingCalEventId = ev.gcalId || ev.outlookId || null;
   editingCalEventUID = ev.uid || null;
   editingCalSource = ev.outlookId ? 'outlook' : 'google';
+  renderCalTargetPicker(false);
   document.getElementById('calEventModalTitle').textContent = 'Edit Event';
   document.getElementById('calEventTitle').value = ev.title;
   document.getElementById('calEventLocation').value = ev.location || '';
@@ -1071,24 +1094,18 @@ async function saveCalEvent() {
     const nextDay = new Date(date + 'T00:00:00'); nextDay.setDate(nextDay.getDate() + 1);
     start = { date }; end = { date: dateKey(nextDay) };
   }
+  const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:00`;
   try {
-    if (editingCalSource === 'outlook') {
-      const fmt = d => d.toISOString().slice(0,19);
-      let oStart, oEnd;
-      if (startRaw) {
-        const s = parseTimeInput(startRaw, date), e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
-        oStart = { dateTime: fmt(s), timeZone: tz }; oEnd = { dateTime: fmt(e), timeZone: tz };
-      } else {
-        const nextDay = new Date(date+'T00:00:00'); nextDay.setDate(nextDay.getDate()+1);
-        oStart = { date }; oEnd = { date: dateKey(nextDay) };
-      }
-      const body = { subject: title, start: oStart, end: oEnd,
-        ...(location ? { location: { displayName: location } } : {}) };
-      const id = editingCalEventId;
-      if (id) { await outlookApi('PATCH', `me/events/${id}`, body); }
-      else { await outlookApi('POST', 'me/events', body); }
-      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
+    const cal = editingCalEventId ? editingCalSource : targetCal;
+    if (cal === 'outlook_email') {
+      // Route via Power Automate email — no Google Calendar involved
+      if (!outlookEmail) { showToast('Enter your ASU email in Calendars first'); return; }
+      const s = startRaw ? parseTimeInput(startRaw, date) : new Date(date+'T00:00:00');
+      const e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
+      await sendGmailPowerAutomate(`TASKWELL:ADD|${title}|${fmtLocal(s)}|${fmtLocal(e)}|${location||''}`, outlookEmail);
+      closeModal('calEventModal'); showToast('Event sent to Outlook');
     } else {
+      // Google Calendar
       let id = editingCalEventId;
       if (editingCalEventUID && !id) {
         const res = await gcalApi('GET', `calendars/primary/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
@@ -1096,16 +1113,8 @@ async function saveCalEvent() {
       }
       const body = { summary: title, start, end, ...(location ? { location } : {}) };
       if (id) { await gcalApi('PUT', `calendars/primary/events/${id}`, body); }
-      else {
-        await gcalApi('POST', 'calendars/primary/events', body);
-        if (outlookEmail) {
-          const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:00`;
-          const s = startRaw ? parseTimeInput(startRaw, date) : new Date(date+'T00:00:00');
-          const e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
-          await sendGmailPowerAutomate(`TASKWELL:ADD|${title}|${fmt(s)}|${fmt(e)}|${location||''}`, outlookEmail);
-        }
-      }
-      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created' + (outlookEmail && !id ? ' + Outlook' : ''));
+      else { await gcalApi('POST', 'calendars/primary/events', body); }
+      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
     }
     await fetchAllFeeds();
   } catch(e) { showToast('Error: ' + e.message); }
@@ -1883,7 +1892,7 @@ function renderWeek() {
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
-    ${(googleTokens||outlookTokens) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
+    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
     <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
@@ -1965,7 +1974,7 @@ function renderWeek() {
       }
       const tt = document.createElement('span'); tt.className = 'cal-event-title'; tt.textContent = ev.title;
       el.appendChild(tt);
-      if (googleTokens || outlookTokens) { el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); openEditCalEvent(ev, key); }; }
+      if (googleTokens || outlookTokens || outlookEmail) { el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); openEditCalEvent(ev, key); }; }
       body.appendChild(el);
     });
     if (dayTasks.length === 0) {
@@ -2147,7 +2156,7 @@ function renderAgendaDay(agenda, key) {
     ? 'Today — ' + sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })
     : sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   titleRow.appendChild(title);
-  if (googleTokens || outlookTokens) {
+  if (googleTokens || outlookTokens || outlookEmail) {
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-sm btn-primary';
     addBtn.textContent = '+ Event';
@@ -2196,7 +2205,7 @@ function renderAgendaDay(agenda, key) {
       const row = document.createElement('div');
       row.className = 'agenda-cal-event';
       row.style.borderLeft = `3px solid ${ev.color}`;
-      if (googleTokens || outlookTokens) { row.style.cursor = 'pointer'; row.onclick = () => openEditCalEvent(ev, key); }
+      if (googleTokens || outlookTokens || outlookEmail) { row.style.cursor = 'pointer'; row.onclick = () => openEditCalEvent(ev, key); }
       if (ev.time) {
         const t = document.createElement('div'); t.className = 'agenda-cal-time'; t.textContent = ev.time;
         row.appendChild(t);
