@@ -1092,20 +1092,8 @@ function parseTimeInput(str, date) {
 
 function renderCalTargetPicker(isNew) {
   const row = document.getElementById('calTargetRow');
-  const options = [];
-  if (googleTokens) options.push({ id: 'google', label: 'Google Calendar' });
-  if (outlookEmail) options.push({ id: 'outlook_email', label: 'Outlook (via email)' });
-  if (options.length < 2 || !isNew) { row.style.display = 'none'; return; }
-  if (!options.find(o => o.id === targetCal)) targetCal = options[0].id;
-  row.style.display = 'flex';
-  row.innerHTML = '';
-  options.forEach(opt => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-sm' + (targetCal === opt.id ? ' btn-primary' : '');
-    btn.textContent = opt.label;
-    btn.onclick = () => { targetCal = opt.id; renderCalTargetPicker(true); };
-    row.appendChild(btn);
-  });
+  row.style.display = 'none';
+  targetCal = 'google';
 }
 
 function openNewCalEvent(date, startStr = '', endStr = '') {
