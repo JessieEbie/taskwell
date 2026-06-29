@@ -256,6 +256,25 @@
 
     /* ── Modal ── */
     /* ── DATE PICKER ── */
+    .cal-ev-popup { position: fixed; z-index: 2100; background: var(--paper); border-radius: 14px;
+      box-shadow: 0 8px 36px rgba(46,33,24,.26); padding: 16px 18px 14px; width: 280px; max-width: calc(100vw - 24px);
+      font-family: 'Helvetica Neue', sans-serif; display: none; }
+    .cal-ev-popup-close { position: absolute; top: 10px; right: 12px; background: none; border: none;
+      cursor: pointer; font-size: 18px; color: var(--ink-soft); line-height: 1; padding: 2px 4px; border-radius: 6px; }
+    .cal-ev-popup-close:hover { background: var(--cream-dark); }
+    .cal-ev-popup-color { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; flex-shrink: 0; }
+    .cal-ev-popup-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 8px;
+      display: flex; align-items: center; padding-right: 20px; line-height: 1.3; }
+    .cal-ev-popup-row { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; font-size: 13px; color: var(--ink-soft); }
+    .cal-ev-popup-icon { width: 16px; flex-shrink: 0; text-align: center; margin-top: 1px; }
+    .cal-ev-popup-desc { font-size: 12px; color: var(--ink-soft); margin-top: 6px; line-height: 1.5;
+      max-height: 100px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+    .cal-ev-popup-desc a { color: var(--accent); }
+    .cal-ev-popup-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .cal-ev-popup-btn { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--cream-dark);
+      background: var(--cream); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
+    .cal-ev-popup-btn:hover { background: var(--cream-dark); }
+    .cal-ev-popup-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
     .tw-datepicker { position: fixed; z-index: 2000; background: var(--paper); border-radius: 12px;
       box-shadow: 0 8px 32px rgba(46,33,24,.22); padding: 10px 10px 8px; width: 216px;
       font-family: 'Helvetica Neue', sans-serif; user-select: none; }
@@ -669,6 +688,12 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="cal-ev-popup" id="calEvPopup">
+  <button class="cal-ev-popup-close" onclick="hideCalEvPopup()" aria-label="Close">&#x2715;</button>
+  <div class="cal-ev-popup-title" id="calEvPopupTitle"></div>
+  <div id="calEvPopupBody"></div>
+  <div class="cal-ev-popup-actions" id="calEvPopupActions"></div>
+</div>
 
 <script>
 // ── Config ──
@@ -805,6 +830,85 @@ function hideDatePicker() {
 document.addEventListener('mousedown', e => {
   const el = document.getElementById('twDatePicker');
   if (el && el.style.display !== 'none' && !el.contains(e.target) && e.target !== _dpTarget) hideDatePicker();
+}, true);
+
+function showCalEvPopup(ev, anchorEl) {
+  hideDatePicker();
+  const popup = document.getElementById('calEvPopup');
+
+  // Title with color dot
+  const titleEl = document.getElementById('calEvPopupTitle');
+  titleEl.innerHTML = `<span class="cal-ev-popup-color" style="background:${ev.color}"></span>${ev.title}`;
+
+  const body = document.getElementById('calEvPopupBody');
+  body.innerHTML = '';
+
+  // Date + time row
+  const timeText = ev.allDay ? 'All day' : (ev.time || '');
+  if (timeText) {
+    const r = document.createElement('div'); r.className = 'cal-ev-popup-row';
+    r.innerHTML = `<span class="cal-ev-popup-icon">&#128344;</span><span>${timeText}</span>`;
+    body.appendChild(r);
+  }
+
+  // Location row — make it a map link if it looks like an address
+  if (ev.location) {
+    const r = document.createElement('div'); r.className = 'cal-ev-popup-row';
+    const isUrl = /^https?:\/\//.test(ev.location);
+    const loc = isUrl
+      ? `<a href="${ev.location}" target="_blank" rel="noopener" style="color:var(--accent)">${ev.location}</a>`
+      : `<a href="https://maps.apple.com/?q=${encodeURIComponent(ev.location)}" target="_blank" rel="noopener" style="color:var(--accent)">${ev.location}</a>`;
+    r.innerHTML = `<span class="cal-ev-popup-icon">&#128205;</span><span>${loc}</span>`;
+    body.appendChild(r);
+  }
+
+  // Description with auto-linked URLs
+  if (ev.description) {
+    const d = document.createElement('div'); d.className = 'cal-ev-popup-desc';
+    const escaped = ev.description.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    d.innerHTML = escaped.replace(/(https?:\/\/[^\s<>"]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    body.appendChild(d);
+  }
+
+  // Action buttons
+  const actions = document.getElementById('calEvPopupActions');
+  actions.innerHTML = '';
+  if (ev.meetLink) {
+    const a = document.createElement('a');
+    a.href = ev.meetLink; a.target = '_blank'; a.rel = 'noopener';
+    a.className = 'cal-ev-popup-btn primary'; a.textContent = 'Join Meeting';
+    actions.appendChild(a);
+  }
+  if (ev.webLink) {
+    const a = document.createElement('a');
+    a.href = ev.webLink; a.target = '_blank'; a.rel = 'noopener';
+    a.className = 'cal-ev-popup-btn'; a.textContent = 'Open in Calendar';
+    actions.appendChild(a);
+  }
+  if (googleTokens || outlookTokens || outlookEmail) {
+    const btn = document.createElement('button');
+    btn.className = 'cal-ev-popup-btn'; btn.textContent = 'Edit';
+    btn.onclick = () => { hideCalEvPopup(); openEditCalEvent(ev, ev._dk); };
+    actions.appendChild(btn);
+  }
+
+  // Position near anchor
+  popup.style.display = 'block';
+  const rect = anchorEl.getBoundingClientRect();
+  const pw = 280, ph = popup.offsetHeight || 220;
+  let top = rect.bottom + 6, left = rect.left;
+  if (top + ph > window.innerHeight - 8) top = Math.max(8, rect.top - ph - 6);
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  if (left < 8) left = 8;
+  popup.style.top = top + 'px';
+  popup.style.left = left + 'px';
+}
+function hideCalEvPopup() {
+  document.getElementById('calEvPopup').style.display = 'none';
+}
+document.addEventListener('mousedown', e => {
+  const popup = document.getElementById('calEvPopup');
+  if (popup && popup.style.display !== 'none' && !popup.contains(e.target)) hideCalEvPopup();
 }, true);
 
 function wireAutoDate(inp) {
@@ -1226,7 +1330,9 @@ async function fetchOutlookCalendarEvents() {
       if (!calEvents[dk]) calEvents[dk] = [];
       calEvents[dk].push({ title: item.subject || '(No title)', time: timeStr, allDay, color,
         outlookId: item.id, uid: item.iCalUId,
-        location: item.location?.displayName || null, endTime: item.end?.dateTime || null });
+        location: item.location?.displayName || null, endTime: item.end?.dateTime || null,
+        description: item.bodyPreview || null, meetLink: item.onlineMeeting?.joinUrl || null,
+        webLink: item.webLink || null });
     });
   } catch(e) { console.error('Outlook Calendar fetch failed:', e); }
 }
@@ -1515,6 +1621,9 @@ function parseICS(text, feedColor) {
     if (propName === 'DTEND') ev.dtend = val;
     if (propName === 'RRULE') ev.rrule = val;
     if (propName === 'UID') ev.uid = val;
+    if (propName === 'DESCRIPTION') ev.description = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, '\n').trim();
+    if (propName === 'URL') ev.url = val.trim();
+    if (propName === 'LOCATION') ev.location = val.replace(/\\([,;:\\])/g, '$1').trim();
   }
 
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1525,7 +1634,8 @@ function parseICS(text, feedColor) {
   vevents.forEach(ev => {
     expandEvent(ev, minD, maxD).forEach(({ dk, time, allDay }) => {
       if (!result[dk]) result[dk] = [];
-      result[dk].push({ title: ev.summary, time, allDay, color: feedColor, uid: ev.uid, endTime: ev.dtend });
+      result[dk].push({ title: ev.summary, time, allDay, color: feedColor, uid: ev.uid, endTime: ev.dtend,
+        location: ev.location || null, description: ev.description || null, webLink: ev.url || null });
     });
   });
   return result;
@@ -1597,8 +1707,10 @@ async function fetchGoogleCalendarEvents() {
       }
       const endVal = item.end?.dateTime || item.end?.date;
       if (!calEvents[dk]) calEvents[dk] = [];
+      const meetLink = item.hangoutLink || item.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri || null;
       calEvents[dk].push({ title: item.summary || '(No title)', time: timeStr, allDay, color,
-        gcalId: item.id, endTime: endVal, location: item.location || null });
+        gcalId: item.id, endTime: endVal, location: item.location || null,
+        description: item.description || null, meetLink, webLink: item.htmlLink || null });
     });
   } catch(e) { console.error('Google Calendar fetch failed:', e); }
 }
@@ -2314,7 +2426,7 @@ function renderWeek() {
       }
       const tt = document.createElement('span'); tt.className = 'cal-event-title'; tt.textContent = ev.title;
       el.appendChild(tt);
-      if (googleTokens || outlookTokens || outlookEmail) { el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); openEditCalEvent(ev, key); }; }
+      el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); ev._dk = key; showCalEvPopup(ev, el); };
       body.appendChild(el);
     });
     if (dayTasks.length === 0) {
@@ -2538,7 +2650,7 @@ function renderAgendaDay(agenda, key) {
       const row = document.createElement('div');
       row.className = 'agenda-cal-event';
       row.style.borderLeft = `3px solid ${ev.color}`;
-      if (googleTokens || outlookTokens || outlookEmail) { row.style.cursor = 'pointer'; row.onclick = () => openEditCalEvent(ev, key); }
+      row.style.cursor = 'pointer'; row.onclick = () => { ev._dk = key; showCalEvPopup(ev, row); };
       if (ev.time) {
         const t = document.createElement('div'); t.className = 'agenda-cal-time'; t.textContent = ev.time;
         row.appendChild(t);
