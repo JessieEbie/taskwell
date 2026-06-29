@@ -596,6 +596,11 @@
       <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
       <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
     </div>
+    <div class="modal-row" style="padding-top:8px">
+      <span id="outlookStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
+      <button class="btn btn-sm" id="outlookConnectBtn" onclick="connectOutlookCalendar()">Connect Outlook Calendar</button>
+      <button class="btn btn-sm btn-danger" id="outlookDisconnectBtn" onclick="disconnectOutlookCalendar()" style="display:none">Disconnect</button>
+    </div>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
       <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
@@ -644,10 +649,14 @@ let calFeeds = [];
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = null;
+let outlookTokens = null;
 let editingCalEventId = null;
 let editingCalEventUID = null;
+let editingCalSource = null; // 'google' or 'outlook'
 const GCAL_CLIENT_ID = '795130412746-pqedeeqo0mhvcqofi65tnsr264abiksh.apps.googleusercontent.com';
 const GCAL_REDIRECT = 'https://jessieebie.github.io/taskwell/';
+const OUTLOOK_CLIENT_ID = ''; // filled in after Azure app registration
+const OUTLOOK_REDIRECT = 'https://jessieebie.github.io/taskwell/';
 
 // ── Helpers ──
 function getVisibleLists() {
@@ -773,10 +782,12 @@ async function saveCalFeeds() {
 }
 async function loadCalFeeds() {
   try {
-    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens`);
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens`);
     calFeeds = (rows && rows[0]?.cal_feeds) || [];
     googleTokens = (rows && rows[0]?.google_tokens) || null;
+    outlookTokens = (rows && rows[0]?.outlook_tokens) || null;
     updateGcalStatus();
+    updateOutlookStatus();
   } catch(e) { calFeeds = []; }
 }
 
@@ -861,6 +872,122 @@ async function connectGoogleCalendar() {
   });
 }
 
+// ── Outlook Calendar ──
+function updateOutlookStatus() {
+  const el = document.getElementById('outlookStatus');
+  const btn = document.getElementById('outlookConnectBtn');
+  const dis = document.getElementById('outlookDisconnectBtn');
+  if (!el) return;
+  if (outlookTokens) {
+    el.textContent = 'Outlook Calendar connected';
+    if (btn) btn.textContent = 'Reconnect Outlook';
+    if (dis) dis.style.display = '';
+  } else {
+    el.textContent = '';
+    if (btn) btn.textContent = 'Connect Outlook Calendar';
+    if (dis) dis.style.display = 'none';
+  }
+}
+
+async function saveOutlookTokens(tokens) {
+  outlookTokens = tokens;
+  await api('POST', 'user_settings',
+    { user_id: authSession.user_id, outlook_tokens: tokens },
+    { 'Prefer': 'resolution=merge-duplicates' });
+  updateOutlookStatus();
+}
+
+async function disconnectOutlookCalendar() {
+  if (!confirm('Disconnect Outlook Calendar?')) return;
+  outlookTokens = null;
+  await api('POST', 'user_settings',
+    { user_id: authSession.user_id, outlook_tokens: null },
+    { 'Prefer': 'resolution=merge-duplicates' });
+  updateOutlookStatus();
+  renderWeek(); renderAgenda();
+}
+
+async function refreshOutlookToken() {
+  if (!outlookTokens?.refresh_token) return false;
+  try {
+    const res = await fetch(`${SB_URL}/functions/v1/outlook-calendar-auth`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authSession.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh', refresh_token: outlookTokens.refresh_token })
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    await saveOutlookTokens({ ...outlookTokens, access_token: data.access_token,
+      expires_at: Date.now() + (data.expires_in || 3600) * 1000 });
+    return true;
+  } catch(e) { return false; }
+}
+
+async function outlookApi(method, path, body) {
+  if (!outlookTokens) throw new Error('Outlook Calendar not connected');
+  if (outlookTokens.expires_at && Date.now() > outlookTokens.expires_at - 60000) {
+    const ok = await refreshOutlookToken();
+    if (!ok) throw new Error('Outlook token refresh failed');
+  }
+  const opts = { method, headers: { 'Authorization': `Bearer ${outlookTokens.access_token}`, 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`https://graph.microsoft.com/v1.0/${path}`, opts);
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || JSON.stringify(data));
+  return data;
+}
+
+async function connectOutlookCalendar() {
+  if (!OUTLOOK_CLIENT_ID) { showToast('Outlook not configured yet'); return; }
+  const verifier = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  sessionStorage.setItem('outlook_verifier', verifier);
+  window.location.href = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?' + new URLSearchParams({
+    client_id: OUTLOOK_CLIENT_ID, redirect_uri: OUTLOOK_REDIRECT,
+    response_type: 'code',
+    scope: 'Calendars.ReadWrite offline_access',
+    response_mode: 'query',
+    state: 'outlook_auth', code_challenge: challenge, code_challenge_method: 'S256',
+  });
+}
+
+async function fetchOutlookCalendarEvents() {
+  if (!outlookTokens) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 14);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 90);
+  const params = new URLSearchParams({
+    startDateTime: minD.toISOString(), endDateTime: maxD.toISOString(),
+    '$select': 'subject,start,end,location,isAllDay,iCalUId,id',
+    '$top': '500', '$orderby': 'start/dateTime'
+  });
+  try {
+    const res = await outlookApi('GET', `me/calendarView?${params}`);
+    const color = CAL_COLORS[(calFeeds.length + (googleTokens ? 1 : 0)) % CAL_COLORS.length];
+    (res?.value || []).forEach(item => {
+      const allDay = item.isAllDay;
+      let dk, timeStr = null;
+      const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (allDay) {
+        dk = item.start.dateTime?.slice(0, 10) || item.start.date;
+      } else {
+        const dt = new Date(item.start.dateTime + (item.start.timeZone === 'UTC' ? 'Z' : ''));
+        dk = localDk(dt);
+        const h = dt.getHours(), m = String(dt.getMinutes()).padStart(2,'0');
+        timeStr = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
+      }
+      if (!calEvents[dk]) calEvents[dk] = [];
+      calEvents[dk].push({ title: item.subject || '(No title)', time: timeStr, allDay, color,
+        outlookId: item.id, uid: item.iCalUId,
+        location: item.location?.displayName || null, endTime: item.end?.dateTime || null });
+    });
+  } catch(e) { console.error('Outlook Calendar fetch failed:', e); }
+}
+
 function parseTimeInput(str, date) {
   str = str.trim().toUpperCase().replace(/\s/g, '');
   const pm = str.includes('PM'); const am = str.includes('AM');
@@ -876,8 +1003,8 @@ function parseTimeInput(str, date) {
 }
 
 function openNewCalEvent(date, startStr = '', endStr = '') {
-  if (!googleTokens) { showToast('Connect Google Calendar first'); openCalFeedsModal(); return; }
-  editingCalEventId = null; editingCalEventUID = null;
+  if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
+  editingCalEventId = null; editingCalEventUID = null; editingCalSource = googleTokens ? 'google' : 'outlook';
   document.getElementById('calEventModalTitle').textContent = 'New Event';
   document.getElementById('calEventTitle').value = '';
   document.getElementById('calEventLocation').value = '';
@@ -891,9 +1018,10 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
 }
 
 function openEditCalEvent(ev, dateKey) {
-  if (!googleTokens) { showToast('Connect Google Calendar first'); openCalFeedsModal(); return; }
-  editingCalEventId = ev.gcalId || null;
+  if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
+  editingCalEventId = ev.gcalId || ev.outlookId || null;
   editingCalEventUID = ev.uid || null;
+  editingCalSource = ev.outlookId ? 'outlook' : 'google';
   document.getElementById('calEventModalTitle').textContent = 'Edit Event';
   document.getElementById('calEventTitle').value = ev.title;
   document.getElementById('calEventLocation').value = ev.location || '';
@@ -927,29 +1055,46 @@ async function saveCalEvent() {
     start = { date }; end = { date: dateKey(nextDay) };
   }
   try {
-    let id = editingCalEventId;
-    if (editingCalEventUID && !id) {
-      const res = await gcalApi('GET', `calendars/primary/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
-      id = res?.items?.[0]?.id;
+    if (editingCalSource === 'outlook') {
+      const fmt = d => d.toISOString().slice(0,19);
+      let oStart, oEnd;
+      if (startRaw) {
+        const s = parseTimeInput(startRaw, date), e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
+        oStart = { dateTime: fmt(s), timeZone: tz }; oEnd = { dateTime: fmt(e), timeZone: tz };
+      } else {
+        const nextDay = new Date(date+'T00:00:00'); nextDay.setDate(nextDay.getDate()+1);
+        oStart = { date }; oEnd = { date: dateKey(nextDay) };
+      }
+      const body = { subject: title, start: oStart, end: oEnd,
+        ...(location ? { location: { displayName: location } } : {}) };
+      const id = editingCalEventId;
+      if (id) { await outlookApi('PATCH', `me/events/${id}`, body); }
+      else { await outlookApi('POST', 'me/events', body); }
+      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
+    } else {
+      let id = editingCalEventId;
+      if (editingCalEventUID && !id) {
+        const res = await gcalApi('GET', `calendars/primary/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
+        id = res?.items?.[0]?.id;
+      }
+      const body = { summary: title, start, end, ...(location ? { location } : {}) };
+      if (id) { await gcalApi('PUT', `calendars/primary/events/${id}`, body); }
+      else { await gcalApi('POST', 'calendars/primary/events', body); }
+      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
     }
-    const body = { summary: title, start, end, ...(location ? { location } : {}) };
-    if (id) { await gcalApi('PUT', `calendars/primary/events/${id}`, body); }
-    else { await gcalApi('POST', 'calendars/primary/events', body); }
-    closeModal('calEventModal');
-    showToast(id ? 'Event updated' : 'Event created');
     await fetchAllFeeds();
   } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function deleteCalEvent() {
-  let id = editingCalEventId;
-  if (!id && editingCalEventUID) {
-    const res = await gcalApi('GET', `calendars/primary/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
-    id = res?.items?.[0]?.id;
-  }
+  const id = editingCalEventId;
   if (!id) { showToast('Could not find event'); return; }
   try {
-    await gcalApi('DELETE', `calendars/primary/events/${id}`);
+    if (editingCalSource === 'outlook') {
+      await outlookApi('DELETE', `me/events/${id}`);
+    } else {
+      await gcalApi('DELETE', `calendars/primary/events/${id}`);
+    }
     closeModal('calEventModal');
     showToast('Event deleted');
     await fetchAllFeeds();
@@ -1183,7 +1328,8 @@ async function fetchAllFeeds() {
         calEvents[dk].push(...arr);
       });
     }),
-    fetchGoogleCalendarEvents()
+    fetchGoogleCalendarEvents(),
+    fetchOutlookCalendarEvents()
   ]);
   renderWeek(); renderAgenda();
 }
@@ -1260,9 +1406,10 @@ async function boot() {
       history.replaceState(null, '', window.location.pathname);
     }
   } else if (qp.get('state') === 'gcal_auth' && qp.get('code')) {
-    // Google Calendar OAuth callback — exchange code for tokens via edge function
-    // (must be done after Supabase session is loaded so we can pass auth header)
     sessionStorage.setItem('gcal_pending_code', qp.get('code'));
+    history.replaceState(null, '', window.location.pathname);
+  } else if (qp.get('state') === 'outlook_auth' && qp.get('code')) {
+    sessionStorage.setItem('outlook_pending_code', qp.get('code'));
     history.replaceState(null, '', window.location.pathname);
   } else if (qp.get('code')) {
     try {
@@ -1343,6 +1490,28 @@ async function boot() {
           showToast('Google auth failed: ' + await res.text());
         }
       } catch(e) { showToast('Google auth error: ' + e.message); }
+    }
+
+    const outlookCode = sessionStorage.getItem('outlook_pending_code');
+    if (outlookCode) {
+      sessionStorage.removeItem('outlook_pending_code');
+      try {
+        const verifier = sessionStorage.getItem('outlook_verifier') || '';
+        sessionStorage.removeItem('outlook_verifier');
+        const res = await fetch(`${SB_URL}/functions/v1/outlook-calendar-auth`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authSession.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'exchange', code: outlookCode, code_verifier: verifier, redirect_uri: OUTLOOK_REDIRECT })
+        });
+        if (res.ok) {
+          const tokens = await res.json();
+          await saveOutlookTokens({ ...tokens, expires_at: Date.now() + (tokens.expires_in || 3600) * 1000 });
+          showToast('Outlook Calendar connected!');
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast('Outlook auth failed: ' + (err.error_description || err.error || 'unknown error'));
+        }
+      } catch(e) { showToast('Outlook auth error: ' + e.message); }
     }
   } catch(e) { alert('Load error: ' + e.message); showToast('Connection error'); console.error(e); }
   document.getElementById('loading').classList.add('hidden');
@@ -1687,7 +1856,7 @@ function renderWeek() {
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
-    ${googleTokens ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
+    ${(googleTokens||outlookTokens) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
     <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
@@ -1769,7 +1938,7 @@ function renderWeek() {
       }
       const tt = document.createElement('span'); tt.className = 'cal-event-title'; tt.textContent = ev.title;
       el.appendChild(tt);
-      if (googleTokens) { el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); openEditCalEvent(ev, key); }; }
+      if (googleTokens || outlookTokens) { el.style.cursor = 'pointer'; el.onclick = (e) => { e.stopPropagation(); openEditCalEvent(ev, key); }; }
       body.appendChild(el);
     });
     if (dayTasks.length === 0) {
@@ -1951,7 +2120,7 @@ function renderAgendaDay(agenda, key) {
     ? 'Today — ' + sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })
     : sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   titleRow.appendChild(title);
-  if (googleTokens) {
+  if (googleTokens || outlookTokens) {
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-sm btn-primary';
     addBtn.textContent = '+ Event';
@@ -2000,7 +2169,7 @@ function renderAgendaDay(agenda, key) {
       const row = document.createElement('div');
       row.className = 'agenda-cal-event';
       row.style.borderLeft = `3px solid ${ev.color}`;
-      if (googleTokens) { row.style.cursor = 'pointer'; row.onclick = () => openEditCalEvent(ev, key); }
+      if (googleTokens || outlookTokens) { row.style.cursor = 'pointer'; row.onclick = () => openEditCalEvent(ev, key); }
       if (ev.time) {
         const t = document.createElement('div'); t.className = 'agenda-cal-time'; t.textContent = ev.time;
         row.appendChild(t);
