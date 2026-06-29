@@ -1583,6 +1583,7 @@ async function boot() {
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
     fetchAllFeeds();
+    setInterval(fetchAllFeeds, 5 * 60 * 1000);
 
     // Complete pending Google Calendar OAuth exchange
     const gcalCode = sessionStorage.getItem('gcal_pending_code');
