@@ -2346,7 +2346,7 @@ function renderWeek() {
   const ctrl = document.getElementById('weekControls');
   ctrl.innerHTML = '';
 
-  // Navigation + Calendars row
+  // Navigation row
   const navRow = document.createElement('div');
   navRow.className = 'week-nav-row';
   navRow.innerHTML = `
@@ -2354,11 +2354,10 @@ function renderWeek() {
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
     ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
-    <button class="btn btn-sm" onclick="hideUnassigned=!hideUnassigned;renderWeek()">${hideUnassigned ? 'Show' : 'Hide'} Unassigned</button>
     <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
-  // Category filter dropdown
+  // Filter row: Hide Unassigned + category dropdown
   const visLists = getVisibleLists();
   const filterRow = document.createElement('div');
   filterRow.className = 'week-lists-row';
@@ -2379,6 +2378,11 @@ function renderWeek() {
     sel.appendChild(opt);
   });
   sel.onchange = () => { weekCategoryFilter = sel.value; renderWeek(); };
+  const hideBtn = document.createElement('button');
+  hideBtn.className = 'btn btn-sm';
+  hideBtn.textContent = (hideUnassigned ? 'Show' : 'Hide') + ' Unassigned';
+  hideBtn.onclick = () => { hideUnassigned = !hideUnassigned; renderWeek(); };
+  filterRow.appendChild(hideBtn);
   filterRow.appendChild(sel);
   ctrl.appendChild(filterRow);
 
