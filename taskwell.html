@@ -671,6 +671,7 @@ let editingCalSource = null; // 'google' or 'outlook'
 let targetCal = 'google'; // 'google' or 'outlook_email'
 const GCAL_CLIENT_ID = '795130412746-pqedeeqo0mhvcqofi65tnsr264abiksh.apps.googleusercontent.com';
 const GCAL_REDIRECT = 'https://jessieebie.github.io/taskwell/';
+const WORK_CAL_ID = '1e007552b4bc54d33d9831686f5e09faeb30f797c352e2fdac26e5dc48f6e9f8@group.calendar.google.com';
 const OUTLOOK_CLIENT_ID = ''; // filled in after Azure app registration
 const OUTLOOK_REDIRECT = 'https://jessieebie.github.io/taskwell/';
 
@@ -1175,13 +1176,17 @@ async function saveCalEvent() {
     } else {
       // Google Calendar
       let id = editingCalEventId;
+      const calId = editingCalEventId ? (editingCalSource === 'google_work' ? WORK_CAL_ID : 'primary') : WORK_CAL_ID;
       if (editingCalEventUID && !id) {
-        const res = await gcalApi('GET', `calendars/primary/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
+        const res = await gcalApi('GET', `calendars/${encodeURIComponent(calId)}/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
         id = res?.items?.[0]?.id;
       }
-      const body = { summary: title, start, end, ...(location ? { location } : {}) };
-      if (id) { await gcalApi('PUT', `calendars/primary/events/${id}`, body); }
-      else { await gcalApi('POST', 'calendars/primary/events', body); }
+      const attendees = (!id && outlookEmail) ? [{ email: outlookEmail }] : undefined;
+      const body = { summary: title, start, end,
+        ...(location ? { location } : {}),
+        ...(attendees ? { attendees } : {}) };
+      if (id) { await gcalApi('PUT', `calendars/${encodeURIComponent(calId)}/events/${id}`, body); }
+      else { await gcalApi('POST', `calendars/${encodeURIComponent(calId)}/events`, body); }
       closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
     }
     await fetchAllFeeds();
@@ -1195,7 +1200,8 @@ async function deleteCalEvent() {
     if (editingCalSource === 'outlook') {
       await outlookApi('DELETE', `me/events/${id}`);
     } else {
-      await gcalApi('DELETE', `calendars/primary/events/${id}`);
+      const delCalId = editingCalSource === 'google_work' ? WORK_CAL_ID : 'primary';
+      await gcalApi('DELETE', `calendars/${encodeURIComponent(delCalId)}/events/${id}`);
     }
     closeModal('calEventModal');
     showToast('Event deleted');
