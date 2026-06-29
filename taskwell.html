@@ -255,6 +255,24 @@
     .inbox-item-text.done { text-decoration: line-through; color: var(--ink-faint); }
 
     /* ── Modal ── */
+    /* ── DATE PICKER ── */
+    .tw-datepicker { position: fixed; z-index: 2000; background: var(--paper); border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(46,33,24,.22); padding: 10px 10px 8px; width: 216px;
+      font-family: 'Helvetica Neue', sans-serif; user-select: none; }
+    .tw-dp-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .tw-dp-title { font-size: 12px; font-weight: 500; color: var(--ink); }
+    .tw-dp-nav { background: none; border: none; cursor: pointer; color: var(--ink-soft); font-size: 16px;
+      padding: 1px 6px; border-radius: 6px; line-height: 1; }
+    .tw-dp-nav:hover { background: var(--cream-dark); }
+    .tw-dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+    .tw-dp-dow { text-align: center; font-size: 9px; color: var(--ink-faint); padding: 2px 0 4px; }
+    .tw-dp-day { text-align: center; font-size: 11px; padding: 4px 1px; border-radius: 5px; cursor: pointer; color: var(--ink); }
+    .tw-dp-day:hover:not(.tw-dp-empty) { background: var(--accent-pale); }
+    .tw-dp-day.tw-dp-today { font-weight: 600; color: var(--accent-dark); }
+    .tw-dp-day.tw-dp-sel { background: var(--accent); color: var(--ink); }
+    .tw-dp-day.tw-dp-other { color: var(--ink-faint); pointer-events: none; }
+    .tw-dp-day.tw-dp-empty { pointer-events: none; }
+
     .modal-overlay { position: fixed; inset: 0; background: rgba(46,33,24,.4); display: flex;
                      align-items: center; justify-content: center; z-index: 100; padding: 24px;
                      opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -530,7 +548,7 @@
             font-family:'Helvetica Neue',sans-serif; font-size:10px; color:var(--ink-faint);
             background:var(--cream-dark); border-top:1px solid var(--cream-dark);
             z-index:5; pointer-events:none;">
-  Taskwell · v 2026-06-28
+  Taskwell · v 2026-06-28b
 </div>
 
 <!-- New List Modal -->
@@ -708,6 +726,86 @@ function fmtDisplay(iso) {
 }
 function fmtForInput(iso) { return fmtDisplay(iso); }
 
+// ── Date Picker ──
+let _dpTarget = null, _dpYear, _dpMonth;
+function showDatePicker(inp) {
+  _dpTarget = inp;
+  const rect = inp.getBoundingClientRect();
+  let d = parseDateInput(inp.value) || new Date();
+  _dpYear = d.getFullYear(); _dpMonth = d.getMonth();
+  let el = document.getElementById('twDatePicker');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'twDatePicker'; el.className = 'tw-datepicker';
+    document.body.appendChild(el);
+  }
+  renderDatePicker(el, d);
+  const pw = 216, ph = 240;
+  let top = rect.bottom + 6, left = rect.left;
+  if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  el.style.top = top + 'px'; el.style.left = left + 'px';
+  el.style.display = 'block';
+}
+function parseDateInput(v) {
+  if (!v) return null;
+  const [m,d,y] = v.split('/');
+  if (!m || !d || !y) return null;
+  const yr = parseInt(y) < 100 ? 2000 + parseInt(y) : parseInt(y);
+  const dt = new Date(yr, parseInt(m)-1, parseInt(d));
+  return isNaN(dt) ? null : dt;
+}
+function renderDatePicker(el, sel) {
+  const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const first = new Date(_dpYear, _dpMonth, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(_dpYear, _dpMonth+1, 0).getDate();
+  let cells = '';
+  for (let i = 0; i < startDow; i++) cells += `<div class="tw-dp-day tw-dp-empty"></div>`;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(_dpYear, _dpMonth, d);
+    let cls = 'tw-dp-day';
+    if (dt.getTime() === today.getTime()) cls += ' tw-dp-today';
+    if (sel && dt.getTime() === sel.getTime()) cls += ' tw-dp-sel';
+    cells += `<div class="${cls}" onclick="pickDate(${_dpYear},${_dpMonth},${d})">${d}</div>`;
+  }
+  el.innerHTML = `<div class="tw-dp-hdr">
+    <button class="tw-dp-nav" onclick="dpNav(-1)">&#8249;</button>
+    <span class="tw-dp-title">${MONTHS[_dpMonth]} ${_dpYear}</span>
+    <button class="tw-dp-nav" onclick="dpNav(1)">&#8250;</button>
+  </div>
+  <div class="tw-dp-grid">
+    ${DAYS.map(d=>`<div class="tw-dp-dow">${d}</div>`).join('')}
+    ${cells}
+  </div>`;
+}
+function dpNav(dir) {
+  _dpMonth += dir;
+  if (_dpMonth < 0) { _dpMonth = 11; _dpYear--; }
+  if (_dpMonth > 11) { _dpMonth = 0; _dpYear++; }
+  const el = document.getElementById('twDatePicker');
+  if (el) renderDatePicker(el, parseDateInput(_dpTarget?.value));
+}
+function pickDate(y, m, d) {
+  if (!_dpTarget) return;
+  const mm = String(m+1).padStart(2,'0'), dd = String(d).padStart(2,'0');
+  const yy = String(y).slice(-2);
+  _dpTarget.value = `${mm}/${dd}/${yy}`;
+  _dpTarget.dispatchEvent(new Event('input', {bubbles:true}));
+  hideDatePicker();
+}
+function hideDatePicker() {
+  const el = document.getElementById('twDatePicker');
+  if (el) el.style.display = 'none';
+  _dpTarget = null;
+}
+document.addEventListener('mousedown', e => {
+  const el = document.getElementById('twDatePicker');
+  if (el && el.style.display !== 'none' && !el.contains(e.target) && e.target !== _dpTarget) hideDatePicker();
+}, true);
+
 function wireAutoDate(inp) {
   if (!inp || inp.dataset.wired) return;
   inp.dataset.wired = '1';
@@ -717,6 +815,7 @@ function wireAutoDate(inp) {
     if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
     e.target.value = v.slice(0,8);
   });
+  inp.addEventListener('focus', () => showDatePicker(inp));
 }
 
 // ── Auth ──
