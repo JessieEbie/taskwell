@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Taskwell" />
+  <link rel="apple-touch-icon" sizes="512x512" href="icon.png" />
   <title>Taskwell</title>
   <style>
     :root {
@@ -1705,6 +1706,53 @@ function switchTab(tab) {
 // ══════════════════════════════
 // HUB
 // ══════════════════════════════
+function makeInboxBlock(pendingItems) {
+  const key = '__inbox';
+  const collapsed = sectionCollapsed[key];
+  const block = document.createElement('div');
+  block.className = 'section-block';
+  const hdr = document.createElement('div');
+  hdr.className = 'section-hdr';
+  hdr.innerHTML = `
+    <div class="section-hdr-bar"></div>
+    <div class="section-hdr-left">
+      <span>INBOX</span>
+      <span style="color:var(--ink-faint);font-size:10px">${collapsed ? '▸' : '▾'}</span>
+    </div>
+    <span style="margin-left:auto;font-size:11px;color:var(--ink-faint)">${pendingItems.length} item${pendingItems.length !== 1 ? 's' : ''}</span>`;
+  hdr.onclick = () => { sectionCollapsed[key] = !collapsed; renderHub(); };
+  block.appendChild(hdr);
+  if (!collapsed) {
+    const body = document.createElement('div');
+    body.className = 'section-body';
+    pendingItems.forEach(({ item, i }) => {
+      const row = document.createElement('div');
+      row.className = 'inbox-item';
+      const check = document.createElement('div');
+      check.className = 'inbox-check';
+      check.onclick = () => { inboxItems[i].done = true; saveInbox(); renderHub(); renderInbox(); };
+      const text = document.createElement('div');
+      text.className = 'inbox-item-text';
+      text.textContent = item.text;
+      const assign = document.createElement('button');
+      assign.className = 'btn btn-sm'; assign.textContent = 'Assign →';
+      assign.onclick = () => openMoveModal(i);
+      row.appendChild(check); row.appendChild(text); row.appendChild(assign);
+      body.appendChild(row);
+    });
+    const footer = document.createElement('div');
+    footer.style.cssText = 'padding:6px 0 2px;';
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'btn btn-sm';
+    viewBtn.textContent = 'View all in Inbox →';
+    viewBtn.onclick = () => switchTab('inbox');
+    footer.appendChild(viewBtn);
+    body.appendChild(footer);
+    block.appendChild(body);
+  }
+  return block;
+}
+
 function renderHub() {
   applyContext();
   const area = document.getElementById('hubScrollArea');
@@ -1712,6 +1760,11 @@ function renderHub() {
   const visible = getVisibleLists();
   document.getElementById('hubSub').textContent =
     visible.length === 0 ? 'Your task lists' : `${visible.length} list${visible.length !== 1 ? 's' : ''}`;
+
+  const pendingInbox = inboxItems
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => !item.done && (currentContext === 'all' || (item.context || 'work') === currentContext));
+  if (pendingInbox.length > 0) area.appendChild(makeInboxBlock(pendingInbox));
 
   if (currentContext === 'home') {
     // Flat list — no section grouping
