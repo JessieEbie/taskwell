@@ -638,6 +638,8 @@ class TaskwellApp:
         self.ics_feeds = feeds
         self._refresh_ics_feeds()
         self._refresh_google_events()
+        if _google_tokens is not None and hasattr(self, 'day_add_event_btn'):
+            self.day_add_event_btn.pack(side=tk.RIGHT, padx=(0, 6))
 
     def _refresh_ics_feeds(self):
         if not self.ics_feeds:
@@ -1785,12 +1787,12 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=self._ics_feeds_dialog).pack(side=tk.RIGHT)
-        if _google_tokens is not None:
-            tk.Button(hdr, text="+ Event", bg=self.accent, fg=INK, font=FONT_SANS_SM,
-                      relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+        self.day_add_event_btn = tk.Button(hdr, text="+ Event", bg=self.accent, fg=INK,
+                      font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                       activebackground=CREAM_DARK,
-                      command=lambda: self._new_cal_event_dialog(self.selected_day)
-                      ).pack(side=tk.RIGHT, padx=(0, 6))
+                      command=lambda: self._new_cal_event_dialog(self.selected_day))
+        if _google_tokens is not None:
+            self.day_add_event_btn.pack(side=tk.RIGHT, padx=(0, 6))
 
         # Split view: agenda (left) + mini-cal (right)
         split = tk.Frame(frame, bg=PAPER)
@@ -1967,9 +1969,13 @@ class TaskwellApp:
                                 "–" + ev["end"].strftime("%-I:%M %p"))
                 tk.Label(row, text=time_str, font=FONT_SANS_SM, bg=ev["color"],
                          fg=INK_SOFT, padx=10, pady=6, anchor="w").pack(side=tk.LEFT)
-                tk.Label(row, text=ev["title"], font=FONT_SERIF_SM, bg=ev["color"],
-                         fg=INK, padx=6, pady=6, anchor="w"
-                         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+                info_f = tk.Frame(row, bg=ev["color"])
+                info_f.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=4)
+                tk.Label(info_f, text=ev["title"], font=FONT_SERIF_SM, bg=ev["color"],
+                         fg=INK, padx=6, anchor="w").pack(anchor="w")
+                if ev.get("location"):
+                    tk.Label(info_f, text=ev["location"], font=FONT_SANS_SM, bg=ev["color"],
+                             fg=INK_SOFT, padx=6, anchor="w").pack(anchor="w")
 
     def _render_agenda(self):
         for w in self.day_scroll_frame.winfo_children():
