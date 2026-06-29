@@ -2323,7 +2323,7 @@ async function dropTaskOnDay(taskId, key) {
 function weekCatFilterIds(visLists) {
   if (weekCategoryFilter === 'none') return new Set();
   if (weekCategoryFilter === 'all') return new Set(visLists.map(l => l.id));
-  if (weekCategoryFilter === 'home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
+  if (weekCategoryFilter === 'Home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
   return new Set(visLists.filter(l => (l.section || 'Misc') === weekCategoryFilter && (l.context || 'work') === 'work').map(l => l.id));
 }
 
@@ -2364,11 +2364,13 @@ function renderWeek() {
   const sel = document.createElement('select');
   sel.className = 'week-cat-select';
   sel.value = weekCategoryFilter;
-  const hasHome = visLists.some(l => (l.context || 'work') === 'home');
+  const sectionOrder = ['Home', ...WORK_SECTIONS];
+  const presentSections = new Set(visLists.map(l =>
+    (l.context || 'work') === 'home' ? 'Home' : (l.section || 'Misc')
+  ));
   const catOptions = [
     ['all', 'All lists'],
-    ...(hasHome ? [['home', 'Home']] : []),
-    ...WORK_SECTIONS.filter(s => visLists.some(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')).map(s => [s, s]),
+    ...sectionOrder.filter(s => presentSections.has(s)).map(s => [s, s]),
     ['none', 'Hide tasks'],
   ];
   catOptions.forEach(([val, label]) => {
