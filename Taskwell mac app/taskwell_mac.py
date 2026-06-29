@@ -49,8 +49,12 @@ ALLOWED_EMAIL  = "jessieebie@gmail.com"
 INBOX_FILE      = os.path.expanduser("~/.taskwell_inbox.json")
 AUTH_FILE       = os.path.expanduser("~/.taskwell_auth.json")
 ICS_FEEDS_FILE  = os.path.expanduser("~/.taskwell_ics_feeds.json")
-OAUTH_PORT     = 54321
-OAUTH_REDIRECT = f"http://localhost:{OAUTH_PORT}"
+OAUTH_PORT      = 54321
+OAUTH_REDIRECT  = f"http://localhost:{OAUTH_PORT}"
+GCAL_CLIENT_ID  = "795130412746-pqedeeqo0mhvcqofi65tnsr264abiksh.apps.googleusercontent.com"
+GCAL_PORT       = 54322
+GCAL_REDIRECT   = f"http://localhost:{GCAL_PORT}"
+GCAL_SCOPE      = "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send"
 
 # ── Auth state ──
 _auth = load_json(AUTH_FILE, {}) if os.path.exists(AUTH_FILE) else {}
@@ -234,6 +238,72 @@ def load_cal_feeds():
         return []
     except:
         return load_json(ICS_FEEDS_FILE, [])
+
+def connect_google_calendar(on_success, on_error):
+    """PKCE OAuth flow for Google Calendar. Opens browser, captures code via local server."""
+    verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b'=').decode()
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+    result_holder = [None]
+
+    class _Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            code = params.get('code', [None])[0]
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            if code:
+                self.wfile.write(b'<html><body style="font-family:sans-serif;padding:40px">'
+                                 b'<h2>Connected! You can close this tab.</h2></body></html>')
+                result_holder[0] = code
+            else:
+                self.wfile.write(b'<html><body style="font-family:sans-serif;padding:40px">'
+                                 b'<h2>Auth failed. Please try again.</h2></body></html>')
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+    def _run():
+        try:
+            server = HTTPServer(('localhost', GCAL_PORT), _Handler)
+            params = urllib.parse.urlencode({
+                'client_id': GCAL_CLIENT_ID,
+                'redirect_uri': GCAL_REDIRECT,
+                'response_type': 'code',
+                'scope': GCAL_SCOPE,
+                'code_challenge': challenge,
+                'code_challenge_method': 'S256',
+                'access_type': 'offline',
+                'prompt': 'consent',
+            })
+            webbrowser.open(f'https://accounts.google.com/o/oauth2/v2/auth?{params}')
+            server.serve_forever()
+            code = result_holder[0]
+            if not code:
+                on_error('Auth cancelled or failed.')
+                return
+            # Exchange code via Supabase edge function
+            token = _load_auth().get('access_token', '')
+            req = urllib.request.Request(
+                f"{SUPABASE_URL}/functions/v1/google-calendar-auth",
+                data=json.dumps({'action': 'exchange', 'code': code,
+                                 'code_verifier': verifier, 'redirect_uri': GCAL_REDIRECT}).encode(),
+                headers={'Authorization': f'Bearer {token}',
+                         'Content-Type': 'application/json'},
+                method='POST')
+            with urllib.request.urlopen(req, timeout=15) as r:
+                tokens = json.loads(r.read())
+            # Store in Supabase and memory
+            global _google_tokens
+            _google_tokens = tokens
+            api('POST', 'user_settings',
+                {'user_id': _get_user_id(), 'google_tokens': tokens},
+                {'Prefer': 'resolution=merge-duplicates'})
+            on_success()
+        except Exception as e:
+            on_error(str(e))
+
+    threading.Thread(target=_run, daemon=True).start()
 
 def save_cal_feeds(feeds):
     try:
@@ -803,22 +873,6 @@ class TaskwellApp:
         gcal_status = tk.Label(gcal_row, font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT)
         gcal_status.pack(side=tk.LEFT)
 
-        def reload_gcal_tokens():
-            global _google_tokens
-            try:
-                rows = api('GET', f'user_settings?user_id=eq.{_get_user_id()}&select=google_tokens')
-                if rows and rows[0].get('google_tokens'):
-                    _google_tokens = rows[0]['google_tokens']
-                    update_gcal_ui()
-                    self._refresh_google_events()
-                    if hasattr(self, 'day_add_event_btn'):
-                        self.day_add_event_btn.pack(side=tk.RIGHT, padx=(0, 6))
-                else:
-                    update_gcal_ui()
-            except Exception as e:
-                msg = str(e)
-                self.root.after(0, lambda m=msg: update_gcal_ui())
-
         def update_gcal_ui():
             for w in gcal_row.winfo_children(): w.destroy()
             if _google_tokens:
@@ -826,22 +880,33 @@ class TaskwellApp:
                          bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
                 tk.Button(gcal_row, text='Reconnect', bg=CREAM, fg=INK,
                           font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
-                          cursor='hand2', command=open_web_connect).pack(side=tk.LEFT, padx=(8, 0))
+                          cursor='hand2', command=start_connect).pack(side=tk.LEFT, padx=(8, 0))
                 tk.Button(gcal_row, text='Disconnect', bg=CREAM, fg=INK,
                           font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
                           cursor='hand2', command=disconnect_gcal).pack(side=tk.LEFT, padx=(4, 0))
             else:
                 tk.Button(gcal_row, text='Connect Google Calendar', bg=self.accent, fg=INK,
                           font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
-                          cursor='hand2', command=open_web_connect).pack(side=tk.LEFT)
-                tk.Button(gcal_row, text='I\'ve connected ↺', bg=CREAM, fg=INK,
-                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
-                          cursor='hand2', command=lambda: threading.Thread(
-                              target=reload_gcal_tokens, daemon=True).start()
-                          ).pack(side=tk.LEFT, padx=(8, 0))
+                          cursor='hand2', command=start_connect).pack(side=tk.LEFT)
 
-        def open_web_connect():
-            webbrowser.open('https://jessieebie.github.io/taskwell/')
+        def start_connect():
+            for w in gcal_row.winfo_children(): w.destroy()
+            tk.Label(gcal_row, text='Waiting for browser…', font=FONT_SANS_SM,
+                     bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
+            def on_success():
+                self.root.after(0, lambda: (
+                    update_gcal_ui(),
+                    self._refresh_google_events(),
+                    self.day_add_event_btn.pack(side=tk.RIGHT, padx=(0, 6))
+                    if hasattr(self, 'day_add_event_btn') else None
+                ))
+            def on_error(msg):
+                self.root.after(0, lambda m=msg: (
+                    [w.destroy() for w in gcal_row.winfo_children()],
+                    tk.Label(gcal_row, text=f'Error: {m}', font=FONT_SANS_SM,
+                             bg=PAPER, fg=RUST).pack(side=tk.LEFT)
+                ))
+            connect_google_calendar(on_success, on_error)
 
         def disconnect_gcal():
             global _google_tokens
