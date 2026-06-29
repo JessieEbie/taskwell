@@ -592,6 +592,7 @@
     <div class="modal-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream-dark)">
       <span id="gcalStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
       <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
+      <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
     </div>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
@@ -781,14 +782,27 @@ async function loadCalFeeds() {
 function updateGcalStatus() {
   const el = document.getElementById('gcalStatus');
   const btn = document.getElementById('gcalConnectBtn');
+  const dis = document.getElementById('gcalDisconnectBtn');
   if (!el) return;
   if (googleTokens) {
     el.textContent = 'Google Calendar connected';
     if (btn) btn.textContent = 'Reconnect';
+    if (dis) dis.style.display = '';
   } else {
     el.textContent = '';
     if (btn) btn.textContent = 'Connect Google Calendar';
+    if (dis) dis.style.display = 'none';
   }
+}
+
+async function disconnectGoogleCalendar() {
+  if (!confirm('Disconnect Google Calendar?')) return;
+  googleTokens = null;
+  await api('POST', 'user_settings',
+    { user_id: authSession.user_id, google_tokens: null },
+    { 'Prefer': 'resolution=merge-duplicates' });
+  updateGcalStatus();
+  renderWeek(); renderAgenda();
 }
 
 async function saveGoogleTokens(tokens) {
