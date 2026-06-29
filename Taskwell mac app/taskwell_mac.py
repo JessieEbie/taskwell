@@ -861,7 +861,7 @@ class TaskwellApp:
         tk.Frame(inner, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=20, pady=(12, 0))
 
         # ── Outlook via Power Automate ──
-        tk.Label(inner, text='Outlook via Power Automate (optional)',
+        tk.Label(inner, text='Work Calendar Invite Email (optional)',
                  font=FONT_SANS_BOLD, bg=PAPER, fg=INK
                  ).pack(anchor='w', pady=(12, 4), **pad)
 
@@ -926,7 +926,7 @@ class TaskwellApp:
             render_outlook_ui()
 
         render_outlook_ui()
-        tk.Label(inner, text='New Work events will invite your Outlook email as a guest.',
+        tk.Label(inner, text='New Work events will invite this email as a guest.',
                  font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, wraplength=380, justify='left'
                  ).pack(anchor='w', pady=(4, 16), **pad)
 
