@@ -1732,6 +1732,7 @@ async function boot() {
 
   applyContext();
   wireAutoDate(document.getElementById('editTaskDate'));
+  wireAutoDate(document.getElementById('calEventDate'));
   try {
     [lists, tasks] = await Promise.all([
       api('GET','lists?order=created_at.asc'),
