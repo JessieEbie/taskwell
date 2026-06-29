@@ -18,17 +18,17 @@
       --brown: #A67B5B;
       --rust: #B85C38; --paper: #FAF7F2;
       --rose: #C4A4A0; --rose-dark: #A67B5B; --rose-pale: #EDE0DB;
-      --accent: var(--rose); --accent-dark: var(--rose-dark); --accent-pale: var(--rose-pale);
-      --rail-bg: var(--brown);
+      --accent: #B8A898; --accent-dark: #9A8E87; --accent-pale: #EDE8E2;
+      --rail-bg: #B8A898;
       --tab-w: 64px;
     }
     body.ctx-home {
-      --accent: var(--sage); --accent-dark: var(--sage-dark); --accent-pale: var(--sage-pale);
-      --rail-bg: var(--sage);
+      --accent: var(--sage-dark); --accent-dark: #5C7260; --accent-pale: var(--sage-pale);
+      --rail-bg: var(--sage-dark);
     }
     body.ctx-all {
-      --accent: var(--khaki); --accent-dark: #9A8E78; --accent-pale: var(--khaki-pale);
-      --rail-bg: var(--khaki);
+      --accent: var(--rose); --accent-dark: var(--rose-dark); --accent-pale: var(--rose-pale);
+      --rail-bg: var(--rose);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -1779,7 +1779,7 @@ function renderHub() {
   // All mode: banner + Home section always shown + work sections
   if (currentContext === 'all') {
     const banner = document.createElement('div');
-    banner.style.cssText = 'background:#7A9478;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#fff;';
+    banner.style.cssText = 'background:#C4A4A0;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#fff;';
     banner.textContent = 'Showing all contexts — Home + Work';
     area.appendChild(banner);
     const homeLists = lists.filter(l => (l.context || 'work') === 'home');
