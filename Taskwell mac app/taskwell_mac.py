@@ -525,7 +525,7 @@ class TaskwellApp:
 
         # UI state
         self.current_context = "work"   # 'work' | 'home' | 'all'
-        self.active_section  = "hub"
+        self.active_section  = "day"
         self.active_week_list = "all"
         self.week_offset     = 0        # 0 = current week
         self.section_collapsed = {s: False for s in WORK_SECTIONS}
@@ -661,8 +661,7 @@ class TaskwellApp:
             self._render_week()
         elif self.active_section == "day":
             self._render_agenda()
-        if hasattr(self, 'upcoming_frame'):
-            self._render_mini_cal()
+        self._render_mini_cal()
 
     def _refresh_google_events(self):
         def fetch():
@@ -676,8 +675,7 @@ class TaskwellApp:
             self._render_agenda()
         elif self.active_section == 'week':
             self._render_week()
-        if hasattr(self, 'upcoming_frame'):
-            self._render_mini_cal()
+        self._render_mini_cal()
 
     def _refresh_all_cal(self):
         self._refresh_ics_feeds()
@@ -813,8 +811,8 @@ class TaskwellApp:
         self._build_week()
         self._build_day()
         self._build_inbox()
-        self._show_section("hub")
-        self._active_scroll = (self.hub_canvas, 'y')
+        self._show_section("day")
+        self._active_scroll = (self.day_canvas, 'y')
 
         self.root.bind('<Configure>', self._on_resize)
         # After startup settles, ensure sidebar is on the correct side
@@ -1836,11 +1834,6 @@ class TaskwellApp:
         self.mini_cal_grid_frame = tk.Frame(sidebar, bg=CREAM)
         self.mini_cal_grid_frame.pack(fill=tk.X, padx=8)
 
-        tk.Frame(sidebar, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=12, pady=(14, 0))
-        tk.Label(sidebar, text="UPCOMING", font=("Helvetica Neue", 10, "bold"),
-                 bg=CREAM, fg=INK_FAINT).pack(anchor="w", padx=16, pady=(8, 4))
-        self.upcoming_frame = tk.Frame(sidebar, bg=CREAM)
-        self.upcoming_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
     def _render_mini_cal(self):
         for w in self.mini_cal_grid_frame.winfo_children():
@@ -1901,27 +1894,6 @@ class TaskwellApp:
                 col = 0
                 row += 1
 
-        # Upcoming events — next 7 days
-        for w in self.upcoming_frame.winfo_children():
-            w.destroy()
-        today = date.today()
-        shown = 0
-        for offset in range(8):
-            day = today + timedelta(days=offset)
-            evs = self.get_cal_events(day.isoformat())
-            if not evs:
-                continue
-            day_lbl = "Today" if offset == 0 else ("Tomorrow" if offset == 1 else day.strftime("%a, %b %-d"))
-            tk.Label(self.upcoming_frame, text=day_lbl,
-                     font=("Helvetica Neue", 10, "bold"), bg=CREAM, fg=INK_SOFT
-                     ).pack(anchor="w", pady=(6 if shown else 0, 1))
-            for ev in sorted(evs, key=lambda e: (e["all_day"], e["start"])):
-                t = "" if ev["all_day"] else ev["start"].strftime("%-I:%M %p").lower() + "  "
-                tk.Label(self.upcoming_frame, text=f"{t}{ev['title']}",
-                         font=("Helvetica Neue", 11), bg=CREAM, fg=INK,
-                         wraplength=280, justify="left", anchor="w"
-                         ).pack(fill=tk.X, anchor="w")
-            shown += 1
 
     def _mini_cal_prev(self):
         m = self.mini_month
