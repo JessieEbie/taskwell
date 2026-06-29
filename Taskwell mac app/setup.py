@@ -18,12 +18,10 @@ OPTIONS = {
     'includes': ['objc', 'Foundation', 'AppKit', 'WebKit'],
 }
 
-html_src = os.path.join('..', 'taskwell.html')
-
 setup(
     app=APP,
     name='Taskwell',
-    data_files=[('', [html_src])],
+    data_files=[],
     options={'py2app': OPTIONS},
     setup_requires=['py2app'],
 )
