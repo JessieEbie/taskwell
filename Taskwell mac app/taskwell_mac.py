@@ -694,33 +694,50 @@ class TaskwellApp:
 
     # ── List context helpers ──
     def _ics_feeds_dialog(self):
+        global _google_tokens, _outlook_email
         dlg = tk.Toplevel(self.root)
-        dlg.title("ICS Calendar Feeds")
-        dlg.geometry("400x360")
+        dlg.title("Calendar Feeds")
+        dlg.geometry("440x580")
         dlg.resizable(False, False)
         dlg.configure(bg=PAPER)
         dlg.transient(self.root)
         dlg.lift(); dlg.focus_force()
 
-        list_frame = tk.Frame(dlg, bg=PAPER)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(16, 0))
+        scroll_outer = tk.Frame(dlg, bg=PAPER)
+        scroll_outer.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(scroll_outer, bg=PAPER, highlightthickness=0)
+        sb = ttk.Scrollbar(scroll_outer, orient='vertical', command=canvas.yview)
+        inner = tk.Frame(canvas, bg=PAPER)
+        inner.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=inner, anchor='nw')
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        pad = {'padx': 20}
+
+        # ── ICS Feeds ──
+        tk.Label(inner, text="ICS Feeds", font=FONT_SANS_BOLD, bg=PAPER, fg=INK
+                 ).pack(anchor='w', pady=(16, 4), **pad)
+
+        list_frame = tk.Frame(inner, bg=PAPER)
+        list_frame.pack(fill=tk.X, **pad)
 
         def refresh_list():
             for w in list_frame.winfo_children(): w.destroy()
             if not self.ics_feeds:
                 tk.Label(list_frame, text="No feeds added yet.", font=FONT_SANS_SM,
-                         bg=PAPER, fg=INK_FAINT).pack(anchor="w")
+                         bg=PAPER, fg=INK_FAINT).pack(anchor='w')
             for i, feed in enumerate(self.ics_feeds):
                 row = tk.Frame(list_frame, bg=PAPER)
                 row.pack(fill=tk.X, pady=2)
-                color = feed.get('color', SAGE)
-                tk.Label(row, text="●", fg=color, bg=PAPER, font=FONT_SANS_SM).pack(side=tk.LEFT)
-                tk.Label(row, text=feed.get('name', feed['url'])[:40], font=FONT_SANS_SM,
+                tk.Label(row, text='●', fg=feed.get('color', SAGE), bg=PAPER,
+                         font=FONT_SANS_SM).pack(side=tk.LEFT)
+                tk.Label(row, text=feed.get('name', feed['url'])[:44], font=FONT_SANS_SM,
                          bg=PAPER, fg=INK).pack(side=tk.LEFT, padx=6)
-                idx = i
-                tk.Button(row, text="✕", bg=PAPER, fg=INK_FAINT, font=FONT_SANS_SM,
-                          relief=tk.FLAT, cursor="hand2",
-                          command=lambda i=idx: remove_feed(i)).pack(side=tk.RIGHT)
+                tk.Button(row, text='✕', bg=PAPER, fg=INK_FAINT, font=FONT_SANS_SM,
+                          relief=tk.FLAT, cursor='hand2',
+                          command=lambda i=i: remove_feed(i)).pack(side=tk.RIGHT)
 
         def remove_feed(i):
             self.ics_feeds.pop(i)
@@ -731,15 +748,14 @@ class TaskwellApp:
 
         refresh_list()
 
-        add_frame = tk.Frame(dlg, bg=PAPER)
-        add_frame.pack(fill=tk.X, padx=20, pady=(12, 0))
-        tk.Label(add_frame, text="Add ICS feed URL:", font=FONT_SANS_SM, bg=PAPER, fg=INK).pack(anchor="w")
         url_var = tk.StringVar()
-        entry = tk.Entry(add_frame, textvariable=url_var, font=FONT_SANS_SM, bg=CREAM,
-                         relief=tk.FLAT, highlightthickness=1, highlightbackground=CREAM_DARK)
-        entry.pack(fill=tk.X, pady=4)
-        status = tk.Label(add_frame, text="", font=FONT_SANS_SM, bg=PAPER, fg=RUST)
-        status.pack(anchor="w")
+        tk.Label(inner, text='Add ICS feed URL:', font=FONT_SANS_SM, bg=PAPER, fg=INK
+                 ).pack(anchor='w', pady=(10, 0), **pad)
+        tk.Entry(inner, textvariable=url_var, font=FONT_SANS_SM, bg=CREAM,
+                 relief=tk.FLAT, highlightthickness=1, highlightbackground=CREAM_DARK
+                 ).pack(fill=tk.X, pady=4, **pad)
+        feed_status = tk.Label(inner, text='', font=FONT_SANS_SM, bg=PAPER, fg=RUST)
+        feed_status.pack(anchor='w', **pad)
 
         def add_feed():
             url = url_var.get().strip()
@@ -749,35 +765,147 @@ class TaskwellApp:
             self.ics_feeds.append(feed)
             threading.Thread(target=save_cal_feeds, args=(self.ics_feeds,), daemon=True).start()
             url_var.set('')
-            status.config(text="Fetching…")
+            feed_status.config(text='Fetching…')
             refresh_list()
             def fetch():
                 try:
                     evs = fetch_ics_feed(feed)
                     for k, arr in evs.items():
                         self.ics_events.setdefault(k, []).extend(arr)
-                    self.root.after(0, lambda: (
-                        status.config(text=f"Added: {feed['name']}"),
+                    name = feed['name']
+                    self.root.after(0, lambda n=name: (
+                        feed_status.config(text=f'Added: {n}'),
                         refresh_list(),
                         self._render_week(), self._render_agenda()
                     ))
                 except Exception as e:
                     feed['name'] = '⚠ Could not load'
-                    self.root.after(0, lambda: (
-                        status.config(text=f"Error: {e}"),
+                    msg = str(e)
+                    self.root.after(0, lambda m=msg: (
+                        feed_status.config(text=f'Error: {m}'),
                         refresh_list()
                     ))
             threading.Thread(target=fetch, daemon=True).start()
 
-        entry.bind('<Return>', lambda e: add_feed())
-        tk.Button(add_frame, text="Add Feed", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
-                  relief=tk.FLAT, padx=12, pady=4, cursor="hand2",
-                  command=add_feed).pack(pady=6)
-        btn_row = tk.Frame(dlg, bg=PAPER)
-        btn_row.pack(pady=(0, 14))
-        tk.Button(btn_row, text="Save & Close", bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
-                  relief=tk.FLAT, padx=20, pady=6, cursor="hand2",
-                  command=dlg.destroy).pack(side=tk.LEFT, padx=6)
+        tk.Button(inner, text='Add Feed', bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
+                  relief=tk.RAISED, padx=12, pady=3, cursor='hand2',
+                  command=add_feed).pack(anchor='w', pady=(2, 8), **pad)
+
+        # ── Divider ──
+        tk.Frame(inner, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=20, pady=(4, 0))
+
+        # ── Google Calendar ──
+        tk.Label(inner, text='Google Calendar', font=FONT_SANS_BOLD, bg=PAPER, fg=INK
+                 ).pack(anchor='w', pady=(12, 4), **pad)
+
+        gcal_row = tk.Frame(inner, bg=PAPER)
+        gcal_row.pack(fill=tk.X, **pad)
+        gcal_status = tk.Label(gcal_row, font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT)
+        gcal_status.pack(side=tk.LEFT)
+
+        def update_gcal_ui():
+            for w in gcal_row.winfo_children(): w.destroy()
+            if _google_tokens:
+                tk.Label(gcal_row, text='Connected', font=FONT_SANS_SM,
+                         bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
+                tk.Button(gcal_row, text='Disconnect', bg=CREAM, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
+                          cursor='hand2', command=disconnect_gcal).pack(side=tk.LEFT, padx=(8, 0))
+            else:
+                tk.Label(gcal_row, text='Not connected — connect via the web app',
+                         font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
+
+        def disconnect_gcal():
+            global _google_tokens
+            _google_tokens = None
+            self.google_events = {}
+            threading.Thread(target=lambda: api('POST', 'user_settings',
+                {'user_id': _get_user_id(), 'google_tokens': None},
+                {'Prefer': 'resolution=merge-duplicates'}), daemon=True).start()
+            update_gcal_ui()
+            if hasattr(self, 'day_add_event_btn'):
+                self.day_add_event_btn.pack_forget()
+            self._render_agenda()
+
+        update_gcal_ui()
+
+        # ── Divider ──
+        tk.Frame(inner, bg=CREAM_DARK, height=1).pack(fill=tk.X, padx=20, pady=(12, 0))
+
+        # ── Outlook via Power Automate ──
+        tk.Label(inner, text='Outlook via Power Automate (optional)',
+                 font=FONT_SANS_BOLD, bg=PAPER, fg=INK
+                 ).pack(anchor='w', pady=(12, 4), **pad)
+
+        outlook_view = tk.Frame(inner, bg=PAPER)
+        outlook_view.pack(fill=tk.X, **pad)
+        outlook_edit = tk.Frame(inner, bg=PAPER)
+
+        def render_outlook_ui():
+            for w in outlook_view.winfo_children(): w.destroy()
+            for w in outlook_edit.winfo_children(): w.destroy()
+            outlook_edit.pack_forget()
+            if _outlook_email:
+                outlook_view.pack(fill=tk.X, **pad)
+                tk.Label(outlook_view, text=_outlook_email, font=FONT_SANS_SM,
+                         bg=PAPER, fg=INK).pack(side=tk.LEFT)
+                tk.Button(outlook_view, text='Change', bg=CREAM, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=6, pady=2,
+                          cursor='hand2', command=show_outlook_edit).pack(side=tk.LEFT, padx=(8,0))
+                tk.Button(outlook_view, text='Delete', bg=CREAM, fg=RUST,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=6, pady=2,
+                          cursor='hand2', command=delete_outlook_email).pack(side=tk.LEFT, padx=(4,0))
+            else:
+                outlook_view.pack(fill=tk.X, **pad)
+                tk.Button(outlook_view, text='Add Email', bg=CREAM, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
+                          cursor='hand2', command=show_outlook_edit).pack(side=tk.LEFT)
+
+        def show_outlook_edit():
+            for w in outlook_view.winfo_children(): w.destroy()
+            outlook_view.pack_forget()
+            for w in outlook_edit.winfo_children(): w.destroy()
+            outlook_edit.pack(fill=tk.X, **pad)
+            evar = tk.StringVar(value=_outlook_email)
+            e = tk.Entry(outlook_edit, textvariable=evar, font=FONT_SANS_SM, bg=CREAM,
+                         relief=tk.FLAT, highlightthickness=1, highlightbackground=CREAM_DARK,
+                         width=28)
+            e.pack(side=tk.LEFT)
+            e.focus_set()
+            def save_outlook():
+                global _outlook_email
+                val = evar.get().strip()
+                if not val: return
+                _outlook_email = val
+                threading.Thread(target=lambda: api('POST', 'user_settings',
+                    {'user_id': _get_user_id(), 'outlook_email': val},
+                    {'Prefer': 'resolution=merge-duplicates'}), daemon=True).start()
+                render_outlook_ui()
+            tk.Button(outlook_edit, text='Save', bg=self.accent, fg=INK,
+                      font=FONT_SANS_SM, relief=tk.RAISED, padx=6, pady=2,
+                      cursor='hand2', command=save_outlook).pack(side=tk.LEFT, padx=(6,0))
+            tk.Button(outlook_edit, text='Cancel', bg=CREAM, fg=INK,
+                      font=FONT_SANS_SM, relief=tk.RAISED, padx=6, pady=2,
+                      cursor='hand2', command=render_outlook_ui).pack(side=tk.LEFT, padx=(4,0))
+            e.bind('<Return>', lambda ev: save_outlook())
+
+        def delete_outlook_email():
+            global _outlook_email
+            _outlook_email = ''
+            threading.Thread(target=lambda: api('POST', 'user_settings',
+                {'user_id': _get_user_id(), 'outlook_email': None},
+                {'Prefer': 'resolution=merge-duplicates'}), daemon=True).start()
+            render_outlook_ui()
+
+        render_outlook_ui()
+        tk.Label(inner, text='New Work events will invite your Outlook email as a guest.',
+                 font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT, wraplength=380, justify='left'
+                 ).pack(anchor='w', pady=(4, 16), **pad)
+
+        # ── Done button ──
+        tk.Button(dlg, text='Done', bg=self.accent, fg=INK, font=FONT_SANS_BOLD,
+                  relief=tk.RAISED, padx=20, pady=6, cursor='hand2',
+                  command=dlg.destroy).pack(pady=(0, 14))
 
     def get_list_ctx(self, lst):
         return lst.get("context") or "work"
