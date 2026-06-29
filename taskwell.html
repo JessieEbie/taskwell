@@ -1484,7 +1484,15 @@ async function fetchAllFeeds() {
     fetchGoogleCalendarEvents(),
     fetchOutlookCalendarEvents()
   ]);
+  try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
   renderWeek(); renderAgenda();
+}
+
+function loadCalCache() {
+  try {
+    const cached = localStorage.getItem('tw_cal_cache');
+    if (cached) { calEvents = JSON.parse(cached); renderWeek(); renderAgenda(); }
+  } catch(e) {}
 }
 
 function openCalFeedsModal() {
@@ -1624,6 +1632,7 @@ async function boot() {
     ]);
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
+    loadCalCache();
     fetchAllFeeds();
     setInterval(fetchAllFeeds, 5 * 60 * 1000);
 

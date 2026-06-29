@@ -34,6 +34,11 @@ p {{ font-size:12px;color:#6B5744 }}
   <h1>Taskwell</h1>
   <p>Loading…</p>
 </div>
+<script>
+setTimeout(function() {{
+  window.location.replace('https://jessieebie.github.io/taskwell/');
+}}, 400);
+</script>
 </body></html>'''
 
 
@@ -92,16 +97,18 @@ def main():
     t.start()
 
     def on_loaded():
-        if 'jessieebie.github.io' not in (_window.get_current_url() or ''):
-            _window.load_url('https://jessieebie.github.io/taskwell/')
-            return
-        _window.evaluate_js(f'window.__GCAL_REDIRECT_PORT__ = {PORT};')
+        if 'jessieebie.github.io' in (_window.get_current_url() or ''):
+            _window.evaluate_js(f'window.__GCAL_REDIRECT_PORT__ = {PORT};')
 
     _window.events.loaded += on_loaded
+
+    storage = os.path.expanduser('~/Library/Application Support/Taskwell')
+    os.makedirs(storage, exist_ok=True)
 
     webview.start(
         debug=False,
         private_mode=False,
+        storage_path=storage,
         user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
     )
 
