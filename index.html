@@ -149,10 +149,19 @@
     #week .week-controls > * { display: flex; align-items: center; width: 100%; margin-bottom: 6px; }
     .week-nav-row { display: flex; align-items: center; gap: 4px; width: 100%; flex-wrap: wrap; }
     .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
-    .week-cat-select { font-size: 13px; font-family: inherit; color: var(--ink);
+    .week-filter-btn { font-size: 13px; font-family: inherit; color: var(--ink);
       background: var(--cream); border: 1.5px solid var(--cream-dark); border-radius: 8px;
-      padding: 5px 10px; cursor: pointer; outline: none; }
-    .week-cat-select:focus { border-color: var(--accent); }
+      padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+    .week-filter-btn:hover { background: var(--cream-dark); }
+    .week-filter-menu { position: fixed; z-index: 2100; background: var(--paper);
+      border-radius: 12px; box-shadow: 0 6px 28px rgba(46,33,24,.22);
+      padding: 6px; min-width: 150px; display: none; }
+    .week-filter-menu button { display: flex; align-items: center; gap: 8px; width: 100%;
+      text-align: left; background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 13px; color: var(--ink); padding: 7px 10px; border-radius: 8px; }
+    .week-filter-menu button:hover { background: var(--cream); }
+    .week-filter-menu button.active { font-weight: 600; }
+    .week-filter-check { width: 14px; flex-shrink: 0; }
     #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px; border-radius: 8px; flex-shrink: 0; }
     .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                      letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
@@ -2416,31 +2425,58 @@ function renderWeek() {
   const visLists = getVisibleLists();
   const filterRow = document.createElement('div');
   filterRow.className = 'week-lists-row';
-  const sel = document.createElement('select');
-  sel.className = 'week-cat-select';
-  sel.value = weekCategoryFilter;
-  const sectionOrder = ['Home', ...WORK_SECTIONS];
-  const presentSections = new Set(visLists.map(l =>
-    (l.context || 'work') === 'home' ? 'Home' : (l.section || 'Misc')
-  ));
+
+  const hasHome = visLists.some(l => (l.context || 'work') === 'home');
+  const hasWork = visLists.some(l => (l.context || 'work') === 'work');
+  const presentWorkSections = new Set(visLists
+    .filter(l => (l.context || 'work') === 'work')
+    .map(l => l.section || 'Misc'));
   const catOptions = [
     ['all', 'All lists'],
-    ...sectionOrder.filter(s => presentSections.has(s)).map(s => [s, s]),
+    ...(hasHome ? [['Home', 'Home']] : []),
+    ...WORK_SECTIONS.filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).map(s => [s, s]),
     ['none', 'Hide tasks'],
   ];
-  catOptions.forEach(([val, label]) => {
-    const opt = document.createElement('option');
-    opt.value = val; opt.textContent = label;
-    if (val === weekCategoryFilter) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  sel.onchange = () => { weekCategoryFilter = sel.value; renderWeek(); };
+  const currentLabel = (catOptions.find(([v]) => v === weekCategoryFilter) || catOptions[0])[1];
+
+  const filterBtn = document.createElement('button');
+  filterBtn.className = 'week-filter-btn';
+  filterBtn.textContent = currentLabel + ' ▾';
+  filterBtn.onclick = (e) => {
+    e.stopPropagation();
+    let menu = document.getElementById('weekFilterMenu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'weekFilterMenu';
+      menu.className = 'week-filter-menu';
+      document.body.appendChild(menu);
+      document.addEventListener('mousedown', ev => {
+        if (!menu.contains(ev.target) && ev.target !== filterBtn) menu.style.display = 'none';
+      }, true);
+    }
+    menu.innerHTML = '';
+    catOptions.forEach(([val, label]) => {
+      const b = document.createElement('button');
+      b.className = val === weekCategoryFilter ? 'active' : '';
+      b.innerHTML = `<span class="week-filter-check">${val === weekCategoryFilter ? '✓' : ''}</span>${label}`;
+      b.onclick = () => { weekCategoryFilter = val; menu.style.display = 'none'; renderWeek(); };
+      menu.appendChild(b);
+    });
+    const r = filterBtn.getBoundingClientRect();
+    menu.style.display = 'block';
+    const mw = menu.offsetWidth;
+    let left = r.left;
+    if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+    menu.style.top = (r.bottom + 4) + 'px';
+    menu.style.left = left + 'px';
+  };
+
   const hideBtn = document.createElement('button');
   hideBtn.className = 'btn btn-sm';
   hideBtn.textContent = (hideUnassigned ? 'Show' : 'Hide') + ' Unassigned';
   hideBtn.onclick = () => { hideUnassigned = !hideUnassigned; renderWeek(); };
   filterRow.appendChild(hideBtn);
-  filterRow.appendChild(sel);
+  filterRow.appendChild(filterBtn);
   ctrl.appendChild(filterRow);
 
   // Pending chips
