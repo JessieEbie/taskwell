@@ -15,7 +15,12 @@ import webview
 PORT = 37842
 _window = None
 
-_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.png')
+import sys as _sys
+if getattr(_sys, 'frozen', False):
+    _resources = os.path.join(os.path.dirname(_sys.executable), '..', 'Resources')
+else:
+    _resources = os.path.dirname(os.path.abspath(__file__))
+_icon_path = os.path.join(_resources, 'icon.png')
 with open(_icon_path, 'rb') as _f:
     _ICON_B64 = base64.b64encode(_f.read()).decode()
 
