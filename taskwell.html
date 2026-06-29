@@ -284,15 +284,14 @@
     .loading.hidden { opacity: 0; pointer-events: none; }
 
     /* ── Auth / Login ── */
-    .login-screen { position: fixed; inset: 0; background: var(--cream-dark); display: flex;
+    .login-screen { position: fixed; inset: 0; background: #C4A4A0; display: flex;
                     align-items: center; justify-content: center; z-index: 500; padding: 24px; }
     .login-screen.hidden { display: none; }
     .login-card { background: var(--paper); border-radius: 20px; padding: 36px 28px;
                   width: 100%; max-width: 320px; box-shadow: 0 20px 60px rgba(46,33,24,.15);
                   text-align: center; }
-    .login-logo { width: 52px; height: 52px; background: var(--accent); border-radius: 14px;
-                  font-size: 26px; color: var(--ink); display: flex; align-items: center;
-                  justify-content: center; margin: 0 auto 14px; font-family: Georgia, serif; font-weight: normal; }
+    .login-logo { width: 72px; height: 72px; border-radius: 16px; overflow: hidden;
+                  margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; }
     .login-title { font-size: 24px; font-weight: normal; color: var(--ink); margin-bottom: 6px; }
     .login-sub { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-soft);
                  margin-bottom: 20px; line-height: 1.5; }
@@ -402,7 +401,7 @@
 <!-- Login Screen -->
 <div class="login-screen" id="loginScreen">
   <div class="login-card">
-    <div class="login-logo">✓</div>
+    <div class="login-logo"><img src="icon.png" width="72" height="72" style="border-radius:16px;display:block"></div>
     <h1 class="login-title">Taskwell</h1>
     <p class="login-sub">Sign in to access your tasks</p>
     <div class="login-error" id="loginErr1"></div>

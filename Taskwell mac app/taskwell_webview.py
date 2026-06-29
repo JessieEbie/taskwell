@@ -55,9 +55,15 @@ def main():
     global _window
     api = MacAPI()
 
+    splash_html = '''<!DOCTYPE html>
+<html><head><style>
+* {{ margin:0;padding:0 }}
+body {{ background:#C4A4A0;display:flex;align-items:center;justify-content:center;height:100vh }}
+</style></head><body></body></html>'''
+
     _window = webview.create_window(
         'Taskwell',
-        'https://jessieebie.github.io/taskwell/',
+        html=splash_html,
         width=1280,
         height=860,
         min_size=(375, 600),
@@ -69,6 +75,9 @@ def main():
     t.start()
 
     def on_loaded():
+        if 'jessieebie.github.io' not in (_window.get_current_url() or ''):
+            _window.load_url('https://jessieebie.github.io/taskwell/')
+            return
         _window.evaluate_js(f'window.__GCAL_REDIRECT_PORT__ = {PORT};')
 
     _window.events.loaded += on_loaded
