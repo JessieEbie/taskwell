@@ -1248,7 +1248,7 @@ function renderCalTargetPicker(isNew) {
   row.innerHTML = '';
   const opts = [];
   if (googleTokens) {
-    opts.push({ id: 'google', label: 'Personal' }, { id: 'google_work', label: 'Work' });
+    opts.push({ id: 'google', label: 'Personal' });
   }
   if (outlookEmail) opts.push({ id: 'outlook_email', label: 'Outlook' });
   opts.forEach(opt => {
