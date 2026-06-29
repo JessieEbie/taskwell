@@ -765,10 +765,10 @@ let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
-let calFeeds = [];
+let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
-let googleTokens = null;
+let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
 let outlookTokens = null;
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
@@ -1150,26 +1150,28 @@ const CORS_PROXIES = [
 const WEEKDAY_IDX = { SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6 };
 
 async function saveCalFeeds() {
+  try { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); } catch(e) {}
   await api('POST', 'user_settings', { user_id: authSession.user_id, cal_feeds: calFeeds },
     { 'Prefer': 'resolution=merge-duplicates' });
 }
 async function loadCalFeeds() {
   try {
     const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone`);
-    calFeeds = (rows && rows[0]?.cal_feeds) || [];
-    googleTokens = (rows && rows[0]?.google_tokens) || null;
-    outlookTokens = (rows && rows[0]?.outlook_tokens) || null;
-    if (rows && rows[0]?.outlook_email) {
-      outlookEmail = rows[0].outlook_email;
-      localStorage.setItem('tw_outlook_email', outlookEmail);
-    }
-    if (rows && rows[0]?.timezone) {
-      userTimezone = rows[0].timezone;
-      localStorage.setItem('tw_timezone', userTimezone);
+    if (rows?.[0]) {
+      const r = rows[0];
+      calFeeds = r.cal_feeds || [];
+      try { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); } catch(e) {}
+      if (r.google_tokens) {
+        googleTokens = r.google_tokens;
+        try { localStorage.setItem('tw_google_tokens', JSON.stringify(googleTokens)); } catch(e) {}
+      }
+      outlookTokens = r.outlook_tokens || null;
+      if (r.outlook_email) { outlookEmail = r.outlook_email; localStorage.setItem('tw_outlook_email', outlookEmail); }
+      if (r.timezone) { userTimezone = r.timezone; localStorage.setItem('tw_timezone', userTimezone); }
     }
     updateGcalStatus();
     updateOutlookStatus();
-  } catch(e) { calFeeds = []; }
+  } catch(e) { /* keep whatever was loaded from localStorage */ }
 }
 
 function renderTimezoneSelect() {
@@ -1266,6 +1268,7 @@ function updateGcalStatus() {
 async function disconnectGoogleCalendar() {
   if (!confirm('Disconnect Google Calendar?')) return;
   googleTokens = null;
+  localStorage.removeItem('tw_google_tokens');
   await api('POST', 'user_settings',
     { user_id: authSession.user_id, google_tokens: null },
     { 'Prefer': 'resolution=merge-duplicates' });
@@ -1275,6 +1278,7 @@ async function disconnectGoogleCalendar() {
 
 async function saveGoogleTokens(tokens) {
   googleTokens = tokens;
+  try { localStorage.setItem('tw_google_tokens', JSON.stringify(tokens)); } catch(e) {}
   await api('POST', 'user_settings',
     { user_id: authSession.user_id, google_tokens: tokens },
     { 'Prefer': 'resolution=merge-duplicates' });
