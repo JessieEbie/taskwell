@@ -1779,7 +1779,7 @@ function renderHub() {
   // All mode: banner + Home section always shown + work sections
   if (currentContext === 'all') {
     const banner = document.createElement('div');
-    banner.style.cssText = 'background:#9CAF9A;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#fff;';
+    banner.style.cssText = 'background:#7A9478;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#fff;';
     banner.textContent = 'Showing all contexts — Home + Work';
     area.appendChild(banner);
     const homeLists = lists.filter(l => (l.context || 'work') === 'home');
