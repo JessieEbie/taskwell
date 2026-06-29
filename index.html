@@ -88,7 +88,7 @@
 
     /* ── HUB ── */
     #hub .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 0; flex-shrink: 0; flex-wrap: wrap; }
-    #hub .scroll-area { flex: 1; overflow-y: auto; padding: 0 20px 24px; -webkit-overflow-scrolling: touch; }
+    .scroll-area { flex: 1; overflow-y: auto; padding: 0 20px 24px; -webkit-overflow-scrolling: touch; }
     .section-block { margin-top: 20px; }
     .section-hdr { display: flex; align-items: center; gap: 0; cursor: pointer;
                    user-select: none; margin-bottom: 10px; }
@@ -327,13 +327,14 @@
     .palette-ctx-row { margin-bottom: 14px; }
     .palette-ctx-label { font-size: 11px; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
       letter-spacing: .06em; color: var(--ink-soft); margin-bottom: 8px; }
-    .palette-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .palette-swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+    .palette-swatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 44px; }
     .palette-swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
-      border: 3px solid transparent; box-shadow: 0 1px 4px rgba(0,0,0,.15); transition: transform .1s, border-color .1s; position: relative; }
+      border: 3px solid transparent; box-shadow: 0 1px 4px rgba(0,0,0,.15); transition: transform .1s, border-color .1s; }
     .palette-swatch:hover { transform: scale(1.12); }
     .palette-swatch.selected { border-color: var(--ink); }
-    .palette-swatch-name { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
-      font-size: 9px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); white-space: nowrap; }
+    .palette-swatch-name { font-size: 9px; font-family: 'Helvetica Neue', sans-serif;
+      color: var(--ink-faint); white-space: nowrap; text-align: center; }
     .modal-row { display: flex; gap: 10px; margin-top: 4px; }
 
     /* ── Toast / Loading ── */
@@ -821,21 +822,24 @@ function renderPalettePicker() {
     const swatches = document.createElement('div');
     swatches.className = 'palette-swatches';
     PALETTES.forEach(p => {
+      const wrap = document.createElement('div');
+      wrap.className = 'palette-swatch-wrap';
       const s = document.createElement('div');
       s.className = 'palette-swatch' + (userPalettes[key] === p.id ? ' selected' : '');
       s.style.background = p.swatch;
       s.title = p.name;
-      const nm = document.createElement('span');
-      nm.className = 'palette-swatch-name';
-      nm.textContent = p.name;
-      s.appendChild(nm);
       s.onclick = () => {
         userPalettes[key] = p.id;
         localStorage.setItem('tw_palettes', JSON.stringify(userPalettes));
         applyPalettes();
         renderPalettePicker();
       };
-      swatches.appendChild(s);
+      const nm = document.createElement('span');
+      nm.className = 'palette-swatch-name';
+      nm.textContent = p.name;
+      wrap.appendChild(s);
+      wrap.appendChild(nm);
+      swatches.appendChild(wrap);
     });
     row.appendChild(swatches);
     area.appendChild(row);
