@@ -218,10 +218,20 @@ def api(method, path, body=None, extra_headers=None):
                 return json.loads(content) if content else None
         raise
 
+# ── Google Calendar / Outlook state ──
+_google_tokens = None
+_outlook_email = ''
+
 def load_cal_feeds():
+    global _google_tokens, _outlook_email
     try:
-        rows = api('GET', f'user_settings?user_id=eq.{_get_user_id()}&select=cal_feeds')
-        return (rows[0]['cal_feeds'] if rows else None) or []
+        rows = api('GET', f'user_settings?user_id=eq.{_get_user_id()}&select=cal_feeds,google_tokens,outlook_email')
+        if rows:
+            row = rows[0]
+            _google_tokens = row.get('google_tokens') or None
+            _outlook_email = row.get('outlook_email') or ''
+            return (row.get('cal_feeds') or [])
+        return []
     except:
         return load_json(ICS_FEEDS_FILE, [])
 
@@ -424,6 +434,61 @@ def parse_ics_mac(text, color):
                     ev[k] = _parse_ics_dt(raw)
     return events
 
+def fetch_google_calendar_events():
+    """Fetch events from Google Calendar primary calendar using stored tokens."""
+    global _google_tokens
+    if not _google_tokens:
+        return {}
+    try:
+        access_token = _google_tokens['access_token']
+        today = datetime.now().date()
+        time_min = (today - timedelta(days=14)).isoformat() + 'T00:00:00Z'
+        time_max = (today + timedelta(days=90)).isoformat() + 'T00:00:00Z'
+        params = urllib.parse.urlencode({
+            'timeMin': time_min,
+            'timeMax': time_max,
+            'singleEvents': 'true',
+            'orderBy': 'startTime',
+            'maxResults': '500',
+        })
+        url = f'https://www.googleapis.com/calendar/v3/calendars/primary/events?{params}'
+        req = urllib.request.Request(url, headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        })
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        events = {}
+        for item in data.get('items', []):
+            title = item.get('summary', '(No title)')
+            location = item.get('location', '')
+            gcal_id = item.get('id', '')
+            start_info = item.get('start', {})
+            end_info = item.get('end', {})
+            if 'dateTime' in start_info:
+                start = datetime.fromisoformat(start_info['dateTime'].replace('Z', ''))
+                end = datetime.fromisoformat(end_info.get('dateTime', start_info['dateTime']).replace('Z', ''))
+                all_day = False
+            else:
+                start = datetime.fromisoformat(start_info['date'] + 'T00:00:00')
+                end = datetime.fromisoformat(end_info.get('date', start_info['date']) + 'T00:00:00')
+                all_day = True
+            date_key = start.date().isoformat()
+            entry = {
+                'title': title,
+                'start': start,
+                'end': end,
+                'all_day': all_day,
+                'color': ICS_CAL_COLORS[0],
+                'gcalId': gcal_id,
+                'location': location,
+            }
+            events.setdefault(date_key, []).append(entry)
+        return events
+    except Exception as e:
+        print(f"Google Calendar fetch error: {e}")
+        return {}
+
 def fetch_ics_feed(feed):
     url = feed['url'].replace('webcal://','https://')
     proxy_url = (f"{SUPABASE_URL}/functions/v1/ics-proxy?url={urllib.parse.quote(url, safe='')}")
@@ -551,15 +616,19 @@ class TaskwellApp:
     def _register_scroll(self, canvas, orient='y'):
         pass  # kept for call-site compatibility; routing is now done via _active_scroll
 
-    # ── Calendar (ICS only) ──
+    # ── Calendar (ICS + Google) ──
     def _init_calendar(self):
         self.cal_events_all = {}
         self.ics_events = {}
+        self.google_events = {}
         self.ics_feeds = []
         threading.Thread(target=self._load_cal_feeds_bg, daemon=True).start()
+        self._schedule_refresh()
 
     def get_cal_events(self, date_key):
-        return self.ics_events.get(date_key, [])
+        evs = list(self.ics_events.get(date_key, []))
+        evs += self.google_events.get(date_key, [])
+        return sorted(evs, key=lambda e: (not e['all_day'], e['start']))
 
     def _load_cal_feeds_bg(self):
         feeds = load_cal_feeds()
@@ -568,6 +637,7 @@ class TaskwellApp:
     def _on_cal_feeds_loaded(self, feeds):
         self.ics_feeds = feeds
         self._refresh_ics_feeds()
+        self._refresh_google_events()
 
     def _refresh_ics_feeds(self):
         if not self.ics_feeds:
@@ -593,6 +663,29 @@ class TaskwellApp:
             self._render_agenda()
         if hasattr(self, 'upcoming_frame'):
             self._render_mini_cal()
+
+    def _refresh_google_events(self):
+        def fetch():
+            evs = fetch_google_calendar_events()
+            self.root.after(0, self._on_google_loaded, evs)
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _on_google_loaded(self, result):
+        self.google_events = result
+        if self.active_section == 'day':
+            self._render_agenda()
+        elif self.active_section == 'week':
+            self._render_week()
+        if hasattr(self, 'upcoming_frame'):
+            self._render_mini_cal()
+
+    def _refresh_all_cal(self):
+        self._refresh_ics_feeds()
+        self._refresh_google_events()
+
+    def _schedule_refresh(self):
+        self._refresh_all_cal()
+        self.root.after(5 * 60 * 1000, self._schedule_refresh)
 
     # ── List context helpers ──
     def _ics_feeds_dialog(self):
@@ -1694,6 +1787,12 @@ class TaskwellApp:
                   relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
                   activebackground=CREAM_DARK,
                   command=self._ics_feeds_dialog).pack(side=tk.RIGHT)
+        if _google_tokens is not None:
+            tk.Button(hdr, text="+ Event", bg=self.accent, fg=INK, font=FONT_SANS_SM,
+                      relief=tk.RAISED, padx=8, pady=2, cursor="hand2",
+                      activebackground=CREAM_DARK,
+                      command=lambda: self._new_cal_event_dialog(self.selected_day)
+                      ).pack(side=tk.RIGHT, padx=(0, 6))
 
         # Split view: agenda (left) + mini-cal (right)
         split = tk.Frame(frame, bg=PAPER)
@@ -1845,36 +1944,21 @@ class TaskwellApp:
         self._render_mini_cal()
         self._render_agenda()
 
-    def _render_agenda(self):
-        for w in self.day_scroll_frame.winfo_children():
-            w.destroy()
-
-        try:
-            sd = date.fromisoformat(self.selected_day)
-        except:
-            sd = date.today()
-
-        self.day_subtitle.configure(
-            text=sd.strftime("%A, %B %-d, %Y"))
-
-        tk.Label(self.day_scroll_frame,
-                 text=sd.strftime("%A, %B %-d"),
-                 font=("Georgia", 18), bg=PAPER, fg=INK
-                 ).pack(anchor="w", padx=20, pady=(12, 8))
-
+    def _render_agenda_day(self, parent_frame, date_key, day_date):
+        """Render tasks and calendar events for a single day into parent_frame."""
         vis_ids = {l["id"] for l in self.get_visible_lists()}
         day_tasks = [t for t in self.tasks
                      if t["list_id"] in vis_ids and not t.get("completed")
-                     and (t.get("week_assigned") == self.selected_day
-                          or t.get("due_date") == self.selected_day)]
+                     and (t.get("week_assigned") == date_key
+                          or t.get("due_date") == date_key)]
 
         if day_tasks:
-            tk.Label(self.day_scroll_frame, text="TASKS",
+            tk.Label(parent_frame, text="TASKS",
                      font=FONT_SANS_BOLD_SM, bg=PAPER, fg=INK_FAINT
                      ).pack(anchor="w", padx=20, pady=(0, 4))
             for t in day_tasks:
                 lst = next((l for l in self.lists if l["id"] == t["list_id"]), None)
-                row = tk.Frame(self.day_scroll_frame, bg=CREAM, bd=0)
+                row = tk.Frame(parent_frame, bg=CREAM, bd=0)
                 row.pack(fill=tk.X, padx=20, pady=2)
 
                 check_var = tk.BooleanVar(value=False)
@@ -1889,21 +1973,20 @@ class TaskwellApp:
                 if lst:
                     tk.Label(info, text=lst["name"], font=FONT_SANS_SM, bg=CREAM,
                              fg=INK_FAINT, anchor="w").pack(anchor="w")
-        elif not self.get_cal_events(self.selected_day):
-            tk.Label(self.day_scroll_frame,
+        elif not self.get_cal_events(date_key):
+            tk.Label(parent_frame,
                      text="Nothing scheduled for this day.",
                      font=("Georgia", 12, "italic"), bg=PAPER, fg=INK_FAINT
-                     ).pack(anchor="w", padx=20, pady=16)
+                     ).pack(anchor="w", padx=20, pady=8)
 
         # Calendar events
-        cal_day = sorted(self.get_cal_events(self.selected_day),
-                         key=lambda e: (not e["all_day"], e["start"]))
+        cal_day = self.get_cal_events(date_key)
         if cal_day:
-            tk.Label(self.day_scroll_frame, text="CALENDAR",
+            tk.Label(parent_frame, text="CALENDAR",
                      font=FONT_SANS_BOLD_SM, bg=PAPER, fg=INK_FAINT
                      ).pack(anchor="w", padx=20, pady=(12, 4))
             for ev in cal_day:
-                row = tk.Frame(self.day_scroll_frame, bg=ev["color"])
+                row = tk.Frame(parent_frame, bg=ev["color"])
                 row.pack(fill=tk.X, padx=10, pady=2)
                 if ev["all_day"]:
                     time_str = "All day"
@@ -1916,7 +1999,199 @@ class TaskwellApp:
                          fg=INK, padx=6, pady=6, anchor="w"
                          ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
+    def _render_agenda(self):
+        for w in self.day_scroll_frame.winfo_children():
+            w.destroy()
+
+        try:
+            sd = date.fromisoformat(self.selected_day)
+        except:
+            sd = date.today()
+
+        self.day_subtitle.configure(
+            text=sd.strftime("%A, %B %-d, %Y"))
+
+        for i in range(3):
+            d = sd + timedelta(days=i)
+            date_key = d.isoformat()
+
+            if i > 0:
+                tk.Frame(self.day_scroll_frame, bg=CREAM_DARK, height=1).pack(
+                    fill=tk.X, padx=20, pady=(16, 0))
+
+            tk.Label(self.day_scroll_frame,
+                     text=d.strftime("%A, %B %-d"),
+                     font=("Georgia", 18), bg=PAPER, fg=INK
+                     ).pack(anchor="w", padx=20, pady=(12, 8))
+
+            self._render_agenda_day(self.day_scroll_frame, date_key, d)
+
         self.day_canvas.configure(scrollregion=self.day_canvas.bbox("all"))
+
+    def _new_cal_event_dialog(self, initial_date=None):
+        WORK_CAL_ID = '1e007552b4bc54d33d9831686f5e09faeb30f797c352e2fdac26e5dc48f6e9f8@group.calendar.google.com'
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("New Calendar Event")
+        dlg.geometry("420x480")
+        dlg.resizable(False, False)
+        dlg.configure(bg=PAPER)
+        dlg.transient(self.root)
+        dlg.lift(); dlg.focus_force()
+
+        def lbl(text, pady_top=10):
+            tk.Label(dlg, text=text, font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT
+                     ).pack(anchor="w", padx=20, pady=(pady_top, 2))
+
+        def entry_field(**kw):
+            e = tk.Entry(dlg, font=FONT_SANS, bg=CREAM, fg=INK, relief=tk.FLAT,
+                         insertbackground=INK, highlightthickness=1,
+                         highlightbackground=CREAM_DARK, **kw)
+            e.pack(fill=tk.X, padx=20, ipady=5)
+            return e
+
+        lbl("Title", pady_top=16)
+        title_entry = entry_field()
+        title_entry.focus()
+
+        lbl("Location (optional)")
+        location_entry = entry_field()
+
+        lbl("Guests (comma-separated emails, optional)")
+        guests_entry = entry_field()
+
+        lbl("Date (MM/DD/YY)")
+        date_var = make_date_var()
+        date_entry = tk.Entry(dlg, textvariable=date_var, font=FONT_SANS, bg=CREAM, fg=INK,
+                              relief=tk.FLAT, insertbackground=INK, highlightthickness=1,
+                              highlightbackground=CREAM_DARK)
+        date_entry.pack(fill=tk.X, padx=20, ipady=5)
+        if initial_date:
+            try:
+                d = date.fromisoformat(initial_date)
+                date_var.set(d.strftime("%m/%d/%y"))
+            except:
+                pass
+
+        time_row = tk.Frame(dlg, bg=PAPER)
+        time_row.pack(fill=tk.X, padx=20, pady=(6, 0))
+        tk.Label(time_row, text="Start time", font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT).pack(side=tk.LEFT)
+        tk.Label(time_row, text="End time", font=FONT_SANS_SM, bg=PAPER, fg=INK_SOFT).pack(side=tk.RIGHT)
+
+        time_entries_row = tk.Frame(dlg, bg=PAPER)
+        time_entries_row.pack(fill=tk.X, padx=20)
+        start_entry = tk.Entry(time_entries_row, font=FONT_SANS, bg=CREAM, fg=INK, relief=tk.FLAT,
+                               insertbackground=INK, highlightthickness=1,
+                               highlightbackground=CREAM_DARK, width=12)
+        start_entry.pack(side=tk.LEFT, ipady=5)
+        start_entry.insert(0, "9:00 AM")
+        tk.Label(time_entries_row, text=" – ", font=FONT_SANS, bg=PAPER, fg=INK).pack(side=tk.LEFT)
+        end_entry = tk.Entry(time_entries_row, font=FONT_SANS, bg=CREAM, fg=INK, relief=tk.FLAT,
+                             insertbackground=INK, highlightthickness=1,
+                             highlightbackground=CREAM_DARK, width=12)
+        end_entry.pack(side=tk.LEFT, ipady=5)
+        end_entry.insert(0, "10:00 AM")
+
+        cal_var = tk.StringVar(value="Personal")
+        if _google_tokens is not None:
+            lbl("Calendar")
+            cal_row = tk.Frame(dlg, bg=PAPER)
+            cal_row.pack(padx=20, anchor="w")
+            for cal_name in ("Personal", "Work"):
+                tk.Radiobutton(cal_row, text=cal_name, variable=cal_var, value=cal_name,
+                               bg=PAPER, fg=INK, activebackground=PAPER,
+                               selectcolor=self.accent, font=FONT_SANS
+                               ).pack(side=tk.LEFT, padx=(0, 12))
+
+        error_lbl = tk.Label(dlg, text="", font=FONT_SANS_SM, bg=PAPER, fg=RUST, wraplength=380)
+        error_lbl.pack(anchor="w", padx=20, pady=(4, 0))
+
+        def parse_time(s):
+            s = s.strip().upper().replace('.', '')
+            for fmt in ('%I:%M %p', '%I %p', '%H:%M', '%H%M'):
+                try:
+                    return datetime.strptime(s, fmt).time()
+                except:
+                    continue
+            raise ValueError(f"Cannot parse time: {s!r}")
+
+        def save():
+            title = title_entry.get().strip()
+            if not title:
+                error_lbl.config(text="Title is required.")
+                return
+            date_iso = parse_date_input(date_var.get())
+            if not date_iso:
+                error_lbl.config(text="Invalid date.")
+                return
+            try:
+                t_start = parse_time(start_entry.get())
+                t_end = parse_time(end_entry.get())
+            except ValueError as e:
+                error_lbl.config(text=str(e))
+                return
+
+            event_date = date.fromisoformat(date_iso)
+            dt_start = datetime.combine(event_date, t_start)
+            dt_end = datetime.combine(event_date, t_end)
+
+            # Get local timezone offset string e.g. +05:30
+            tz_offset = datetime.now().astimezone().strftime('%z')
+            # Format: +HHMM → +HH:MM
+            if len(tz_offset) == 5:
+                tz_offset = tz_offset[:3] + ':' + tz_offset[3:]
+
+            body = {
+                'summary': title,
+                'start': {
+                    'dateTime': dt_start.strftime('%Y-%m-%dT%H:%M:%S') + tz_offset,
+                },
+                'end': {
+                    'dateTime': dt_end.strftime('%Y-%m-%dT%H:%M:%S') + tz_offset,
+                },
+            }
+            loc = location_entry.get().strip()
+            if loc:
+                body['location'] = loc
+            guests_raw = guests_entry.get().strip()
+            attendees = []
+            if guests_raw:
+                attendees = [{'email': e.strip()} for e in guests_raw.split(',') if e.strip()]
+            if cal_var.get() == "Work" and _outlook_email:
+                if not any(a['email'] == _outlook_email for a in attendees):
+                    attendees.append({'email': _outlook_email})
+            if attendees:
+                body['attendees'] = attendees
+
+            cal_id = WORK_CAL_ID if cal_var.get() == "Work" else "primary"
+            access_token = _google_tokens['access_token']
+            url = f'https://www.googleapis.com/calendar/v3/calendars/{urllib.parse.quote(cal_id, safe="")}/events'
+
+            def do_post():
+                try:
+                    data = json.dumps(body).encode()
+                    req = urllib.request.Request(url, data=data, headers={
+                        'Authorization': f'Bearer {access_token}',
+                        'Content-Type': 'application/json',
+                    }, method='POST')
+                    with urllib.request.urlopen(req, timeout=15):
+                        pass
+                    self.root.after(0, on_success)
+                except Exception as e:
+                    self.root.after(0, lambda: error_lbl.config(text=f"Error: {e}"))
+
+            def on_success():
+                dlg.destroy()
+                self._refresh_google_events()
+
+            threading.Thread(target=do_post, daemon=True).start()
+
+        btn_row = tk.Frame(dlg, bg=PAPER)
+        btn_row.pack(pady=(10, 16))
+        tk.Button(btn_row, text="Cancel", command=dlg.destroy,
+                  bg=CREAM, fg=INK, relief=tk.RAISED, padx=14, pady=6).pack(side=tk.LEFT, padx=6)
+        tk.Button(btn_row, text="Save", command=save,
+                  bg=self.accent, fg=INK, relief=tk.RAISED, padx=14, pady=6).pack(side=tk.LEFT, padx=6)
 
     def _cal_google_info(self):
         messagebox.showinfo(
