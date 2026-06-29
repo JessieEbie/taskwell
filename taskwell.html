@@ -773,6 +773,7 @@ let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
 
 const PALETTES = [
+  { id: 'original', name: 'Original', swatch: '#B8A898', accent: '#B8A898', dark: '#9A8E87', pale: '#EDE8E2', rail: '#B8A898' },
   { id: 'taupe',   name: 'Taupe',   swatch: '#B8ABA4', accent: '#B8ABA4', dark: '#9A8E87', pale: '#EDE8E2', rail: '#B8A898' },
   { id: 'sand',    name: 'Sand',    swatch: '#CEB6A4', accent: '#CEB6A4', dark: '#A89080', pale: '#EDE7DA', rail: '#CEB6A4' },
   { id: 'blush',   name: 'Blush',   swatch: '#C5A192', accent: '#C5A192', dark: '#A6786A', pale: '#EEDFD9', rail: '#C5A192' },
@@ -787,7 +788,7 @@ const PALETTES = [
   { id: 'ochre',   name: 'Ochre',   swatch: '#D47602', accent: '#D47602', dark: '#A85A00', pale: '#F5E0B0', rail: '#D47602' },
 ];
 
-let userPalettes = JSON.parse(localStorage.getItem('tw_palettes') || 'null') || { work: 'taupe', home: 'sage', all: 'rose' };
+let userPalettes = JSON.parse(localStorage.getItem('tw_palettes') || 'null') || { work: 'original', home: 'sage', all: 'rose' };
 
 function applyPalettes() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
@@ -2023,7 +2024,6 @@ async function boot() {
     if (!ok) { signOut(); return; }
   }
 
-  applyPalettes();
   applyContext();
   wireAutoDate(document.getElementById('editTaskDate'));
   wireAutoDate(document.getElementById('calEventDate'));
@@ -2989,6 +2989,7 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
 }
 
+applyPalettes();
 boot();
 </script>
 </body>
