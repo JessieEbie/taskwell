@@ -626,6 +626,7 @@
     <div id="calTargetRow" style="display:none;gap:6px;margin-bottom:8px"></div>
     <input class="modal-input" id="calEventTitle" placeholder="Title" />
     <input class="modal-input" id="calEventLocation" placeholder="Location (optional)" />
+    <input class="modal-input" id="calEventGuests" placeholder="Guests (emails, comma-separated)" />
     <div style="display:flex;gap:8px;margin-top:6px">
       <input class="modal-input" id="calEventDate" placeholder="Date (MM/DD/YY)" style="flex:1;margin-top:0" />
       <input class="modal-input" id="calEventStart" placeholder="Start (9:00 AM)" style="flex:1;margin-top:0" />
@@ -1111,6 +1112,7 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
   document.getElementById('calEventModalTitle').textContent = 'New Event';
   document.getElementById('calEventTitle').value = '';
   document.getElementById('calEventLocation').value = '';
+  document.getElementById('calEventGuests').value = '';
   const [y,mo,d] = date.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
   document.getElementById('calEventStart').value = startStr;
@@ -1130,6 +1132,7 @@ function openEditCalEvent(ev, dateKey) {
   document.getElementById('calEventModalTitle').textContent = 'Edit Event';
   document.getElementById('calEventTitle').value = ev.title;
   document.getElementById('calEventLocation').value = ev.location || '';
+  document.getElementById('calEventGuests').value = (ev.attendees || []).join(', ');
   const [y,mo,d] = dateKey.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
   document.getElementById('calEventStart').value = ev.time || '';
@@ -1178,10 +1181,13 @@ async function saveCalEvent() {
         const res = await gcalApi('GET', `calendars/${encodeURIComponent(calId)}/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
         id = res?.items?.[0]?.id;
       }
-      const attendees = (!id && outlookEmail) ? [{ email: outlookEmail }] : undefined;
+      const guestsRaw = document.getElementById('calEventGuests').value.trim();
+      const extraGuests = guestsRaw ? guestsRaw.split(',').map(e => ({ email: e.trim() })).filter(e => e.email) : [];
+      const workGuest = (!id && isWork && outlookEmail) ? [{ email: outlookEmail }] : [];
+      const attendees = [...workGuest, ...extraGuests];
       const body = { summary: title, start, end,
         ...(location ? { location } : {}),
-        ...(attendees ? { attendees } : {}) };
+        ...(attendees.length ? { attendees } : {}) };
       if (id) { await gcalApi('PUT', `calendars/${encodeURIComponent(calId)}/events/${id}`, body); }
       else { await gcalApi('POST', `calendars/${encodeURIComponent(calId)}/events`, body); }
       closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
