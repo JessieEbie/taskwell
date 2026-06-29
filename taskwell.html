@@ -1099,7 +1099,7 @@ function renderCalTargetPicker(isNew) {
 function openNewCalEvent(date, startStr = '', endStr = '') {
   if (!googleTokens && !outlookEmail) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
   editingCalEventId = null; editingCalEventUID = null; editingCalSource = null;
-  targetCal = googleTokens ? 'google' : 'outlook_email';
+  targetCal = 'google';
   document.getElementById('calEventModalTitle').textContent = 'New Event';
   document.getElementById('calEventTitle').value = '';
   document.getElementById('calEventLocation').value = '';
