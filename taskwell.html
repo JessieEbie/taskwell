@@ -596,10 +596,13 @@
       <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
       <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
     </div>
-    <div class="modal-row" style="padding-top:8px">
-      <span id="outlookStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
-      <button class="btn btn-sm" id="outlookConnectBtn" onclick="connectOutlookCalendar()">Connect Outlook Calendar</button>
-      <button class="btn btn-sm btn-danger" id="outlookDisconnectBtn" onclick="disconnectOutlookCalendar()" style="display:none">Disconnect</button>
+    <div style="padding-top:10px;border-top:1px solid var(--cream-dark);margin-top:4px">
+      <label class="modal-label">Outlook via Power Automate (optional)</label>
+      <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email"
+             value="" oninput="outlookEmail=this.value;localStorage.setItem('tw_outlook_email',this.value)" />
+      <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;font-family:'Helvetica Neue',sans-serif">
+        New events will also be sent to your Outlook calendar via Power Automate.
+      </div>
     </div>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
@@ -650,6 +653,7 @@ let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = null;
 let outlookTokens = null;
+let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let editingCalEventId = null;
 let editingCalEventUID = null;
 let editingCalSource = null; // 'google' or 'outlook'
@@ -866,10 +870,23 @@ async function connectGoogleCalendar() {
   sessionStorage.setItem('gcal_verifier', verifier);
   window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: GCAL_CLIENT_ID, redirect_uri: GCAL_REDIRECT,
-    response_type: 'code', scope: 'https://www.googleapis.com/auth/calendar',
+    response_type: 'code', scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send',
     access_type: 'offline', prompt: 'consent',
     state: 'gcal_auth', code_challenge: challenge, code_challenge_method: 'S256',
   });
+}
+
+async function sendGmailPowerAutomate(subject, to) {
+  if (!googleTokens) return;
+  const email = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain', '', 'Taskwell event'].join('\r\n');
+  const raw = btoa(unescape(encodeURIComponent(email))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  try {
+    await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${googleTokens.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw })
+    });
+  } catch(e) { console.error('Gmail send failed:', e); }
 }
 
 // ── Outlook Calendar ──
@@ -1079,8 +1096,16 @@ async function saveCalEvent() {
       }
       const body = { summary: title, start, end, ...(location ? { location } : {}) };
       if (id) { await gcalApi('PUT', `calendars/primary/events/${id}`, body); }
-      else { await gcalApi('POST', 'calendars/primary/events', body); }
-      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
+      else {
+        await gcalApi('POST', 'calendars/primary/events', body);
+        if (outlookEmail) {
+          const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:00`;
+          const s = startRaw ? parseTimeInput(startRaw, date) : new Date(date+'T00:00:00');
+          const e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
+          await sendGmailPowerAutomate(`TASKWELL:ADD|${title}|${fmt(s)}|${fmt(e)}|${location||''}`, outlookEmail);
+        }
+      }
+      closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created' + (outlookEmail && !id ? ' + Outlook' : ''));
     }
     await fetchAllFeeds();
   } catch(e) { showToast('Error: ' + e.message); }
@@ -1336,6 +1361,8 @@ async function fetchAllFeeds() {
 
 function openCalFeedsModal() {
   renderCalFeedsList();
+  const inp = document.getElementById('outlookEmailInput');
+  if (inp) inp.value = outlookEmail;
   openModal('calFeedsModal');
 }
 
