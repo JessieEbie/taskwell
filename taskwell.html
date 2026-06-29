@@ -598,10 +598,19 @@
     </div>
     <div style="padding-top:10px;border-top:1px solid var(--cream-dark);margin-top:4px">
       <label class="modal-label">Outlook via Power Automate (optional)</label>
-      <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email"
-             value="" oninput="outlookEmail=this.value;localStorage.setItem('tw_outlook_email',this.value)" />
+      <div id="outlookEmailView" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
+        <span id="outlookEmailDisplay" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink)"></span>
+        <button class="btn btn-sm" onclick="showOutlookEmailEdit()">Change Email</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteOutlookEmail()">Delete</button>
+      </div>
+      <div id="outlookEmailEdit" style="display:none;gap:6px;align-items:center;margin-bottom:6px">
+        <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email" style="margin:0;flex:1" />
+        <button class="btn btn-sm btn-primary" onclick="saveOutlookEmail()">Save</button>
+        <button class="btn btn-sm" onclick="cancelOutlookEmailEdit()">Cancel</button>
+      </div>
+      <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none;margin-bottom:6px">Add Email</button>
       <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;font-family:'Helvetica Neue',sans-serif">
-        New events will also be sent to your Outlook calendar via Power Automate.
+        New events will be sent to your Outlook calendar via Power Automate.
       </div>
     </div>
     <div class="modal-row">
@@ -655,6 +664,7 @@ let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = null;
 let outlookTokens = null;
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
+
 let editingCalEventId = null;
 let editingCalEventUID = null;
 let editingCalSource = null; // 'google' or 'outlook'
@@ -790,13 +800,69 @@ async function saveCalFeeds() {
 }
 async function loadCalFeeds() {
   try {
-    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens`);
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email`);
     calFeeds = (rows && rows[0]?.cal_feeds) || [];
     googleTokens = (rows && rows[0]?.google_tokens) || null;
     outlookTokens = (rows && rows[0]?.outlook_tokens) || null;
+    if (rows && rows[0]?.outlook_email) {
+      outlookEmail = rows[0].outlook_email;
+      localStorage.setItem('tw_outlook_email', outlookEmail);
+    }
     updateGcalStatus();
     updateOutlookStatus();
   } catch(e) { calFeeds = []; }
+}
+
+async function saveOutlookEmail() {
+  const val = document.getElementById('outlookEmailInput').value.trim();
+  if (!val) return;
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, outlook_email: val }, { 'Prefer': 'resolution=merge-duplicates' });
+    outlookEmail = val;
+    localStorage.setItem('tw_outlook_email', val);
+    renderOutlookEmailSection();
+    showToast('Outlook email saved');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+async function deleteOutlookEmail() {
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, outlook_email: null }, { 'Prefer': 'resolution=merge-duplicates' });
+    outlookEmail = '';
+    localStorage.removeItem('tw_outlook_email');
+    renderOutlookEmailSection();
+    showToast('Outlook email removed');
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+function showOutlookEmailEdit() {
+  document.getElementById('outlookEmailAddBtn').style.display = 'none';
+  document.getElementById('outlookEmailView').style.display = 'none';
+  const edit = document.getElementById('outlookEmailEdit');
+  edit.style.display = 'flex';
+  document.getElementById('outlookEmailInput').value = outlookEmail;
+  document.getElementById('outlookEmailInput').focus();
+}
+
+function cancelOutlookEmailEdit() {
+  document.getElementById('outlookEmailEdit').style.display = 'none';
+  renderOutlookEmailSection();
+}
+
+function renderOutlookEmailSection() {
+  const view = document.getElementById('outlookEmailView');
+  const edit = document.getElementById('outlookEmailEdit');
+  const addBtn = document.getElementById('outlookEmailAddBtn');
+  if (!view) return;
+  edit.style.display = 'none';
+  if (outlookEmail) {
+    document.getElementById('outlookEmailDisplay').textContent = outlookEmail;
+    view.style.display = 'flex';
+    addBtn.style.display = 'none';
+  } else {
+    view.style.display = 'none';
+    addBtn.style.display = '';
+  }
 }
 
 // ── Google Calendar ──
@@ -1372,8 +1438,7 @@ async function fetchAllFeeds() {
 
 function openCalFeedsModal() {
   renderCalFeedsList();
-  const inp = document.getElementById('outlookEmailInput');
-  if (inp) inp.value = outlookEmail;
+  renderOutlookEmailSection();
   openModal('calFeedsModal');
 }
 
