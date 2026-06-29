@@ -682,7 +682,7 @@ const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
 // ── State ──
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
-let weekOffset = 0, activeWeekList = 'all';
+let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false;
 let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
@@ -2204,6 +2204,16 @@ async function dropTaskOnDay(taskId, key) {
   showToast('Task assigned');
 }
 
+function timeToMinutes(t) {
+  if (!t) return -1;
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return -1;
+  let h = parseInt(m[1]), min = parseInt(m[2]), ap = m[3].toUpperCase();
+  if (ap === 'AM' && h === 12) h = 0;
+  if (ap === 'PM' && h !== 12) h += 12;
+  return h * 60 + min;
+}
+
 function renderWeek() {
   const days = getWeekDays();
   const todayKey = dateKey(new Date());
@@ -2221,6 +2231,7 @@ function renderWeek() {
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
     ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
+    <button class="btn btn-sm" onclick="hideUnassigned=!hideUnassigned;renderWeek()">${hideUnassigned ? 'Show' : 'Hide'} Unassigned</button>
     <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
@@ -2238,10 +2249,11 @@ function renderWeek() {
   ctrl.appendChild(filterRow);
 
   // Pending chips
+  document.querySelector('.pending-area').style.display = hideUnassigned ? 'none' : '';
   const chips = document.getElementById('pendingChips');
   chips.innerHTML = '';
   const visListIds = new Set(visLists.map(l => l.id));
-  const unassigned = tasks.filter(t => !t.week_assigned && !t.completed &&
+  const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed &&
     visListIds.has(t.list_id) &&
     (activeWeekList === 'all' || t.list_id === activeWeekList));
 
@@ -2290,7 +2302,7 @@ function renderWeek() {
     const dayCalEvs = (calEvents[key] || []).slice().sort((a, b) => {
       if (a.allDay && !b.allDay) return -1;
       if (!a.allDay && b.allDay) return 1;
-      return (a.time || '').localeCompare(b.time || '');
+      return timeToMinutes(a.time) - timeToMinutes(b.time);
     });
     dayCalEvs.forEach(ev => {
       const el = document.createElement('div');
@@ -2516,7 +2528,7 @@ function renderAgendaDay(agenda, key) {
   const agendaCalEvs = (calEvents[key] || []).slice().sort((a, b) => {
     if (a.allDay && !b.allDay) return -1;
     if (!a.allDay && b.allDay) return 1;
-    return (a.time || '').localeCompare(b.time || '');
+    return timeToMinutes(a.time) - timeToMinutes(b.time);
   });
   if (agendaCalEvs.length > 0) {
     const lbl = document.createElement('div');
