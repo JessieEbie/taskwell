@@ -681,7 +681,7 @@ function getVisibleLists() {
   if (currentContext === 'all') return lists;
   return lists.filter(l => (l.context || 'work') === currentContext);
 }
-function dateKey(d) { return d.toISOString().split('T')[0]; }
+function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function parseDate(val) {
   if (!val || !val.trim()) return null;
   const parts = val.split('/');
