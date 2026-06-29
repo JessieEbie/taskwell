@@ -324,6 +324,16 @@
       padding: 16px 18px; margin-top: 18px; max-width: 520px; }
     .settings-block-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 10px;
       font-family: Georgia, serif; }
+    .palette-ctx-row { margin-bottom: 14px; }
+    .palette-ctx-label { font-size: 11px; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--ink-soft); margin-bottom: 8px; }
+    .palette-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+    .palette-swatch { width: 34px; height: 34px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+      border: 3px solid transparent; box-shadow: 0 1px 4px rgba(0,0,0,.15); transition: transform .1s, border-color .1s; position: relative; }
+    .palette-swatch:hover { transform: scale(1.12); }
+    .palette-swatch.selected { border-color: var(--ink); }
+    .palette-swatch-name { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+      font-size: 9px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); white-space: nowrap; }
     .modal-row { display: flex; gap: 10px; margin-top: 4px; }
 
     /* ── Toast / Loading ── */
@@ -588,6 +598,15 @@
       <div class="page-sub">Calendar integrations &amp; preferences</div>
     </div>
     <div class="scroll-area" style="padding:0 20px 24px">
+
+      <div class="settings-block">
+        <div class="settings-block-title">Color Palette</div>
+        <div style="font-size:11px;color:var(--ink-faint);margin-bottom:14px;font-family:'Helvetica Neue',sans-serif">
+          Choose accent colors for each context.
+        </div>
+        <div id="palettePickerArea"></div>
+      </div>
+
       <div class="settings-block">
         <div class="settings-block-title">Timezone</div>
         <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px;font-family:'Helvetica Neue',sans-serif">
@@ -752,6 +771,76 @@ let googleTokens = null;
 let outlookTokens = null;
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
+
+const PALETTES = [
+  { id: 'taupe',   name: 'Taupe',   swatch: '#B8ABA4', accent: '#B8ABA4', dark: '#9A8E87', pale: '#EDE8E2', rail: '#B8A898' },
+  { id: 'sand',    name: 'Sand',    swatch: '#CEB6A4', accent: '#CEB6A4', dark: '#A89080', pale: '#EDE7DA', rail: '#CEB6A4' },
+  { id: 'blush',   name: 'Blush',   swatch: '#C5A192', accent: '#C5A192', dark: '#A6786A', pale: '#EEDFD9', rail: '#C5A192' },
+  { id: 'rose',    name: 'Rose',    swatch: '#C4A4A0', accent: '#C4A4A0', dark: '#A67B5B', pale: '#EDE0DB', rail: '#C4A4A0' },
+  { id: 'sage',    name: 'Sage',    swatch: '#7A9478', accent: '#7A9478', dark: '#5C7260', pale: '#D8E5D6', rail: '#7A9478' },
+  { id: 'olive',   name: 'Olive',   swatch: '#AAA891', accent: '#AAA891', dark: '#80806A', pale: '#E2E0D0', rail: '#AAA891' },
+  { id: 'slate',   name: 'Slate',   swatch: '#7E928A', accent: '#7E928A', dark: '#5C7068', pale: '#D0DDD8', rail: '#7E928A' },
+  { id: 'forest',  name: 'Forest',  swatch: '#315D44', accent: '#315D44', dark: '#184A2E', pale: '#BDDAC8', rail: '#315D44' },
+  { id: 'teal',    name: 'Teal',    swatch: '#08717A', accent: '#08717A', dark: '#005259', pale: '#B8DCE0', rail: '#08717A' },
+  { id: 'rust',    name: 'Rust',    swatch: '#BB3000', accent: '#BB3000', dark: '#762500', pale: '#F5C4B4', rail: '#BB3000' },
+  { id: 'amber',   name: 'Amber',   swatch: '#CA6922', accent: '#CA6922', dark: '#A85010', pale: '#F0DCC0', rail: '#CA6922' },
+  { id: 'ochre',   name: 'Ochre',   swatch: '#D47602', accent: '#D47602', dark: '#A85A00', pale: '#F5E0B0', rail: '#D47602' },
+];
+
+let userPalettes = JSON.parse(localStorage.getItem('tw_palettes') || 'null') || { work: 'taupe', home: 'sage', all: 'rose' };
+
+function applyPalettes() {
+  const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
+  const w = get(userPalettes.work), h = get(userPalettes.home), a = get(userPalettes.all);
+  let style = document.getElementById('paletteStyle');
+  if (!style) { style = document.createElement('style'); style.id = 'paletteStyle'; document.head.appendChild(style); }
+  style.textContent = `
+    body { --accent:${w.accent}; --accent-dark:${w.dark}; --accent-pale:${w.pale}; --rail-bg:${w.rail}; }
+    body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
+    body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
+  `;
+}
+
+function renderPalettePicker() {
+  const area = document.getElementById('palettePickerArea');
+  if (!area) return;
+  area.innerHTML = '';
+  const contexts = [
+    { key: 'work', label: 'Work' },
+    { key: 'home', label: 'Home' },
+    { key: 'all',  label: 'All (unified)' },
+  ];
+  contexts.forEach(({ key, label }) => {
+    const row = document.createElement('div');
+    row.className = 'palette-ctx-row';
+    const lbl = document.createElement('div');
+    lbl.className = 'palette-ctx-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    const swatches = document.createElement('div');
+    swatches.className = 'palette-swatches';
+    PALETTES.forEach(p => {
+      const s = document.createElement('div');
+      s.className = 'palette-swatch' + (userPalettes[key] === p.id ? ' selected' : '');
+      s.style.background = p.swatch;
+      s.title = p.name;
+      const nm = document.createElement('span');
+      nm.className = 'palette-swatch-name';
+      nm.textContent = p.name;
+      s.appendChild(nm);
+      s.onclick = () => {
+        userPalettes[key] = p.id;
+        localStorage.setItem('tw_palettes', JSON.stringify(userPalettes));
+        applyPalettes();
+        renderPalettePicker();
+      };
+      swatches.appendChild(s);
+    });
+    row.appendChild(swatches);
+    area.appendChild(row);
+  });
+}
+
 const TIMEZONE_OPTIONS = [
   ['America/Phoenix', 'Arizona (Phoenix, no DST)'],
   ['America/Los_Angeles', 'Pacific (Los Angeles)'],
@@ -1934,6 +2023,7 @@ async function boot() {
     if (!ok) { signOut(); return; }
   }
 
+  applyPalettes();
   applyContext();
   wireAutoDate(document.getElementById('editTaskDate'));
   wireAutoDate(document.getElementById('calEventDate'));
@@ -2022,7 +2112,7 @@ function switchTab(tab) {
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   if (tab === 'week') renderWeek();
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
-  if (tab === 'settings') { renderCalFeedsList(); renderOutlookEmailSection(); renderTimezoneSelect(); }
+  if (tab === 'settings') { renderCalFeedsList(); renderOutlookEmailSection(); renderTimezoneSelect(); renderPalettePicker(); }
 }
 
 // ══════════════════════════════
