@@ -149,6 +149,10 @@
     #week .week-controls > * { display: flex; align-items: center; width: 100%; margin-bottom: 6px; }
     .week-nav-row { display: flex; align-items: center; gap: 4px; width: 100%; flex-wrap: wrap; }
     .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
+    .week-cat-select { font-size: 13px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink);
+      background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
+      padding: 4px 8px; cursor: pointer; outline: none; }
+    .week-cat-select:focus { border-color: var(--accent); }
     #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px; border-radius: 8px; flex-shrink: 0; }
     .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
                      letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
@@ -707,7 +711,7 @@ const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
 // ── State ──
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
-let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false;
+let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false, weekCategoryFilter = 'all';
 let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
@@ -2316,6 +2320,13 @@ async function dropTaskOnDay(taskId, key) {
   showToast('Task assigned');
 }
 
+function weekCatFilterIds(visLists) {
+  if (weekCategoryFilter === 'none') return new Set();
+  if (weekCategoryFilter === 'all') return new Set(visLists.map(l => l.id));
+  if (weekCategoryFilter === 'home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
+  return new Set(visLists.filter(l => (l.section || 'Misc') === weekCategoryFilter && (l.context || 'work') === 'work').map(l => l.id));
+}
+
 function timeToMinutes(t) {
   if (!t) return -1;
   const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -2347,17 +2358,28 @@ function renderWeek() {
     <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
   ctrl.appendChild(navRow);
 
-  // List filter row (separate line)
+  // Category filter dropdown
   const visLists = getVisibleLists();
   const filterRow = document.createElement('div');
   filterRow.className = 'week-lists-row';
-  [['all','All'], ...visLists.map(l => [l.id, l.name])].forEach(([key, label]) => {
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-sm' + (activeWeekList === key ? ' btn-primary' : '');
-    btn.textContent = label;
-    btn.onclick = () => { activeWeekList = key; renderWeek(); };
-    filterRow.appendChild(btn);
+  const sel = document.createElement('select');
+  sel.className = 'week-cat-select';
+  sel.value = weekCategoryFilter;
+  const hasHome = visLists.some(l => (l.context || 'work') === 'home');
+  const catOptions = [
+    ['all', 'All lists'],
+    ...(hasHome ? [['home', 'Home']] : []),
+    ...WORK_SECTIONS.filter(s => visLists.some(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')).map(s => [s, s]),
+    ['none', 'Hide tasks'],
+  ];
+  catOptions.forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val; opt.textContent = label;
+    if (val === weekCategoryFilter) opt.selected = true;
+    sel.appendChild(opt);
   });
+  sel.onchange = () => { weekCategoryFilter = sel.value; renderWeek(); };
+  filterRow.appendChild(sel);
   ctrl.appendChild(filterRow);
 
   // Pending chips
@@ -2365,9 +2387,9 @@ function renderWeek() {
   const chips = document.getElementById('pendingChips');
   chips.innerHTML = '';
   const visListIds = new Set(visLists.map(l => l.id));
+  const weekFilterIds = weekCatFilterIds(visLists);
   const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed &&
-    visListIds.has(t.list_id) &&
-    (activeWeekList === 'all' || t.list_id === activeWeekList));
+    weekFilterIds.has(t.list_id));
 
   if (unassigned.length === 0) {
     chips.innerHTML = '<span style="font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink-faint)">All tasks assigned ✓</span>';
@@ -2406,8 +2428,7 @@ function renderWeek() {
 
     // Tasks assigned or due on this day (from visible lists + active filter)
     const dayTasks = tasks.filter(t =>
-      visListIds.has(t.list_id) &&
-      (activeWeekList === 'all' || t.list_id === activeWeekList) &&
+      weekFilterIds.has(t.list_id) &&
       (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
     );
 
