@@ -4,6 +4,8 @@ Taskwell — Mac App (WebView)
 Loads the Taskwell web app in a native macOS window via pywebview.
 Updates to the web app are automatically reflected — no rebuild needed.
 """
+import base64
+import os
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -13,10 +15,31 @@ import webview
 PORT = 37842
 _window = None
 
+_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'icon.png')
+with open(_icon_path, 'rb') as _f:
+    _ICON_B64 = base64.b64encode(_f.read()).decode()
+
+SPLASH_HTML = f'''<!DOCTYPE html>
+<html><head><style>
+* {{ margin:0;padding:0;box-sizing:border-box }}
+body {{ background:#C4A4A0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:-apple-system,sans-serif }}
+.card {{ background:#FAF7F2;border-radius:20px;padding:36px 28px;width:320px;text-align:center;box-shadow:0 20px 60px rgba(46,33,24,.15) }}
+img {{ width:72px;height:72px;border-radius:16px;display:block;margin:0 auto 16px }}
+h1 {{ font-size:24px;font-weight:normal;color:#2E2118;margin-bottom:6px }}
+p {{ font-size:12px;color:#6B5744 }}
+</style></head>
+<body>
+<div class="card">
+  <img src="data:image/png;base64,{_ICON_B64}">
+  <h1>Taskwell</h1>
+  <p>Loading…</p>
+</div>
+</body></html>'''
+
 
 class CallbackHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
-        pass  # suppress server logs
+        pass
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -55,15 +78,9 @@ def main():
     global _window
     api = MacAPI()
 
-    splash_html = '''<!DOCTYPE html>
-<html><head><style>
-* {{ margin:0;padding:0 }}
-body {{ background:#C4A4A0;display:flex;align-items:center;justify-content:center;height:100vh }}
-</style></head><body></body></html>'''
-
     _window = webview.create_window(
         'Taskwell',
-        html=splash_html,
+        html=SPLASH_HTML,
         width=1280,
         height=860,
         min_size=(375, 600),
