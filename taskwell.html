@@ -1098,9 +1098,9 @@ async function processGcalCallback(code, state) {
   }
 }
 
-async function sendGmailPowerAutomate(subject, to) {
+async function sendGmailPowerAutomate(to, subject, bodyText) {
   if (!googleTokens) return;
-  const email = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain', '', 'Taskwell event'].join('\r\n');
+  const email = [`To: ${to}`, `Subject: ${subject}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=utf-8', '', bodyText].join('\r\n');
   const raw = btoa(unescape(encodeURIComponent(email))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
   try {
     await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -1243,10 +1243,15 @@ function parseTimeInput(str, date) {
 
 function renderCalTargetPicker(isNew) {
   const row = document.getElementById('calTargetRow');
-  if (!isNew || !googleTokens) { row.style.display = 'none'; return; }
+  if (!isNew || (!googleTokens && !outlookEmail)) { row.style.display = 'none'; return; }
   row.style.display = 'flex';
   row.innerHTML = '';
-  [{ id: 'google', label: 'Personal' }, { id: 'google_work', label: 'Work' }].forEach(opt => {
+  const opts = [];
+  if (googleTokens) {
+    opts.push({ id: 'google', label: 'Personal' }, { id: 'google_work', label: 'Work' });
+  }
+  if (outlookEmail) opts.push({ id: 'outlook_email', label: 'Outlook' });
+  opts.forEach(opt => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-sm' + (targetCal === opt.id ? ' btn-primary' : '');
     btn.textContent = opt.label;
@@ -1316,11 +1321,25 @@ async function saveCalEvent() {
   try {
     const cal = editingCalEventId ? editingCalSource : targetCal;
     if (cal === 'outlook_email') {
-      // Route via Power Automate email — no Google Calendar involved
+      // Route via Power Automate #AddToCalendar email
       if (!outlookEmail) { showToast('Enter your ASU email in Calendars first'); return; }
       const s = startRaw ? parseTimeInput(startRaw, date) : new Date(date+'T00:00:00');
       const e = endRaw ? parseTimeInput(endRaw, date) : new Date(s.getTime()+3600000);
-      await sendGmailPowerAutomate(`TASKWELL:ADD|${title}|${fmtLocal(s)}|${fmtLocal(e)}|${location||''}`, outlookEmail);
+      const MONTHS_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const dateObj = new Date(date + 'T12:00:00');
+      const dateStr = `${MONTHS_LONG[dateObj.getMonth()]} ${dateObj.getDate()}, ${dateObj.getFullYear()}`;
+      const fmtTime = d => { let h = d.getHours(), m = d.getMinutes(), ap = h >= 12 ? 'PM' : 'AM'; h = h%12||12; return `${h}:${String(m).padStart(2,'0')} ${ap}`; };
+      const timeStr = startRaw ? `${fmtTime(s)} – ${fmtTime(e)}` : 'All Day';
+      const guestsRaw = document.getElementById('calEventGuests').value.trim();
+      const attendees = guestsRaw ? guestsRaw.split(',').map(g => g.trim()).filter(Boolean).join('; ') : '';
+      const bodyLines = [
+        `Date: ${dateStr}`,
+        `Time: ${timeStr}`,
+        `Title: ${title}`,
+        location ? `Location: ${location}` : null,
+        attendees ? `Attendees: ${attendees}` : null,
+      ].filter(Boolean).join('\n');
+      await sendGmailPowerAutomate(outlookEmail, '#AddToCalendar', bodyLines);
       closeModal('calEventModal'); showToast('Event sent to Outlook');
     } else {
       // Google Calendar
