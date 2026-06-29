@@ -1492,7 +1492,7 @@ async function fetchOutlookCalendarEvents() {
   });
   try {
     const res = await outlookApi('GET', `me/calendarView?${params}`);
-    const color = CAL_COLORS[(calFeeds.length + (googleTokens ? 1 : 0)) % CAL_COLORS.length];
+    const color = CAL_COLORS[(calFeeds.length + 2) % CAL_COLORS.length];
     (res?.value || []).forEach(item => {
       const allDay = item.isAllDay;
       let dk, timeStr = null;
@@ -1506,7 +1506,7 @@ async function fetchOutlookCalendarEvents() {
         timeStr = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
       }
       if (!calEvents[dk]) calEvents[dk] = [];
-      calEvents[dk].push({ title: item.subject || '(No title)', time: timeStr, allDay, color,
+      calEvents[dk].push({ title: item.subject || '(No title)', time: timeStr, allDay, color, source: 'outlook',
         outlookId: item.id, uid: item.iCalUId,
         location: item.location?.displayName || null, endTime: item.end?.dateTime || null,
         description: item.bodyPreview || null, meetLink: item.onlineMeeting?.joinUrl || null,
@@ -1570,7 +1570,7 @@ function openEditCalEvent(ev, dateKey) {
   if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); goToCalSettings(); return; }
   editingCalEventId = ev.gcalId || ev.outlookId || null;
   editingCalEventUID = ev.uid || null;
-  editingCalSource = ev.outlookId ? 'outlook' : 'google';
+  editingCalSource = ev.source || (ev.outlookId ? 'outlook' : 'google');
   renderCalTargetPicker(false);
   document.getElementById('calEventModalTitle').textContent = 'Edit Event';
   document.getElementById('calEventTitle').value = ev.title;
@@ -1865,39 +1865,45 @@ async function fetchGoogleCalendarEvents() {
     timeMin: minD.toISOString(), timeMax: maxD.toISOString(),
     singleEvents: 'true', orderBy: 'startTime', maxResults: '500'
   });
-  try {
-    const res = await gcalApi('GET', `calendars/primary/events?${params}`);
-    const color = CAL_COLORS[calFeeds.length % CAL_COLORS.length];
-    (res.items || []).forEach(item => {
+  const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const pushItems = (items, color, source) => {
+    (items || []).forEach(item => {
       if (item.status === 'cancelled') return;
       const startVal = item.start?.dateTime || item.start?.date;
       const allDay = !item.start?.dateTime;
-      let timeStr = null;
-      let dk;
-      const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      let timeStr = null, dk;
       if (allDay) {
-        dk = startVal; // already YYYY-MM-DD, no timezone conversion needed
+        dk = startVal;
       } else {
         const dt = new Date(startVal);
-        dk = localDk(dt); // use local date to avoid UTC midnight boundary issues
+        dk = localDk(dt);
         const h = dt.getHours(), m = String(dt.getMinutes()).padStart(2,'0');
         timeStr = `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
       }
       const endVal = item.end?.dateTime || item.end?.date;
       if (!calEvents[dk]) calEvents[dk] = [];
       const meetLink = item.hangoutLink || item.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri || null;
-      calEvents[dk].push({ title: item.summary || '(No title)', time: timeStr, allDay, color,
+      calEvents[dk].push({ title: item.summary || '(No title)', time: timeStr, allDay, color, source,
         gcalId: item.id, endTime: endVal, location: item.location || null,
         description: item.description || null, meetLink, webLink: item.htmlLink || null });
     });
-  } catch(e) { console.error('Google Calendar fetch failed:', e); }
+  };
+  await Promise.all([
+    gcalApi('GET', `calendars/primary/events?${params}`)
+      .then(res => pushItems(res.items, CAL_COLORS[0], 'google'))
+      .catch(e => console.error('Google primary calendar fetch failed:', e)),
+    gcalApi('GET', `calendars/${encodeURIComponent(WORK_CAL_ID)}/events?${params}`)
+      .then(res => pushItems(res.items, CAL_COLORS[1], 'google_work'))
+      .catch(e => console.error('Google work calendar fetch failed:', e))
+  ]);
 }
 
 async function fetchAllFeeds() {
   calEvents = {};
   await Promise.all([
-    ...calFeeds.map(async feed => {
-      const evs = await fetchFeed(feed);
+    ...calFeeds.map(async (feed, i) => {
+      const color = CAL_COLORS[(i + 2) % CAL_COLORS.length];
+      const evs = await fetchFeed({ ...feed, color });
       Object.entries(evs).forEach(([dk, arr]) => {
         if (!calEvents[dk]) calEvents[dk] = [];
         calEvents[dk].push(...arr);
