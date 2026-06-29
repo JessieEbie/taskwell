@@ -1406,7 +1406,9 @@ async function addCalFeed() {
   const feed = { id: Date.now().toString(), url, name: 'Loading…', color,
     ...(username ? { username, password } : {}) };
   calFeeds.push(feed);
-  await saveCalFeeds();
+  try {
+    await saveCalFeeds();
+  } catch(e) { showToast('Save error: ' + e.message); calFeeds.pop(); return; }
   inp.value = '';
   document.getElementById('calFeedUser').value = '';
   document.getElementById('calFeedPass').value = '';
