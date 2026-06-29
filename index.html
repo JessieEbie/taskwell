@@ -659,7 +659,7 @@ const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 let weekOffset = 0, activeWeekList = 'all';
-let currentContext = localStorage.getItem('tw_context') || 'work';
+let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
