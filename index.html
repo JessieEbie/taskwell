@@ -311,6 +311,10 @@
                     background: var(--cream); font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
                     color: var(--ink); outline: none; margin-bottom: 14px; }
     .modal-label { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; display: block; }
+    .settings-block { background: var(--paper); border: 1px solid var(--cream-dark); border-radius: 12px;
+      padding: 16px 18px; margin-top: 18px; max-width: 520px; }
+    .settings-block-title { font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 10px;
+      font-family: Georgia, serif; }
     .modal-row { display: flex; gap: 10px; margin-top: 4px; }
 
     /* ── Toast / Loading ── */
@@ -488,6 +492,10 @@
     <svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
     <span>Inbox</span>
   </button>
+  <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.1a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span>Settings</span>
+  </button>
   <button class="signout-btn" title="Sign out" onclick="signOut()">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
@@ -532,7 +540,6 @@
       <div class="page-sub" id="daySub"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
-        <button class="btn btn-sm" onclick="openCalFeedsModal()">Calendars ▾</button>
       </div>
     </div>
     <div class="day-view-inner">
@@ -562,6 +569,63 @@
         <button class="btn btn-primary" onclick="addInboxItem()">Add</button>
       </div>
       <div class="inbox-list" id="inboxList"></div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings" class="section">
+    <div class="page-header">
+      <div class="page-title">Settings</div>
+      <div class="page-sub">Calendar integrations &amp; preferences</div>
+    </div>
+    <div class="scroll-area" style="padding:0 20px 24px">
+      <div class="settings-block">
+        <div class="settings-block-title">Timezone</div>
+        <div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px;font-family:'Helvetica Neue',sans-serif">
+          Used when scheduling calendar events.
+        </div>
+        <select class="modal-input" id="settingsTimezone" style="margin:0;max-width:320px" onchange="saveTimezone()"></select>
+      </div>
+
+      <div class="settings-block">
+        <div class="settings-block-title">Calendar Integration</div>
+        <div class="cal-feeds-list" id="calFeedsList"></div>
+        <label class="modal-label">Add ICS feed URL</label>
+        <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
+               onkeydown="if(event.key==='Enter') addCalFeed()" />
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <input class="modal-input" id="calFeedUser" placeholder="Username (if required)" style="flex:1;margin-top:0" />
+          <input class="modal-input" id="calFeedPass" placeholder="Password (if required)" type="password" style="flex:1;margin-top:0" />
+        </div>
+        <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;font-family:'Helvetica Neue',sans-serif">
+          Paste your ICS link. Leave username/password blank for public or secret-URL feeds.
+        </div>
+        <div class="modal-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream-dark)">
+          <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
+        </div>
+        <div class="modal-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream-dark)">
+          <span id="gcalStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
+          <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
+          <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
+        </div>
+        <div style="padding-top:10px;border-top:1px solid var(--cream-dark);margin-top:4px">
+          <label class="modal-label">Work Calendar Invite Email (optional)</label>
+          <div id="outlookEmailView" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
+            <span id="outlookEmailDisplay" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink)"></span>
+            <button class="btn btn-sm" onclick="showOutlookEmailEdit()">Change Email</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteOutlookEmail()">Delete</button>
+          </div>
+          <div id="outlookEmailEdit" style="display:none;gap:6px;align-items:center;margin-bottom:6px">
+            <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email" style="margin:0;flex:1" />
+            <button class="btn btn-sm btn-primary" onclick="saveOutlookEmail()">Save</button>
+            <button class="btn btn-sm" onclick="cancelOutlookEmailEdit()">Cancel</button>
+          </div>
+          <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none;margin-bottom:6px">Add Email</button>
+          <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;font-family:'Helvetica Neue',sans-serif">
+            New Work events will invite this email as a guest.
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -627,50 +691,6 @@
   </div>
 </div>
 
-<!-- Calendar Feeds Modal -->
-<div class="modal-overlay" id="calFeedsModal">
-  <div class="modal modal-wide">
-    <div class="modal-title">Calendar Feeds</div>
-    <div class="cal-feeds-list" id="calFeedsList"></div>
-    <label class="modal-label">Add ICS feed URL</label>
-    <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
-           onkeydown="if(event.key==='Enter') addCalFeed()" />
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <input class="modal-input" id="calFeedUser" placeholder="Username (if required)" style="flex:1;margin-top:0" />
-      <input class="modal-input" id="calFeedPass" placeholder="Password (if required)" type="password" style="flex:1;margin-top:0" />
-    </div>
-    <div style="font-size:11px;color:var(--ink-faint);margin-top:4px;font-family:'Helvetica Neue',sans-serif">
-      Paste your ICS link. Leave username/password blank for public or secret-URL feeds.
-    </div>
-    <div class="modal-row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--cream-dark)">
-      <span id="gcalStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
-      <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
-      <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
-    </div>
-    <div style="padding-top:10px;border-top:1px solid var(--cream-dark);margin-top:4px">
-      <label class="modal-label">Work Calendar Invite Email (optional)</label>
-      <div id="outlookEmailView" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
-        <span id="outlookEmailDisplay" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink)"></span>
-        <button class="btn btn-sm" onclick="showOutlookEmailEdit()">Change Email</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteOutlookEmail()">Delete</button>
-      </div>
-      <div id="outlookEmailEdit" style="display:none;gap:6px;align-items:center;margin-bottom:6px">
-        <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email" style="margin:0;flex:1" />
-        <button class="btn btn-sm btn-primary" onclick="saveOutlookEmail()">Save</button>
-        <button class="btn btn-sm" onclick="cancelOutlookEmailEdit()">Cancel</button>
-      </div>
-      <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none;margin-bottom:6px">Add Email</button>
-      <div style="font-size:11px;color:var(--ink-faint);margin-top:3px;font-family:'Helvetica Neue',sans-serif">
-        New Work events will invite this email as a guest.
-      </div>
-    </div>
-    <div class="modal-row">
-      <button class="btn" onclick="closeModal('calFeedsModal')">Done</button>
-      <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="calEventModal">
   <div class="modal">
     <div class="modal-title" id="calEventModalTitle">New Event</div>
@@ -722,6 +742,17 @@ let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = null;
 let outlookTokens = null;
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
+let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
+const TIMEZONE_OPTIONS = [
+  ['America/Phoenix', 'Arizona (Phoenix, no DST)'],
+  ['America/Los_Angeles', 'Pacific (Los Angeles)'],
+  ['America/Denver', 'Mountain (Denver)'],
+  ['America/Chicago', 'Central (Chicago)'],
+  ['America/New_York', 'Eastern (New York)'],
+  ['America/Anchorage', 'Alaska (Anchorage)'],
+  ['Pacific/Honolulu', 'Hawaii (Honolulu)'],
+  ['UTC', 'UTC'],
+];
 
 let editingCalEventId = null;
 let editingCalEventUID = null;
@@ -1021,7 +1052,7 @@ async function saveCalFeeds() {
 }
 async function loadCalFeeds() {
   try {
-    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email`);
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone`);
     calFeeds = (rows && rows[0]?.cal_feeds) || [];
     googleTokens = (rows && rows[0]?.google_tokens) || null;
     outlookTokens = (rows && rows[0]?.outlook_tokens) || null;
@@ -1029,9 +1060,35 @@ async function loadCalFeeds() {
       outlookEmail = rows[0].outlook_email;
       localStorage.setItem('tw_outlook_email', outlookEmail);
     }
+    if (rows && rows[0]?.timezone) {
+      userTimezone = rows[0].timezone;
+      localStorage.setItem('tw_timezone', userTimezone);
+    }
     updateGcalStatus();
     updateOutlookStatus();
   } catch(e) { calFeeds = []; }
+}
+
+function renderTimezoneSelect() {
+  const sel = document.getElementById('settingsTimezone');
+  if (!sel) return;
+  sel.innerHTML = '';
+  TIMEZONE_OPTIONS.forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val; opt.textContent = label;
+    if (val === userTimezone) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+async function saveTimezone() {
+  const val = document.getElementById('settingsTimezone').value;
+  userTimezone = val;
+  localStorage.setItem('tw_timezone', val);
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, timezone: val }, { 'Prefer': 'resolution=merge-duplicates' });
+    showToast('Timezone updated');
+  } catch(e) { showToast('Error: ' + e.message); }
 }
 
 async function saveOutlookEmail() {
@@ -1375,7 +1432,7 @@ function renderCalTargetPicker(isNew) {
 }
 
 function openNewCalEvent(date, startStr = '', endStr = '') {
-  if (!googleTokens && !outlookEmail) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
+  if (!googleTokens && !outlookEmail) { showToast('Connect a calendar first'); goToCalSettings(); return; }
   editingCalEventId = null; editingCalEventUID = null; editingCalSource = null;
   targetCal = 'google';
   document.getElementById('calEventModalTitle').textContent = 'New Event';
@@ -1393,7 +1450,7 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
 }
 
 function openEditCalEvent(ev, dateKey) {
-  if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); openCalFeedsModal(); return; }
+  if (!googleTokens && !outlookTokens) { showToast('Connect a calendar first'); goToCalSettings(); return; }
   editingCalEventId = ev.gcalId || ev.outlookId || null;
   editingCalEventUID = ev.uid || null;
   editingCalSource = ev.outlookId ? 'outlook' : 'google';
@@ -1419,7 +1476,7 @@ async function saveCalEvent() {
   if (!title) { showToast('Title required'); return; }
   const date = parseDate(dateRaw);
   if (!date) { showToast('Invalid date'); return; }
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const tz = userTimezone;
   let start, end;
   if (startRaw) {
     const s = parseTimeInput(startRaw, date);
@@ -1743,10 +1800,8 @@ function loadCalCache() {
   } catch(e) {}
 }
 
-function openCalFeedsModal() {
-  renderCalFeedsList();
-  renderOutlookEmailSection();
-  openModal('calFeedsModal');
+function goToCalSettings() {
+  switchTab('settings');
 }
 
 function renderCalFeedsList() {
@@ -1958,6 +2013,7 @@ function switchTab(tab) {
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   if (tab === 'week') renderWeek();
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
+  if (tab === 'settings') { renderCalFeedsList(); renderOutlookEmailSection(); renderTimezoneSelect(); }
 }
 
 // ══════════════════════════════
@@ -2353,8 +2409,7 @@ function renderWeek() {
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
-    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
-    <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>`;
+    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}`;
   ctrl.appendChild(navRow);
 
   // Filter row: Hide Unassigned + category dropdown
