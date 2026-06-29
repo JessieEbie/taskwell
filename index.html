@@ -531,7 +531,7 @@
             font-family:'Helvetica Neue',sans-serif; font-size:10px; color:var(--ink-faint);
             background:var(--cream-dark); border-top:1px solid var(--cream-dark);
             z-index:5; pointer-events:none;">
-  Taskwell · v 2026-06-27
+  Taskwell · v 2026-06-28
 </div>
 
 <!-- New List Modal -->
@@ -1779,7 +1779,7 @@ function renderHub() {
   // All mode: banner + Home section always shown + work sections
   if (currentContext === 'all') {
     const banner = document.createElement('div');
-    banner.style.cssText = 'background:#EDE7DA;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#2E2118;';
+    banner.style.cssText = 'background:#9CAF9A;padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:#fff;';
     banner.textContent = 'Showing all contexts — Home + Work';
     area.appendChild(banner);
     const homeLists = lists.filter(l => (l.context || 'work') === 'home');
