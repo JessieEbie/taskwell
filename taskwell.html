@@ -539,6 +539,13 @@
     <div class="modal-title">New List</div>
     <label class="modal-label">List name</label>
     <input class="modal-input" id="newListName" placeholder="e.g. BIO 340, Groceries…" onkeydown="if(event.key==='Enter') confirmNewList()" />
+    <div id="newListContextRow" style="display:none;gap:6px;margin-bottom:8px">
+      <label class="modal-label">Add to</label>
+      <div style="display:flex;gap:6px">
+        <button type="button" class="btn btn-sm btn-primary" id="newListCtxWork" onclick="setNewListCtx('work')">Work</button>
+        <button type="button" class="btn btn-sm" id="newListCtxHome" onclick="setNewListCtx('home')">Home</button>
+      </div>
+    </div>
     <div id="newListSectionRow">
       <label class="modal-label">Section</label>
       <select class="modal-select" id="newListSection">
@@ -1991,8 +1998,18 @@ function collapseAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = true);
 function expandAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = false); sectionCollapsed['__home'] = false; lists.forEach(l => listCollapsed[l.id] = false); renderHub(); }
 
 // ── New List ──
+function setNewListCtx(ctx) {
+  document.getElementById('newListCtxWork').className = 'btn btn-sm' + (ctx === 'work' ? ' btn-primary' : '');
+  document.getElementById('newListCtxHome').className = 'btn btn-sm' + (ctx === 'home' ? ' btn-primary' : '');
+  document.getElementById('newListSectionRow').style.display = ctx === 'home' ? 'none' : '';
+  document.getElementById('newListCtxWork').dataset.selected = ctx === 'work' ? '1' : '';
+}
+
 function openNewListModal() {
   document.getElementById('newListName').value = '';
+  const isAll = currentContext === 'all';
+  document.getElementById('newListContextRow').style.display = isAll ? '' : 'none';
+  if (isAll) setNewListCtx('work');
   document.getElementById('newListSectionRow').style.display = currentContext === 'home' ? 'none' : '';
   openModal('newListModal');
   setTimeout(() => document.getElementById('newListName').focus(), 200);
@@ -2001,7 +2018,10 @@ function openNewListModal() {
 async function confirmNewList() {
   const name = document.getElementById('newListName').value.trim();
   if (!name) return;
-  const isHome = currentContext === 'home';
+  const pickedHome = currentContext === 'all'
+    ? document.getElementById('newListCtxHome').className.includes('btn-primary')
+    : currentContext === 'home';
+  const isHome = pickedHome;
   const section = isHome ? 'Misc' : document.getElementById('newListSection').value;
   const context = isHome ? 'home' : 'work';
   closeModal('newListModal');
