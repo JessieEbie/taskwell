@@ -1585,8 +1585,8 @@ async function boot() {
         body: JSON.stringify({ auth_code: qp.get('code'), code_verifier: verifier })
       });
       if (r.ok) { saveSession(await r.json()); }
-      else { alert('PKCE error: ' + await r.text()); }
-    } catch(e) { alert('PKCE exception: ' + e.message); }
+      else { showToast('Sign-in error: ' + await r.text(), true); }
+    } catch(e) { showToast('Sign-in error: ' + e.message, true); }
     history.replaceState(null, '', window.location.pathname);
   }
 
@@ -1679,7 +1679,7 @@ async function boot() {
         }
       } catch(e) { showToast('Outlook auth error: ' + e.message); }
     }
-  } catch(e) { alert('Load error: ' + e.message); showToast('Connection error'); console.error(e); }
+  } catch(e) { console.error('Load error:', e); showToast('Connection error: ' + e.message, true); }
   document.getElementById('loading').classList.add('hidden');
 }
 
