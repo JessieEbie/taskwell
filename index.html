@@ -729,8 +729,9 @@ function fmtForInput(iso) { return fmtDisplay(iso); }
 // ── Date Picker ──
 let _dpTarget = null, _dpYear, _dpMonth;
 function showDatePicker(inp) {
-  _dpTarget = inp;
   const rect = inp.getBoundingClientRect();
+  if (rect.height === 0) return; // input is inside a hidden/closed modal
+  _dpTarget = inp;
   let d = parseDateInput(inp.value) || new Date();
   _dpYear = d.getFullYear(); _dpMonth = d.getMonth();
   let el = document.getElementById('twDatePicker');
@@ -816,6 +817,7 @@ function wireAutoDate(inp) {
     e.target.value = v.slice(0,8);
   });
   inp.addEventListener('focus', () => showDatePicker(inp));
+  inp.addEventListener('click', () => showDatePicker(inp));
 }
 
 // ── Auth ──
