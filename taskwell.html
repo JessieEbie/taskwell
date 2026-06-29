@@ -1333,13 +1333,14 @@ async function saveCalEvent() {
       const guestsRaw = document.getElementById('calEventGuests').value.trim();
       const attendees = guestsRaw ? guestsRaw.split(',').map(g => g.trim()).filter(Boolean).join('; ') : '';
       const bodyLines = [
+        '#AddToCalendar',
         `Date: ${dateStr}`,
         `Time: ${timeStr}`,
         `Title: ${title}`,
         location ? `Location: ${location}` : null,
         attendees ? `Attendees: ${attendees}` : null,
       ].filter(Boolean).join('\n');
-      await sendGmailPowerAutomate(outlookEmail, '#AddToCalendar', bodyLines);
+      await sendGmailPowerAutomate(outlookEmail, `#AddToCalendar ${title}`, bodyLines);
       closeModal('calEventModal'); showToast('Event sent to Outlook');
     } else {
       // Google Calendar
