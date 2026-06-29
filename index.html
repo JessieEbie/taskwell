@@ -489,7 +489,10 @@
     <div class="page-header">
       <div class="page-title">Day</div>
       <div class="page-sub" id="daySub"></div>
-      <button class="btn btn-sm" style="margin-left:auto" onclick="openCalFeedsModal()">Calendars ▾</button>
+      <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
+        <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
+        <button class="btn btn-sm" onclick="openCalFeedsModal()">Calendars ▾</button>
+      </div>
     </div>
     <div class="day-view-inner">
       <div class="day-sidebar">
@@ -2235,13 +2238,6 @@ function renderAgendaDay(agenda, key) {
     ? 'Today — ' + sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })
     : sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   titleRow.appendChild(title);
-  if (googleTokens || outlookTokens || outlookEmail) {
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn btn-sm btn-primary';
-    addBtn.textContent = '+ Event';
-    addBtn.onclick = () => openNewCalEvent(key);
-    titleRow.appendChild(addBtn);
-  }
   agenda.appendChild(titleRow);
 
   const visListIds = new Set(getVisibleLists().map(l => l.id));
@@ -2315,6 +2311,8 @@ function renderAgenda() {
   const agenda = document.getElementById('dayAgenda');
   if (!agenda) return;
   agenda.innerHTML = '';
+  const addBtn = document.getElementById('dayAddEventBtn');
+  if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
   const base = new Date(selectedDay + 'T00:00:00');
   for (let i = 0; i < 3; i++) {
     const d = new Date(base); d.setDate(base.getDate() + i);
