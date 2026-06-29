@@ -803,17 +803,45 @@ class TaskwellApp:
         gcal_status = tk.Label(gcal_row, font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT)
         gcal_status.pack(side=tk.LEFT)
 
+        def reload_gcal_tokens():
+            global _google_tokens
+            try:
+                rows = api('GET', f'user_settings?user_id=eq.{_get_user_id()}&select=google_tokens')
+                if rows and rows[0].get('google_tokens'):
+                    _google_tokens = rows[0]['google_tokens']
+                    update_gcal_ui()
+                    self._refresh_google_events()
+                    if hasattr(self, 'day_add_event_btn'):
+                        self.day_add_event_btn.pack(side=tk.RIGHT, padx=(0, 6))
+                else:
+                    update_gcal_ui()
+            except Exception as e:
+                msg = str(e)
+                self.root.after(0, lambda m=msg: update_gcal_ui())
+
         def update_gcal_ui():
             for w in gcal_row.winfo_children(): w.destroy()
             if _google_tokens:
                 tk.Label(gcal_row, text='Connected', font=FONT_SANS_SM,
                          bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
+                tk.Button(gcal_row, text='Reconnect', bg=CREAM, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
+                          cursor='hand2', command=open_web_connect).pack(side=tk.LEFT, padx=(8, 0))
                 tk.Button(gcal_row, text='Disconnect', bg=CREAM, fg=INK,
                           font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
-                          cursor='hand2', command=disconnect_gcal).pack(side=tk.LEFT, padx=(8, 0))
+                          cursor='hand2', command=disconnect_gcal).pack(side=tk.LEFT, padx=(4, 0))
             else:
-                tk.Label(gcal_row, text='Not connected — connect via the web app',
-                         font=FONT_SANS_SM, bg=PAPER, fg=INK_FAINT).pack(side=tk.LEFT)
+                tk.Button(gcal_row, text='Connect Google Calendar', bg=self.accent, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
+                          cursor='hand2', command=open_web_connect).pack(side=tk.LEFT)
+                tk.Button(gcal_row, text='I\'ve connected ↺', bg=CREAM, fg=INK,
+                          font=FONT_SANS_SM, relief=tk.RAISED, padx=8, pady=2,
+                          cursor='hand2', command=lambda: threading.Thread(
+                              target=reload_gcal_tokens, daemon=True).start()
+                          ).pack(side=tk.LEFT, padx=(8, 0))
+
+        def open_web_connect():
+            webbrowser.open('https://jessieebie.github.io/taskwell/')
 
         def disconnect_gcal():
             global _google_tokens
