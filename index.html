@@ -1329,7 +1329,7 @@ async function saveCalEvent() {
       const dateObj = new Date(date + 'T12:00:00');
       const dateStr = `${MONTHS_LONG[dateObj.getMonth()]} ${dateObj.getDate()}, ${dateObj.getFullYear()}`;
       const fmtTime = d => { let h = d.getHours(), m = d.getMinutes(), ap = h >= 12 ? 'PM' : 'AM'; h = h%12||12; return `${h}:${String(m).padStart(2,'0')} ${ap}`; };
-      const timeStr = startRaw ? `${fmtTime(s)} – ${fmtTime(e)}` : 'All Day';
+      const timeStr = startRaw ? `${fmtTime(s)} - ${fmtTime(e)}` : 'All Day';
       const guestsRaw = document.getElementById('calEventGuests').value.trim();
       const attendees = guestsRaw ? guestsRaw.split(',').map(g => g.trim()).filter(Boolean).join('; ') : '';
       const bodyLines = [
