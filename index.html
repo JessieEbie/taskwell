@@ -2667,7 +2667,9 @@ function weekCatFilterIds(visLists) {
   if (weekCategoryFilter === 'none') return new Set();
   if (weekCategoryFilter === 'all') return new Set(visLists.map(l => l.id));
   if (weekCategoryFilter === 'Home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
-  return new Set(visLists.filter(l => (l.section || 'Misc') === weekCategoryFilter && (l.context || 'work') === 'work').map(l => l.id));
+  if (WORK_SECTIONS.includes(weekCategoryFilter)) return new Set(visLists.filter(l => (l.section || 'Misc') === weekCategoryFilter && (l.context || 'work') === 'work').map(l => l.id));
+  // specific list ID
+  return new Set(visLists.filter(l => l.id === weekCategoryFilter).map(l => l.id));
 }
 
 function timeToMinutes(t) {
@@ -2710,13 +2712,23 @@ function renderWeek() {
   const presentWorkSections = new Set(visLists
     .filter(l => (l.context || 'work') === 'work')
     .map(l => l.section || 'Misc'));
-  const catOptions = [
-    ['all', 'All lists'],
-    ...(hasHome ? [['Home', 'Home']] : []),
-    ...WORK_SECTIONS.filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).map(s => [s, s]),
-    ['none', 'Hide tasks'],
-  ];
-  const currentLabel = (catOptions.find(([v]) => v === weekCategoryFilter) || catOptions[0])[1];
+  // Build menu items: [value, label, indent]
+  // indent=false → section-level option; indent=true → individual list
+  const menuItems = [['all', 'All lists', false]];
+  if (hasHome) {
+    const homeLists = visLists.filter(l => (l.context || 'work') === 'home');
+    menuItems.push(['Home', 'Home', false]);
+    homeLists.forEach(l => menuItems.push([l.id, l.name, true]));
+  }
+  WORK_SECTIONS.filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).forEach(s => {
+    menuItems.push([s, s, false]);
+    visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')
+      .forEach(l => menuItems.push([l.id, l.name, true]));
+  });
+  menuItems.push(['none', 'Hide tasks', false]);
+
+  const currentItem = menuItems.find(([v]) => v === weekCategoryFilter) || menuItems[0];
+  const currentLabel = currentItem[1];
 
   const filterBtn = document.createElement('button');
   filterBtn.className = 'week-filter-btn';
@@ -2734,9 +2746,11 @@ function renderWeek() {
       }, true);
     }
     menu.innerHTML = '';
-    catOptions.forEach(([val, label]) => {
+    menuItems.forEach(([val, label, indent]) => {
       const b = document.createElement('button');
       b.className = val === weekCategoryFilter ? 'active' : '';
+      b.style.paddingLeft = indent ? '28px' : '';
+      b.style.fontSize = indent ? '12px' : '';
       b.innerHTML = `<span class="week-filter-check">${val === weekCategoryFilter ? '✓' : ''}</span>${label}`;
       b.onclick = () => { weekCategoryFilter = val; menu.style.display = 'none'; renderWeek(); };
       menu.appendChild(b);
@@ -2773,7 +2787,8 @@ function renderWeek() {
     unassigned.forEach(t => {
       const chip = document.createElement('div');
       chip.className = 'chip';
-      chip.textContent = t.title + (t.due_date ? ` · ${fmtDisplay(t.due_date)}` : '');
+      const lst = lists.find(l => l.id === t.list_id);
+      chip.innerHTML = `<span>${t.title}${t.due_date ? ` · ${fmtDisplay(t.due_date)}` : ''}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
       chip.draggable = true;
       setupChipDrag(chip, t.id);
       chips.appendChild(chip);
