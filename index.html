@@ -2028,15 +2028,9 @@ async function boot() {
   // Require auth
   if (!authSession) { showLoginScreen(); return; }
 
-  // Check allowed email from JWT
+  // Extract user_id from JWT if not already stored
   try {
     const payload = JSON.parse(atob(authSession.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    const email = payload.email || '';
-    if (email !== 'jessieebie@gmail.com') {
-      authSession = null; localStorage.removeItem('tw_auth');
-      document.getElementById('loginErr1').textContent = 'Access denied. This app is private.';
-      showLoginScreen(); return;
-    }
     if (!authSession.user_id) { authSession.user_id = payload.sub; localStorage.setItem('tw_auth', JSON.stringify(authSession)); }
   } catch(e) { /* JWT decode failed, proceed anyway */ }
 
