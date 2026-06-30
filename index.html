@@ -931,7 +931,6 @@ function renderPalettePicker() {
         localStorage.setItem('tw_palettes', JSON.stringify(userPalettes));
         applyPalettes();
         renderPalettePicker();
-        fetchAllFeeds();
       };
       const nm = document.createElement('span');
       nm.className = 'palette-swatch-name';
@@ -943,6 +942,13 @@ function renderPalettePicker() {
     row.appendChild(swatches);
     area.appendChild(row);
   });
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn btn-primary';
+  saveBtn.textContent = 'Update Calendar Colors';
+  saveBtn.style.marginTop = '16px';
+  saveBtn.onclick = () => { fetchAllFeeds(); showToast('Calendar colors updated'); };
+  area.appendChild(saveBtn);
 }
 
 
