@@ -1360,6 +1360,18 @@ async function refreshGoogleToken() {
     });
     if (!r.ok) return false;
     const data = await r.json();
+    if (data.error) {
+      // Google rejected the refresh token — clear it from Supabase so it doesn't
+      // keep coming back on page reload
+      googleTokens = null;
+      localStorage.removeItem('tw_google_tokens');
+      await api('POST', 'user_settings',
+        { user_id: authSession.user_id, google_tokens: null },
+        { 'Prefer': 'resolution=merge-duplicates' }).catch(() => {});
+      updateGcalStatus();
+      showToast('Google Calendar disconnected — please reconnect in Settings → Calendar', true);
+      return false;
+    }
     await saveGoogleTokens({ ...googleTokens, access_token: data.access_token,
       expires_at: Date.now() + (data.expires_in || 3600) * 1000,
       ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}) });
@@ -1974,10 +1986,13 @@ async function fetchGoogleCalendarEvents() {
   let gcalAuthFailed = false;
   const handleGcalError = (e) => {
     console.error('Google Calendar fetch failed:', e);
-    if (!gcalAuthFailed && (e.message?.includes('expired') || e.message?.includes('401') || e.message?.includes('invalid'))) {
+    if (!gcalAuthFailed && e.message === 'Google Calendar session expired — please reconnect in Calendars settings.') {
       gcalAuthFailed = true;
       googleTokens = null;
       localStorage.removeItem('tw_google_tokens');
+      api('POST', 'user_settings',
+        { user_id: authSession.user_id, google_tokens: null },
+        { 'Prefer': 'resolution=merge-duplicates' }).catch(() => {});
       updateGcalStatus();
       showToast('Google Calendar disconnected — please reconnect in Settings → Calendar', true);
     }
