@@ -1507,9 +1507,16 @@ function updateCalModalColor() {
   const p = isWork ? get(userPalettes.work) : get(userPalettes.home);
   const modal = document.querySelector('#calEventModal .modal');
   if (!modal) return;
-  modal.style.setProperty('--accent', p.accent);
+  // tint background: blend rail color at ~18% over white
+  const hex = p.rail.replace('#','');
+  const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+  const mix = (c) => Math.round(c * 0.18 + 255 * 0.82);
+  modal.style.background = `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+  modal.style.setProperty('--accent', p.rail);
   modal.style.setProperty('--accent-dark', p.dark);
   modal.style.setProperty('--accent-pale', p.pale);
+  const title = modal.querySelector('.modal-title');
+  if (title) title.style.color = p.dark;
 }
 
 function renderCalTargetPicker(isNew) {
