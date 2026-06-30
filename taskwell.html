@@ -1910,9 +1910,9 @@ async function fetchGoogleCalendarEvents() {
 async function fetchAllFeeds() {
   calEvents = {};
   await Promise.all([
-    ...calFeeds.map(async (feed, i) => {
-      const color = CAL_COLORS[(i + 2) % CAL_COLORS.length];
-      const evs = await fetchFeed({ ...feed, color });
+    ...calFeeds.map(async (feed) => {
+      const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
+      const evs = await fetchFeed({ ...feed, color: workColor });
       Object.entries(evs).forEach(([dk, arr]) => {
         if (!calEvents[dk]) calEvents[dk] = [];
         calEvents[dk].push(...arr);
