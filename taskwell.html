@@ -109,10 +109,10 @@
     .list-dot.home { background: var(--sage); }
     .list-del { font-size: 14px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .list-del:hover { color: var(--rust); }
-    .list-drag-handle { color: var(--ink-faint); font-size: 13px; cursor: grab; padding: 0 2px; flex-shrink: 0; user-select: none; }
+    .list-drag-handle { color: var(--ink-faint); font-size: 13px; cursor: grab; padding: 0 2px; flex-shrink: 0; user-select: none; touch-action: none; }
     .list-drag-handle:active { cursor: grabbing; }
-    .list-block.list-dragging { opacity: 0.4; }
     .list-block.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
+    .section-body.drag-over-sec { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 4px; min-height: 56px; }
     .list-body { padding: 0 12px 10px; }
     .task-input-group { opacity: 0.6; transition: opacity .15s; margin-top: 4px; margin-bottom: 4px; }
     .task-input-group:focus-within { opacity: 1; }
@@ -796,7 +796,7 @@ let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false, weekCategory
 let activeSettingsTab = 'calendar';
 let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
-let dragListId = null;
+// list drag state is managed inside initListDrag (pointer-events based)
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
 let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
@@ -2331,6 +2331,7 @@ function renderHub() {
     } else {
       const grid = document.createElement('div');
       grid.className = 'section-body';
+      grid.dataset.sectionKey = 'home:home';
       visible.slice().sort((a,b) => (a.position??0) - (b.position??0))
         .forEach(lst => grid.appendChild(makeListBlock(lst)));
       area.appendChild(grid);
@@ -2381,6 +2382,7 @@ function makeSectionBlock(label, key, secLists, isHome) {
   if (!collapsed) {
     const body = document.createElement('div');
     body.className = 'section-body';
+    body.dataset.sectionKey = isHome ? 'home:home' : `work:${key}`;
     if (secLists.length === 0) {
       body.innerHTML = '<div class="empty-section">No lists yet</div>';
     } else {
@@ -2392,29 +2394,143 @@ function makeSectionBlock(label, key, secLists, isHome) {
   return block;
 }
 
-async function reorderList(fromId, toId) {
+async function reorderList(fromId, toId, toSectionKey) {
   const fromList = lists.find(l => l.id === fromId);
-  const toList   = lists.find(l => l.id === toId);
-  if (!fromList || !toList) return;
-  const sameGroup = (a, b) =>
-    (a.context||'work') === (b.context||'work') &&
-    (a.section||'Misc') === (b.section||'Misc');
-  if (!sameGroup(fromList, toList)) return;
+  if (!fromList) return;
 
-  const group = lists
-    .filter(l => sameGroup(l, fromList))
-    .sort((a, b) => (a.position??0) - (b.position??0));
+  const toList = toId ? lists.find(l => l.id === toId) : null;
+  const fromCtx = fromList.context || 'work';
+  const fromSec = fromList.section || 'Misc';
 
-  const fi = group.findIndex(l => l.id === fromId);
-  group.splice(fi, 1);
-  const ti = group.findIndex(l => l.id === toId);
-  group.splice(ti, 0, fromList);
-  group.forEach((l, i) => { l.position = i * 10; });
+  let toCtx, toSec;
+  if (toList) {
+    toCtx = toList.context || 'work';
+    toSec = toList.section || 'Misc';
+  } else if (toSectionKey) {
+    [toCtx, toSec] = toSectionKey.split(':');
+  } else {
+    return;
+  }
+
+  // Don't allow home↔work moves
+  if (fromCtx !== toCtx) return;
+
+  const crossSection = fromSec !== toSec;
+
+  if (crossSection) {
+    // Re-number the source section without fromList
+    const srcGroup = lists
+      .filter(l => (l.context||'work') === fromCtx && (l.section||'Misc') === fromSec && l.id !== fromId)
+      .sort((a,b) => (a.position??0) - (b.position??0));
+    srcGroup.forEach((l, i) => { l.position = i * 10; });
+    fromList.section = toSec;
+    Promise.all(srcGroup.map(l => api('PATCH', `lists?id=eq.${l.id}`, { position: l.position }).catch(() => {})));
+  }
+
+  // Build destination group (fromList.section is already updated for cross-section)
+  const destGroup = lists
+    .filter(l => (l.context||'work') === toCtx && (l.section||'Misc') === toSec)
+    .sort((a,b) => (a.position??0) - (b.position??0));
+
+  // Remove fromList if it's already in the dest group (same-section case)
+  const fi = destGroup.findIndex(l => l.id === fromId);
+  if (fi !== -1) destGroup.splice(fi, 1);
+
+  if (toList) {
+    const ti = destGroup.findIndex(l => l.id === toId);
+    destGroup.splice(ti >= 0 ? ti : destGroup.length, 0, fromList);
+  } else {
+    destGroup.push(fromList);
+  }
+
+  destGroup.forEach((l, i) => { l.position = i * 10; });
 
   renderHub();
-  await Promise.all(group.map(l =>
-    api('PATCH', `lists?id=eq.${l.id}`, { position: l.position }).catch(() => {})
+  await Promise.all(destGroup.map(l =>
+    api('PATCH', `lists?id=eq.${l.id}`, { position: l.position, section: l.section }).catch(() => {})
   ));
+}
+
+function initListDrag(block, listId) {
+  const handle = block.querySelector('.list-drag-handle');
+  if (!handle) return;
+  let clone = null, startX = 0, startY = 0, blockRect = null, dragging = false, capturedId = null;
+
+  handle.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    capturedId = e.pointerId;
+    handle.setPointerCapture(e.pointerId);
+    startX = e.clientX; startY = e.clientY;
+    blockRect = block.getBoundingClientRect();
+    dragging = false; clone = null;
+  });
+
+  handle.addEventListener('pointermove', e => {
+    if (e.pointerId !== capturedId) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+
+    if (!dragging && Math.sqrt(dx*dx + dy*dy) > 8) {
+      dragging = true;
+      clone = block.cloneNode(true);
+      clone.style.cssText = `position:fixed;z-index:9999;width:${blockRect.width}px;left:${blockRect.left}px;top:${blockRect.top}px;opacity:0.85;pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.18);border:2px solid var(--accent);border-radius:8px;overflow:hidden;`;
+      document.body.appendChild(clone);
+      block.style.opacity = '0.3';
+    }
+
+    if (dragging && clone) {
+      e.preventDefault();
+      clone.style.left = (blockRect.left + dx) + 'px';
+      clone.style.top  = (blockRect.top  + dy) + 'px';
+
+      clone.style.display = 'none';
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      clone.style.display = '';
+
+      document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+        .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+      const tb = el?.closest('.list-block');
+      if (tb && tb !== block) {
+        tb.classList.add('drag-over');
+      } else {
+        const ts = el?.closest('.section-body');
+        if (ts) ts.classList.add('drag-over-sec');
+      }
+    }
+  });
+
+  const finishDrag = (cx, cy) => {
+    if (!dragging || !clone) { dragging = false; capturedId = null; return; }
+    clone.style.display = 'none';
+    const el = document.elementFromPoint(cx, cy);
+    clone.remove(); clone = null;
+    block.style.opacity = '';
+    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+
+    const tb = el?.closest('.list-block');
+    if (tb && tb !== block && tb.dataset.listId) {
+      reorderList(listId, tb.dataset.listId);
+    } else {
+      const ts = el?.closest('.section-body');
+      if (ts?.dataset.sectionKey) reorderList(listId, null, ts.dataset.sectionKey);
+    }
+    dragging = false; capturedId = null;
+  };
+
+  handle.addEventListener('pointerup', e => {
+    if (e.pointerId !== capturedId) return;
+    handle.releasePointerCapture(e.pointerId);
+    finishDrag(e.clientX, e.clientY);
+  });
+
+  handle.addEventListener('pointercancel', () => {
+    if (clone) { clone.remove(); clone = null; }
+    block.style.opacity = '';
+    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+    dragging = false; capturedId = null;
+  });
 }
 
 function makeListBlock(lst) {
@@ -2426,30 +2542,7 @@ function makeListBlock(lst) {
 
   const block = document.createElement('div');
   block.className = 'list-block';
-  block.draggable = true;
-  block.addEventListener('dragstart', e => {
-    dragListId = lst.id;
-    setTimeout(() => block.classList.add('list-dragging'), 0);
-    e.dataTransfer.effectAllowed = 'move';
-    e.stopPropagation();
-  });
-  block.addEventListener('dragend', () => {
-    dragListId = null;
-    block.classList.remove('list-dragging');
-    document.querySelectorAll('.list-block.drag-over').forEach(el => el.classList.remove('drag-over'));
-  });
-  block.addEventListener('dragover', e => {
-    if (!dragListId || dragListId === lst.id) return;
-    e.preventDefault(); e.stopPropagation();
-    document.querySelectorAll('.list-block.drag-over').forEach(el => el.classList.remove('drag-over'));
-    block.classList.add('drag-over');
-  });
-  block.addEventListener('drop', e => {
-    e.preventDefault(); e.stopPropagation();
-    block.classList.remove('drag-over');
-    if (!dragListId || dragListId === lst.id) return;
-    reorderList(dragListId, lst.id);
-  });
+  block.dataset.listId = lst.id;
 
   const hdr = document.createElement('div');
   hdr.className = 'list-hdr';
@@ -2461,6 +2554,7 @@ function makeListBlock(lst) {
     <button class="list-del" onclick="event.stopPropagation();deleteList('${lst.id}','${lst.name}')" title="Delete list">✕</button>`;
   hdr.onclick = () => { listCollapsed[lst.id] = !collapsed; renderHub(); };
   block.appendChild(hdr);
+  initListDrag(block, lst.id);
 
   if (!collapsed) {
     const body = document.createElement('div');
