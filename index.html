@@ -604,23 +604,17 @@
       <div class="page-title">Settings</div>
     </div>
     <div class="stab-bar" id="settingsTabBar">
-      <button class="stab active" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
-      <button class="stab" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
-    </div>
-
-    <!-- Colors tab -->
-    <div class="stab-pane active scroll-area" id="stabColors" style="padding:16px 20px 40px">
-      <p class="stab-hint">Choose an accent color for each context.</p>
-      <div id="palettePickerArea"></div>
+      <button class="stab active" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
+      <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
     </div>
 
     <!-- Calendar tab -->
-    <div class="stab-pane scroll-area" id="stabCalendar" style="padding:16px 20px 40px">
+    <div class="stab-pane active scroll-area" id="stabCalendar" style="padding:16px 20px 40px">
       <div class="settings-block">
         <div class="settings-block-title">Timezone</div>
-        <p class="stab-hint" style="margin-bottom:8px">Used when scheduling calendar events.</p>
-        <select class="modal-input" id="settingsTimezone" style="margin:0;max-width:320px" onchange="saveTimezone()"></select>
+        <p class="stab-hint" style="margin-bottom:8px">Arizona (no DST)</p>
       </div>
+
       <div class="settings-block">
         <div class="settings-block-title">ICS Feeds</div>
         <div class="cal-feeds-list" id="calFeedsList"></div>
@@ -659,6 +653,12 @@
         </div>
         <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none">Add Email</button>
       </div>
+    </div>
+
+    <!-- Colors tab -->
+    <div class="stab-pane scroll-area" id="stabColors" style="padding:16px 20px 40px">
+      <p class="stab-hint">Choose an accent color for each context.</p>
+      <div id="palettePickerArea"></div>
     </div>
   </section>
 
@@ -766,7 +766,7 @@ const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false, weekCategoryFilter = 'all';
-let activeSettingsTab = 'colors';
+let activeSettingsTab = 'calendar';
 let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
@@ -857,16 +857,6 @@ function renderPalettePicker() {
   });
 }
 
-const TIMEZONE_OPTIONS = [
-  ['America/Phoenix', 'Arizona (Phoenix, no DST)'],
-  ['America/Los_Angeles', 'Pacific (Los Angeles)'],
-  ['America/Denver', 'Mountain (Denver)'],
-  ['America/Chicago', 'Central (Chicago)'],
-  ['America/New_York', 'Eastern (New York)'],
-  ['America/Anchorage', 'Alaska (Anchorage)'],
-  ['Pacific/Honolulu', 'Hawaii (Honolulu)'],
-  ['UTC', 'UTC'],
-];
 
 let editingCalEventId = null;
 let editingCalEventUID = null;
@@ -1185,27 +1175,6 @@ async function loadCalFeeds() {
   } catch(e) { /* keep whatever was loaded from localStorage */ }
 }
 
-function renderTimezoneSelect() {
-  const sel = document.getElementById('settingsTimezone');
-  if (!sel) return;
-  sel.innerHTML = '';
-  TIMEZONE_OPTIONS.forEach(([val, label]) => {
-    const opt = document.createElement('option');
-    opt.value = val; opt.textContent = label;
-    if (val === userTimezone) opt.selected = true;
-    sel.appendChild(opt);
-  });
-}
-
-async function saveTimezone() {
-  const val = document.getElementById('settingsTimezone').value;
-  userTimezone = val;
-  localStorage.setItem('tw_timezone', val);
-  try {
-    await api('POST', 'user_settings', { user_id: authSession.user_id, timezone: val }, { 'Prefer': 'resolution=merge-duplicates' });
-    showToast('Timezone updated');
-  } catch(e) { showToast('Error: ' + e.message); }
-}
 
 async function saveOutlookEmail() {
   const val = document.getElementById('outlookEmailInput').value.trim();
@@ -2154,7 +2123,7 @@ function switchSettingsTab(tab) {
   document.querySelectorAll('.stab').forEach(b => b.classList.toggle('active', b.dataset.stab === tab));
   document.querySelectorAll('.stab-pane').forEach(p => p.classList.toggle('active', p.id === 'stab' + tab.charAt(0).toUpperCase() + tab.slice(1)));
   if (tab === 'colors') renderPalettePicker();
-  if (tab === 'calendar') { renderCalFeedsList(); renderOutlookEmailSection(); renderTimezoneSelect(); }
+  if (tab === 'calendar') { renderCalFeedsList(); renderOutlookEmailSection(); }
 }
 
 function switchTab(tab) {
