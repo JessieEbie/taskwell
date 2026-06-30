@@ -931,6 +931,7 @@ function renderPalettePicker() {
         localStorage.setItem('tw_palettes', JSON.stringify(userPalettes));
         applyPalettes();
         renderPalettePicker();
+        fetchAllFeeds();
       };
       const nm = document.createElement('span');
       nm.className = 'palette-swatch-name';
