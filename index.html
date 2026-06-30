@@ -2458,7 +2458,6 @@ function initListDrag(block, listId) {
 
   handle.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault();
     capturedId = e.pointerId;
     handle.setPointerCapture(e.pointerId);
     startX = e.clientX; startY = e.clientY;
@@ -2521,7 +2520,12 @@ function initListDrag(block, listId) {
   handle.addEventListener('pointerup', e => {
     if (e.pointerId !== capturedId) return;
     handle.releasePointerCapture(e.pointerId);
+    const wasDragging = dragging;
     finishDrag(e.clientX, e.clientY);
+    if (wasDragging) {
+      // suppress the click that browsers synthesize after pointerup
+      handle.addEventListener('click', ev => ev.stopPropagation(), { once: true, capture: true });
+    }
   });
 
   handle.addEventListener('pointercancel', () => {
