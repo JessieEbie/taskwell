@@ -1462,7 +1462,7 @@ async function fetchOutlookCalendarEvents() {
   });
   try {
     const res = await outlookApi('GET', `me/calendarView?${params}`);
-    const color = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).accent;
+    const color = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
     (res?.value || []).forEach(item => {
       const allDay = item.isAllDay;
       let dk, timeStr = null;
@@ -1877,7 +1877,7 @@ async function fetchGoogleCalendarEvents() {
         description: item.description || null, meetLink, webLink: item.htmlLink || null });
     });
   };
-  const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).accent;
+  const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
   await Promise.all([
     gcalApi('GET', `calendars/primary/events?${params}`)
       .then(res => pushItems(res.items, homeColor, 'google'))
