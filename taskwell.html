@@ -1261,7 +1261,7 @@ async function saveCalFeeds() {
 }
 async function loadCalFeeds() {
   try {
-    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone,palettes`);
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone`);
     if (rows?.[0]) {
       const r = rows[0];
       calFeeds = r.cal_feeds || [];
@@ -1273,16 +1273,21 @@ async function loadCalFeeds() {
       outlookTokens = r.outlook_tokens || null;
       if (r.outlook_email) { outlookEmail = r.outlook_email; localStorage.setItem('tw_outlook_email', outlookEmail); }
       if (r.timezone) { userTimezone = r.timezone; localStorage.setItem('tw_timezone', userTimezone); }
-      if (r.palettes) {
-        userPalettes = r.palettes;
-        try { localStorage.setItem('tw_palettes', JSON.stringify(userPalettes)); } catch(e) {}
-        applyPalettes();
-      }
     }
     updateGcalStatus();
     updateOutlookStatus();
     if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
   } catch(e) { /* keep whatever was loaded from localStorage */ }
+
+  // Palettes in a separate fetch so a missing column never breaks the main load
+  try {
+    const pRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=palettes`);
+    if (pRows?.[0]?.palettes) {
+      userPalettes = pRows[0].palettes;
+      try { localStorage.setItem('tw_palettes', JSON.stringify(userPalettes)); } catch(e) {}
+      applyPalettes();
+    }
+  } catch(e) { /* palettes column may not exist yet — keep localStorage value */ }
 }
 
 
