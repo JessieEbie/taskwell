@@ -939,6 +939,8 @@ function renderPalettePicker() {
         localStorage.setItem('tw_palettes', JSON.stringify(userPalettes));
         applyPalettes();
         renderPalettePicker();
+        api('POST', 'user_settings', { user_id: authSession.user_id, palettes: userPalettes },
+          { 'Prefer': 'resolution=merge-duplicates' }).catch(() => {});
       };
       const nm = document.createElement('span');
       nm.className = 'palette-swatch-name';
@@ -1259,7 +1261,7 @@ async function saveCalFeeds() {
 }
 async function loadCalFeeds() {
   try {
-    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone`);
+    const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone,palettes`);
     if (rows?.[0]) {
       const r = rows[0];
       calFeeds = r.cal_feeds || [];
@@ -1271,6 +1273,11 @@ async function loadCalFeeds() {
       outlookTokens = r.outlook_tokens || null;
       if (r.outlook_email) { outlookEmail = r.outlook_email; localStorage.setItem('tw_outlook_email', outlookEmail); }
       if (r.timezone) { userTimezone = r.timezone; localStorage.setItem('tw_timezone', userTimezone); }
+      if (r.palettes) {
+        userPalettes = r.palettes;
+        try { localStorage.setItem('tw_palettes', JSON.stringify(userPalettes)); } catch(e) {}
+        applyPalettes();
+      }
     }
     updateGcalStatus();
     updateOutlookStatus();
