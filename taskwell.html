@@ -913,9 +913,7 @@ function applyPalettes() {
 
 function updateThemeColor() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
-  const ctx = document.body.classList.contains('ctx-home') ? 'home'
-            : document.body.classList.contains('ctx-all')  ? 'all'
-            : 'work';
+  const ctx = currentContext || 'work';
   const rail = get(userPalettes[ctx]).rail;
   const meta = document.getElementById('themeColor');
   if (meta) meta.content = rail;
