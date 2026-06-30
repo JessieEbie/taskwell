@@ -127,8 +127,13 @@
     .task-check.done::after { content: ''; display: block; width: 4px; height: 7px;
                                border: 2px solid white; border-top: none; border-left: none;
                                transform: rotate(45deg) translateY(-1px); }
-    .task-text { flex: 1; font-size: 13px; color: var(--ink); }
+    .task-text { flex: 1; font-size: 13px; color: var(--ink); cursor: pointer; }
+    .task-text:hover { color: var(--accent-dark); }
     .task-text.done { text-decoration: line-through; color: var(--ink-faint); }
+    .task-notes-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; flex-shrink: 0; }
+    .task-detail-notes { font-size: 14px; color: var(--ink); line-height: 1.6; white-space: pre-wrap; word-break: break-word; margin-top: 4px; max-height: 240px; overflow-y: auto; }
+    .task-detail-notes a { color: var(--accent-dark); text-decoration: underline; }
+    .task-detail-meta { font-size: 12px; color: var(--ink-faint); font-family: 'Helvetica Neue', sans-serif; margin-bottom: 10px; }
     .due-badge { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; padding: 2px 7px; border-radius: 10px; flex-shrink: 0; }
     .due-badge.overdue { background: var(--rust); color: var(--paper); }
     .due-badge.today { background: var(--accent-pale); color: var(--ink); }
@@ -187,7 +192,8 @@
     .day-empty { font-family: Georgia, serif; font-size: 11px; font-style: italic; color: var(--ink-faint); padding: 6px 0; }
     .week-task { background: var(--paper); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; cursor: grab; touch-action: pan-x pan-y; }
     .week-task.dragging { opacity: .5; }
-    .week-task-title { font-size: 14px; color: var(--ink); margin-bottom: 2px; }
+    .week-task-title { font-size: 14px; color: var(--ink); margin-bottom: 2px; cursor: pointer; }
+    .week-task-title:hover { color: var(--accent-dark); }
     .week-task-title.done { text-decoration: line-through; color: var(--ink-faint); }
     .week-task-meta { display: flex; align-items: center; gap: 4px; }
     .week-task-list { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); flex: 1; }
@@ -705,9 +711,24 @@
     <input class="modal-input" id="editTaskTitle" onkeydown="if(event.key==='Enter') confirmEditTask()" />
     <label class="modal-label">Due date</label>
     <input class="modal-input" id="editTaskDate" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+    <label class="modal-label">Notes</label>
+    <textarea class="modal-input" id="editTaskNotes" placeholder="Notes, links, etc. (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('editTaskModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmEditTask()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Task Detail Modal -->
+<div class="modal-overlay" id="taskDetailModal">
+  <div class="modal">
+    <div class="modal-title" id="taskDetailTitle"></div>
+    <div class="task-detail-meta" id="taskDetailMeta"></div>
+    <div id="taskDetailNotes" class="task-detail-notes"></div>
+    <div class="modal-row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal('taskDetailModal')">Close</button>
+      <button class="btn btn-primary" id="taskDetailEditBtn">Edit</button>
     </div>
   </div>
 </div>
@@ -2426,9 +2447,17 @@ function makeTaskRow(task) {
   const text = document.createElement('div');
   text.className = 'task-text' + (done ? ' done' : '');
   text.textContent = task.title;
+  text.onclick = () => openTaskDetail(task.id);
 
   row.appendChild(check);
   row.appendChild(text);
+
+  if (task.notes) {
+    const dot = document.createElement('span');
+    dot.className = 'task-notes-dot';
+    dot.title = 'Has notes';
+    row.appendChild(dot);
+  }
 
   if (task.due_date) {
     const today = new Date(); today.setHours(0,0,0,0);
@@ -2538,6 +2567,35 @@ async function confirmNewList() {
   } catch(e) { showToast('Error'); }
 }
 
+// ── Task Detail Popup ──
+function openTaskDetail(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('taskDetailTitle').textContent = t.title;
+  const lst = lists.find(l => l.id === t.list_id);
+  const meta = [lst?.name, t.due_date ? fmtDisplay(t.due_date) : null].filter(Boolean).join(' · ');
+  document.getElementById('taskDetailMeta').textContent = meta;
+  const notesEl = document.getElementById('taskDetailNotes');
+  if (t.notes) {
+    notesEl.innerHTML = renderTaskNotes(t.notes);
+    notesEl.style.display = '';
+  } else {
+    notesEl.innerHTML = '<span style="color:var(--ink-faint);font-size:13px;font-style:italic">No notes</span>';
+    notesEl.style.display = '';
+  }
+  document.getElementById('taskDetailEditBtn').onclick = () => {
+    closeModal('taskDetailModal');
+    openEditTaskModal(id);
+  };
+  openModal('taskDetailModal');
+}
+
+function renderTaskNotes(text) {
+  const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const linked = escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+  return linked.replace(/\n/g, '<br>');
+}
+
 // ── Edit Task ──
 function openEditTaskModal(id) {
   const t = tasks.find(t => t.id === id);
@@ -2545,6 +2603,7 @@ function openEditTaskModal(id) {
   editingTaskId = id;
   document.getElementById('editTaskTitle').value = t.title;
   document.getElementById('editTaskDate').value = fmtForInput(t.due_date);
+  document.getElementById('editTaskNotes').value = t.notes || '';
   openModal('editTaskModal');
   setTimeout(() => document.getElementById('editTaskTitle').focus(), 200);
 }
@@ -2553,12 +2612,13 @@ async function confirmEditTask() {
   const title = document.getElementById('editTaskTitle').value.trim();
   if (!title) return;
   const due_date = parseDate(document.getElementById('editTaskDate').value);
+  const notes = document.getElementById('editTaskNotes').value.trim() || null;
   const t = tasks.find(t => t.id === editingTaskId);
   if (!t) return;
-  t.title = title; t.due_date = due_date;
+  t.title = title; t.due_date = due_date; t.notes = notes;
   closeModal('editTaskModal');
   renderHub(); renderWeek(); renderAgenda();
-  await api('PATCH', `tasks?id=eq.${editingTaskId}`, { title, due_date });
+  await api('PATCH', `tasks?id=eq.${editingTaskId}`, { title, due_date, notes });
 }
 
 // ══════════════════════════════
@@ -2816,12 +2876,17 @@ function makeWeekCard(t, dayKey) {
 
   const done = t.completed;
   card.innerHTML = `
-    <div class="week-task-title${done ? ' done' : ''}">${t.title}</div>
+    <div class="week-task-title${done ? ' done' : ''}">${t.title}${t.notes ? '<span class="task-notes-dot" title="Has notes"></span>' : ''}</div>
     <div class="week-task-meta">
       <span class="week-task-list">${lst ? lst.name : ''}</span>
       ${t.due_date ? `<span class="week-task-date">${fmtDisplay(t.due_date)}</span>` : ''}
       <button class="week-task-remove" title="Remove from week">×</button>
     </div>`;
+
+  card.querySelector('.week-task-title').addEventListener('click', e => {
+    e.stopPropagation();
+    openTaskDetail(t.id);
+  });
 
   card.addEventListener('dragstart', e => {
     dragTaskId = t.id; card.classList.add('dragging');
@@ -2946,8 +3011,10 @@ function renderAgendaDay(agenda, key) {
       check.onclick = () => { toggleTask(t.id); };
       const info = document.createElement('div');
       info.className = 'agenda-task-info';
-      info.innerHTML = `<div class="agenda-task-title">${t.title}</div>
+      info.style.cursor = 'pointer';
+      info.innerHTML = `<div class="agenda-task-title">${t.title}${t.notes ? '<span class="task-notes-dot" title="Has notes"></span>' : ''}</div>
                         <div class="agenda-task-list">${lst ? lst.name : ''}</div>`;
+      info.onclick = () => openTaskDetail(t.id);
       row.appendChild(check);
       row.appendChild(info);
       agenda.appendChild(row);
