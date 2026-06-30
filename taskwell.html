@@ -87,7 +87,7 @@
     .btn-accent:hover { background: var(--accent-dark); color: var(--ink) !important; }
 
     /* ── HUB ── */
-    #hub .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 0; flex-shrink: 0; flex-wrap: wrap; }
+    #hub .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; flex-shrink: 0; flex-wrap: wrap; }
     .scroll-area { flex: 1; overflow-y: auto; padding: 16px 20px 24px; -webkit-overflow-scrolling: touch; }
     .section-block { margin-top: 20px; }
     .section-hdr { display: flex; align-items: center; gap: 0; cursor: pointer;
@@ -2454,10 +2454,84 @@ async function reorderList(fromId, toId, toSectionKey) {
 function initListDrag(block, listId) {
   const handle = block.querySelector('.list-drag-handle');
   if (!handle) return;
-  let clone = null, startX = 0, startY = 0, blockRect = null, dragging = false, capturedId = null;
+  let clone = null, startX = 0, startY = 0, blockRect = null, dragging = false;
 
+  function moveDrag(cx, cy) {
+    const dx = cx - startX, dy = cy - startY;
+    if (!dragging && Math.sqrt(dx*dx + dy*dy) > 8) {
+      dragging = true;
+      clone = block.cloneNode(true);
+      clone.style.cssText = `position:fixed;z-index:9999;width:${blockRect.width}px;left:${blockRect.left}px;top:${blockRect.top}px;opacity:0.85;pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.18);border:2px solid var(--accent);border-radius:8px;overflow:hidden;`;
+      document.body.appendChild(clone);
+      block.style.opacity = '0.3';
+    }
+    if (dragging && clone) {
+      clone.style.left = (blockRect.left + dx) + 'px';
+      clone.style.top  = (blockRect.top  + dy) + 'px';
+      clone.style.display = 'none';
+      const el = document.elementFromPoint(cx, cy);
+      clone.style.display = '';
+      document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+        .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+      const tb = el?.closest('.list-block');
+      if (tb && tb !== block) tb.classList.add('drag-over');
+      else { const ts = el?.closest('.section-body'); if (ts) ts.classList.add('drag-over-sec'); }
+    }
+  }
+
+  function endDrag(cx, cy) {
+    if (!dragging || !clone) { dragging = false; return; }
+    clone.style.display = 'none';
+    const el = document.elementFromPoint(cx, cy);
+    clone.remove(); clone = null;
+    block.style.opacity = '';
+    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+    const tb = el?.closest('.list-block');
+    if (tb && tb !== block && tb.dataset.listId) reorderList(listId, tb.dataset.listId);
+    else { const ts = el?.closest('.section-body'); if (ts?.dataset.sectionKey) reorderList(listId, null, ts.dataset.sectionKey); }
+    dragging = false;
+  }
+
+  function cancelDrag() {
+    if (clone) { clone.remove(); clone = null; }
+    block.style.opacity = '';
+    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
+      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
+    dragging = false;
+  }
+
+  // Touch events — iOS Safari: touchmove fires on the element where touchstart
+  // happened even as the finger moves across the screen, so no capture needed.
+  let activeTouchId = null;
+  handle.addEventListener('touchstart', e => {
+    if (activeTouchId !== null) return;
+    e.preventDefault(); // prevent scroll + click synthesis on this handle
+    const t = e.changedTouches[0];
+    activeTouchId = t.identifier;
+    startX = t.clientX; startY = t.clientY;
+    blockRect = block.getBoundingClientRect();
+    dragging = false; clone = null;
+  }, { passive: false });
+
+  handle.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const t = Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
+    if (t) moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+
+  handle.addEventListener('touchend', e => {
+    const t = Array.from(e.changedTouches).find(t => t.identifier === activeTouchId);
+    if (t) endDrag(t.clientX, t.clientY);
+    activeTouchId = null;
+  });
+
+  handle.addEventListener('touchcancel', () => { cancelDrag(); activeTouchId = null; });
+
+  // Mouse/pointer events for desktop (skip touch pointers — handled above)
+  let capturedId = null;
   handle.addEventListener('pointerdown', e => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'touch' || e.button !== 0) return;
     capturedId = e.pointerId;
     handle.setPointerCapture(e.pointerId);
     startX = e.clientX; startY = e.clientY;
@@ -2466,74 +2540,22 @@ function initListDrag(block, listId) {
   });
 
   handle.addEventListener('pointermove', e => {
-    if (e.pointerId !== capturedId) return;
-    const dx = e.clientX - startX, dy = e.clientY - startY;
-
-    if (!dragging && Math.sqrt(dx*dx + dy*dy) > 8) {
-      dragging = true;
-      clone = block.cloneNode(true);
-      clone.style.cssText = `position:fixed;z-index:9999;width:${blockRect.width}px;left:${blockRect.left}px;top:${blockRect.top}px;opacity:0.85;pointer-events:none;box-shadow:0 8px 32px rgba(0,0,0,0.18);border:2px solid var(--accent);border-radius:8px;overflow:hidden;`;
-      document.body.appendChild(clone);
-      block.style.opacity = '0.3';
-    }
-
-    if (dragging && clone) {
-      e.preventDefault();
-      clone.style.left = (blockRect.left + dx) + 'px';
-      clone.style.top  = (blockRect.top  + dy) + 'px';
-
-      clone.style.display = 'none';
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      clone.style.display = '';
-
-      document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
-        .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
-      const tb = el?.closest('.list-block');
-      if (tb && tb !== block) {
-        tb.classList.add('drag-over');
-      } else {
-        const ts = el?.closest('.section-body');
-        if (ts) ts.classList.add('drag-over-sec');
-      }
-    }
+    if (e.pointerType === 'touch' || e.pointerId !== capturedId) return;
+    moveDrag(e.clientX, e.clientY);
   });
-
-  const finishDrag = (cx, cy) => {
-    if (!dragging || !clone) { dragging = false; capturedId = null; return; }
-    clone.style.display = 'none';
-    const el = document.elementFromPoint(cx, cy);
-    clone.remove(); clone = null;
-    block.style.opacity = '';
-    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
-      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
-
-    const tb = el?.closest('.list-block');
-    if (tb && tb !== block && tb.dataset.listId) {
-      reorderList(listId, tb.dataset.listId);
-    } else {
-      const ts = el?.closest('.section-body');
-      if (ts?.dataset.sectionKey) reorderList(listId, null, ts.dataset.sectionKey);
-    }
-    dragging = false; capturedId = null;
-  };
 
   handle.addEventListener('pointerup', e => {
-    if (e.pointerId !== capturedId) return;
+    if (e.pointerType === 'touch' || e.pointerId !== capturedId) return;
     handle.releasePointerCapture(e.pointerId);
     const wasDragging = dragging;
-    finishDrag(e.clientX, e.clientY);
-    if (wasDragging) {
-      // suppress the click that browsers synthesize after pointerup
-      handle.addEventListener('click', ev => ev.stopPropagation(), { once: true, capture: true });
-    }
+    endDrag(e.clientX, e.clientY);
+    if (wasDragging) handle.addEventListener('click', ev => ev.stopPropagation(), { once: true, capture: true });
+    capturedId = null;
   });
 
-  handle.addEventListener('pointercancel', () => {
-    if (clone) { clone.remove(); clone = null; }
-    block.style.opacity = '';
-    document.querySelectorAll('.list-block.drag-over,.section-body.drag-over-sec')
-      .forEach(b => b.classList.remove('drag-over','drag-over-sec'));
-    dragging = false; capturedId = null;
+  handle.addEventListener('pointercancel', e => {
+    if (e.pointerType === 'touch') return;
+    cancelDrag(); capturedId = null;
   });
 }
 
