@@ -1276,7 +1276,8 @@ async function refreshGoogleToken() {
     if (!r.ok) return false;
     const data = await r.json();
     await saveGoogleTokens({ ...googleTokens, access_token: data.access_token,
-      expires_at: Date.now() + (data.expires_in || 3600) * 1000 });
+      expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+      ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}) });
     return true;
   } catch { return false; }
 }
@@ -1885,13 +1886,24 @@ async function fetchGoogleCalendarEvents() {
     });
   };
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
+  let gcalAuthFailed = false;
+  const handleGcalError = (e) => {
+    console.error('Google Calendar fetch failed:', e);
+    if (!gcalAuthFailed && (e.message?.includes('expired') || e.message?.includes('401') || e.message?.includes('invalid'))) {
+      gcalAuthFailed = true;
+      googleTokens = null;
+      localStorage.removeItem('tw_google_tokens');
+      updateGcalStatus();
+      showToast('Google Calendar disconnected — please reconnect in Settings → Calendar', true);
+    }
+  };
   await Promise.all([
     gcalApi('GET', `calendars/primary/events?${params}`)
       .then(res => pushItems(res.items, homeColor, 'google'))
-      .catch(e => console.error('Google primary calendar fetch failed:', e)),
+      .catch(handleGcalError),
     gcalApi('GET', `calendars/${encodeURIComponent(WORK_CAL_ID)}/events?${params}`)
       .then(res => pushItems(res.items, homeColor, 'google_work'))
-      .catch(e => console.error('Google work calendar fetch failed:', e))
+      .catch(handleGcalError)
   ]);
 }
 
