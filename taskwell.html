@@ -110,8 +110,10 @@
     .list-del { font-size: 14px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .list-del:hover { color: var(--rust); }
     .list-body { padding: 0 12px 10px; }
-    .task-input-row { display: flex; gap: 3px; margin-top: 4px; margin-bottom: 4px; opacity: 0.6; transition: opacity .15s; }
-    .task-input-row:focus-within { opacity: 1; }
+    .task-input-group { opacity: 0.6; transition: opacity .15s; margin-top: 4px; margin-bottom: 4px; }
+    .task-input-group:focus-within { opacity: 1; }
+    .task-input-row { display: flex; gap: 3px; }
+    .task-notes-input { display: block; width: 100%; box-sizing: border-box; margin-top: 2px; resize: none; rows: 2; overflow: hidden; min-height: 28px; }
     .task-input { flex: 1; min-width: 60px; padding: 1px 4px; border: none; border-bottom: 1px solid var(--cream-dark);
                   background: transparent; font-family: Georgia, serif;
                   font-size: 10px; color: var(--ink); outline: none; }
@@ -2430,13 +2432,16 @@ function makeListBlock(lst) {
       body.appendChild(doneSection);
     }
 
-    const inputRow = document.createElement('div');
-    inputRow.className = 'task-input-row';
-    inputRow.innerHTML = `
-      <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" inputmode="text" autocomplete="off" />
-      <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
-      <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">+</button>`;
-    body.appendChild(inputRow);
+    const inputGroup = document.createElement('div');
+    inputGroup.className = 'task-input-group';
+    inputGroup.innerHTML = `
+      <div class="task-input-row">
+        <input class="task-input" placeholder="Add a task…" id="ti_${lst.id}" inputmode="text" autocomplete="off" />
+        <input class="due-input" type="text" id="td_${lst.id}" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+        <button class="btn btn-sm btn-primary" onclick="addTask('${lst.id}')">+</button>
+      </div>
+      <textarea class="task-input task-notes-input" id="tn_${lst.id}" placeholder="Notes (optional)" rows="2"></textarea>`;
+    body.appendChild(inputGroup);
 
     setTimeout(() => {
       const ti = document.getElementById(`ti_${lst.id}`);
@@ -2503,12 +2508,15 @@ function makeTaskRow(task) {
 async function addTask(listId) {
   const ti = document.getElementById(`ti_${listId}`);
   const td = document.getElementById(`td_${listId}`);
+  const tn = document.getElementById(`tn_${listId}`);
   const title = ti.value.trim();
   if (!title) return;
   const due_date = parseDate(td.value);
+  const notes = tn?.value.trim() || null;
   ti.value = ''; td.value = '';
+  if (tn) tn.value = '';
   try {
-    const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date, user_id: authSession?.user_id });
+    const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date, notes, user_id: authSession?.user_id });
     tasks.push(t);
     renderHub(); renderWeek();
   } catch(e) { showToast('Error adding task'); }
