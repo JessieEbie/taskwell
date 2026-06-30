@@ -2034,6 +2034,16 @@ async function boot() {
     if (!authSession.user_id) { authSession.user_id = payload.sub; localStorage.setItem('tw_auth', JSON.stringify(authSession)); }
   } catch(e) { /* JWT decode failed, proceed anyway */ }
 
+  // Verify authorized user: must have an existing account row in user_settings
+  try {
+    const check = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=user_id`);
+    if (!check?.length) {
+      authSession = null; localStorage.removeItem('tw_auth');
+      document.getElementById('loginErr1').textContent = 'Access denied. This app is private.';
+      showLoginScreen(); return;
+    }
+  } catch(e) { /* network error — allow through to avoid locking out on flaky connection */ }
+
   // Forward token to Mac app if launched from desktop
   const macCallback = new URLSearchParams(window.location.search).get('mac_callback');
   if (macCallback) {
