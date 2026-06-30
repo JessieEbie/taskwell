@@ -96,7 +96,7 @@
     .section-hdr-left { display: flex; align-items: center; gap: 6px; font-family: 'Helvetica Neue', sans-serif;
                         font-size: 15px; font-weight: 700; color: var(--ink); padding: 4px 10px; }
     .section-hdr-right { display: none; }
-    .section-body { display: flex; flex-wrap: wrap; gap: 10px; }
+    .section-body { display: flex; flex-wrap: wrap; gap: 16px; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
                   flex: 1 1 240px; min-width: 220px; max-width: 100%; overflow: hidden; }
     .list-hdr { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
@@ -2322,11 +2322,13 @@ function renderHub() {
   if (pendingInbox.length > 0) area.appendChild(makeInboxBlock(pendingInbox));
 
   if (currentContext === 'home') {
-    // Flat list — no section grouping
     if (visible.length === 0) {
       area.innerHTML = '<div class="empty-section" style="padding:16px 0">No home lists yet.</div>';
     } else {
-      visible.forEach(lst => area.appendChild(makeListBlock(lst)));
+      const grid = document.createElement('div');
+      grid.className = 'section-body';
+      visible.forEach(lst => grid.appendChild(makeListBlock(lst)));
+      area.appendChild(grid);
     }
     return;
   }
