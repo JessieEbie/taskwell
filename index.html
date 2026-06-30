@@ -644,10 +644,13 @@
       </div>
       <div class="settings-block">
         <div class="settings-block-title">Google Calendar</div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span id="gcalStatus" style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint)"></span>
-          <button class="btn btn-sm" id="gcalConnectBtn" onclick="connectGoogleCalendar()">Connect</button>
-          <button class="btn btn-sm btn-danger" id="gcalDisconnectBtn" onclick="disconnectGoogleCalendar()" style="display:none">Disconnect</button>
+        <div id="gcalConnectedRow" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+          <span id="gcalStatus" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink);flex:1;min-width:0"></span>
+          <button class="btn btn-sm" onclick="connectGoogleCalendar()">Reconnect</button>
+          <button class="btn btn-sm btn-danger" onclick="disconnectGoogleCalendar()">Disconnect</button>
+        </div>
+        <div id="gcalDisconnectedRow" style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-sm" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
         </div>
       </div>
       <div class="settings-block">
@@ -1271,6 +1274,7 @@ async function loadCalFeeds() {
     }
     updateGcalStatus();
     updateOutlookStatus();
+    if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
   } catch(e) { /* keep whatever was loaded from localStorage */ }
 }
 
@@ -1329,19 +1333,36 @@ function renderOutlookEmailSection() {
 
 // ── Google Calendar ──
 function updateGcalStatus() {
-  const el = document.getElementById('gcalStatus');
-  const btn = document.getElementById('gcalConnectBtn');
-  const dis = document.getElementById('gcalDisconnectBtn');
-  if (!el) return;
+  const connRow = document.getElementById('gcalConnectedRow');
+  const discRow = document.getElementById('gcalDisconnectedRow');
+  const statusEl = document.getElementById('gcalStatus');
+  if (!connRow) return;
   if (googleTokens) {
-    el.textContent = 'Google Calendar connected';
-    if (btn) btn.textContent = 'Reconnect';
-    if (dis) dis.style.display = '';
+    connRow.style.display = 'flex';
+    discRow.style.display = 'none';
+    if (statusEl) statusEl.textContent = googleTokens.email
+      ? `Connected: ${googleTokens.email}`
+      : 'Google Calendar connected';
   } else {
-    el.textContent = '';
-    if (btn) btn.textContent = 'Connect Google Calendar';
-    if (dis) dis.style.display = 'none';
+    connRow.style.display = 'none';
+    discRow.style.display = 'flex';
   }
+}
+
+async function fetchAndSaveGcalEmail() {
+  if (!googleTokens?.access_token || googleTokens.email) return;
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { 'Authorization': `Bearer ${googleTokens.access_token}` }
+    });
+    if (r.ok) {
+      const info = await r.json();
+      if (info.email) {
+        await saveGoogleTokens({ ...googleTokens, email: info.email });
+        updateGcalStatus();
+      }
+    }
+  } catch {}
 }
 
 async function disconnectGoogleCalendar() {
@@ -1441,6 +1462,7 @@ async function processGcalCallback(code, state) {
     if (res.ok) {
       const tokens = await res.json();
       await saveGoogleTokens(tokens);
+      fetchAndSaveGcalEmail();
       showToast('Google Calendar connected!');
       fetchAllFeeds();
     } else {
@@ -2193,6 +2215,7 @@ async function boot() {
         if (res.ok) {
           const tokens = await res.json();
           await saveGoogleTokens(tokens);
+          fetchAndSaveGcalEmail();
           showToast('Google Calendar connected!');
         } else {
           showToast('Google auth failed: ' + await res.text());
