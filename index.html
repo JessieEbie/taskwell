@@ -96,9 +96,9 @@
     .section-hdr-left { display: flex; align-items: center; gap: 6px; font-family: 'Helvetica Neue', sans-serif;
                         font-size: 15px; font-weight: 700; color: var(--ink); padding: 4px 10px; }
     .section-hdr-right { display: none; }
-    .section-body { display: flex; flex-wrap: wrap; gap: 16px; }
+    .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
-                  flex: 1 1 240px; min-width: 220px; max-width: 100%; overflow: hidden; }
+                  overflow: hidden; }
     .list-hdr { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
                 padding: 10px 12px 6px; }
     .list-name { font-family: 'Helvetica Neue', sans-serif; font-size: 13px; font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); flex: 1; }
@@ -441,8 +441,7 @@
       .page-header { padding: 10px 12px 0; flex-wrap: wrap; gap: 4px; }
       .page-title { font-size: 20px; }
       .hub-controls { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }
-      .section-body { gap: 8px; }
-      .list-block { flex: 1 1 100%; min-width: 0; }
+      .section-body { grid-template-columns: 1fr; gap: 8px; }
       #week .week-controls { padding: 8px 12px 0; }
       .week-nav-row { flex-wrap: wrap; gap: 4px; }
       .week-lists-row { gap: 4px; }
@@ -457,7 +456,7 @@
     @media (min-width: 621px) and (max-width: 960px) {
       .day-sidebar { width: 176px; }
       .tab-w { --tab-w: 56px; }
-      .list-block { flex: 1 1 280px; }
+      .section-body { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
     }
     /* iPhone landscape: keep mini-cal beside agenda, don't stack */
     @media (max-width: 920px) and (max-height: 500px) and (orientation: landscape) {
