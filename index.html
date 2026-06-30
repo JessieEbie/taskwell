@@ -1530,9 +1530,22 @@ function parseTimeInput(str, date) {
   return dt;
 }
 
+function updateCalModalColor() {
+  const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
+  const isWork = editingCalSource
+    ? (editingCalSource === 'outlook' || editingCalSource === 'google_work')
+    : (targetCal === 'outlook_email' || targetCal === 'google_work');
+  const p = isWork ? get(userPalettes.work) : get(userPalettes.home);
+  const modal = document.querySelector('#calEventModal .modal');
+  if (!modal) return;
+  modal.style.setProperty('--accent', p.accent);
+  modal.style.setProperty('--accent-dark', p.dark);
+  modal.style.setProperty('--accent-pale', p.pale);
+}
+
 function renderCalTargetPicker(isNew) {
   const row = document.getElementById('calTargetRow');
-  if (!isNew || (!googleTokens && !outlookEmail)) { row.style.display = 'none'; return; }
+  if (!isNew || (!googleTokens && !outlookEmail)) { row.style.display = 'none'; updateCalModalColor(); return; }
   row.style.display = 'flex';
   row.innerHTML = '';
   const opts = [];
@@ -1547,6 +1560,7 @@ function renderCalTargetPicker(isNew) {
     btn.onclick = () => { targetCal = opt.id; renderCalTargetPicker(true); };
     row.appendChild(btn);
   });
+  updateCalModalColor();
 }
 
 function openNewCalEvent(date, startStr = '', endStr = '') {
