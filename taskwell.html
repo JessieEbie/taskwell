@@ -2201,6 +2201,7 @@ async function boot() {
       api('GET','tasks?order=created_at.asc'),
       loadCalFeeds()
     ]);
+    rolloverPastTasks();
     inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
     renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
     loadCalCache();
@@ -2724,6 +2725,17 @@ async function addTask(listId) {
     tasks.push(t);
     renderHub(); renderWeek();
   } catch(e) { showToast('Error adding task'); }
+}
+
+function rolloverPastTasks() {
+  const today = dateKey(new Date());
+  const stale = tasks.filter(t => !t.completed && t.week_assigned && t.week_assigned < today);
+  if (!stale.length) return;
+  stale.forEach(t => { t.week_assigned = today; });
+  Promise.all(stale.map(t =>
+    api('PATCH', `tasks?id=eq.${t.id}`, { week_assigned: today }).catch(() => {})
+  ));
+  showToast(`${stale.length} task${stale.length > 1 ? 's' : ''} rolled over to today`);
 }
 
 async function toggleTask(id) {
