@@ -940,7 +940,9 @@ function renderPalettePicker() {
         applyPalettes();
         renderPalettePicker();
         api('POST', 'user_settings', { user_id: authSession.user_id, palettes: userPalettes },
-          { 'Prefer': 'resolution=merge-duplicates' }).catch(() => {});
+          { 'Prefer': 'resolution=merge-duplicates' })
+          .then(() => showToast('Color saved'))
+          .catch(e => showToast('Color save failed: ' + e.message, true));
       };
       const nm = document.createElement('span');
       nm.className = 'palette-swatch-name';
