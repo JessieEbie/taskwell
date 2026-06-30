@@ -731,6 +731,7 @@
     <input class="modal-input" id="calEventTitle" placeholder="Title" />
     <input class="modal-input" id="calEventLocation" placeholder="Location (optional)" />
     <input class="modal-input" id="calEventGuests" placeholder="Guests (emails, comma-separated)" />
+    <textarea class="modal-input" id="calEventNotes" placeholder="Notes (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div style="display:flex;gap:8px;margin-top:6px">
       <input class="modal-input" id="calEventDate" placeholder="Date (MM/DD/YY)" style="flex:1;margin-top:0" />
       <input class="modal-input" id="calEventStart" placeholder="Start (9:00 AM)" style="flex:1;margin-top:0" />
@@ -1556,6 +1557,7 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
   document.getElementById('calEventTitle').value = '';
   document.getElementById('calEventLocation').value = '';
   document.getElementById('calEventGuests').value = '';
+  document.getElementById('calEventNotes').value = '';
   const [y,mo,d] = date.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
   document.getElementById('calEventStart').value = startStr;
@@ -1576,6 +1578,7 @@ function openEditCalEvent(ev, dateKey) {
   document.getElementById('calEventTitle').value = ev.title;
   document.getElementById('calEventLocation').value = ev.location || '';
   document.getElementById('calEventGuests').value = (ev.attendees || []).join(', ');
+  document.getElementById('calEventNotes').value = ev.description || '';
   const [y,mo,d] = dateKey.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
   document.getElementById('calEventStart').value = ev.time || '';
@@ -1587,6 +1590,7 @@ function openEditCalEvent(ev, dateKey) {
 async function saveCalEvent() {
   const title = document.getElementById('calEventTitle').value.trim();
   const location = document.getElementById('calEventLocation').value.trim();
+  const notes = document.getElementById('calEventNotes').value.trim();
   const dateRaw = document.getElementById('calEventDate').value.trim();
   const startRaw = document.getElementById('calEventStart').value.trim();
   const endRaw = document.getElementById('calEventEnd').value.trim();
@@ -1627,6 +1631,7 @@ async function saveCalEvent() {
         `Title: ${title}`,
         location ? `Location: ${location}` : null,
         attendees ? `Attendees: ${attendees}` : null,
+        notes ? `Notes: ${notes}` : null,
       ].filter(Boolean).join('\n');
       await sendGmailPowerAutomate(outlookEmail, `#AddToCalendar ${title}`, bodyLines);
       closeModal('calEventModal'); showToast('Event sent to Outlook');
@@ -1645,6 +1650,7 @@ async function saveCalEvent() {
       const attendees = [...workGuest, ...extraGuests];
       const body = { summary: title, start, end,
         ...(location ? { location } : {}),
+        ...(notes ? { description: notes } : {}),
         ...(attendees.length ? { attendees } : {}) };
       if (id) { await gcalApi('PUT', `calendars/${encodeURIComponent(calId)}/events/${id}`, body); }
       else { await gcalApi('POST', `calendars/${encodeURIComponent(calId)}/events`, body); }
