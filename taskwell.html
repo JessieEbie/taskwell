@@ -915,8 +915,14 @@ function updateThemeColor() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
   const ctx = currentContext || 'work';
   const rail = get(userPalettes[ctx]).rail;
-  const meta = document.getElementById('themeColor');
-  if (meta) meta.content = rail;
+  // Remove + recreate forces iOS Safari to re-read the meta value
+  const old = document.querySelector('meta[name="theme-color"]');
+  if (old) old.remove();
+  const meta = document.createElement('meta');
+  meta.name = 'theme-color';
+  meta.id = 'themeColor';
+  meta.setAttribute('content', rail);
+  document.head.appendChild(meta);
 }
 
 function renderPalettePicker() {
