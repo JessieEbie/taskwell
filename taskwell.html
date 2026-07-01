@@ -7,6 +7,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="theme-color" id="themeColor" content="#B8A898" />
   <meta name="apple-mobile-web-app-title" content="Taskwell" />
+  <script>
+    // Set theme-color synchronously from localStorage before async Supabase load
+    (function(){
+      try {
+        var ctx = localStorage.getItem('tw_context') || 'all';
+        var rc = JSON.parse(localStorage.getItem('tw_rail_colors') || 'null');
+        if (rc && rc[ctx]) document.getElementById('themeColor').setAttribute('content', rc[ctx]);
+      } catch(e) {}
+    })();
+  </script>
   <link rel="apple-touch-icon" sizes="512x512" href="icon.png" />
   <title>Taskwell</title>
   <style>
@@ -908,6 +918,7 @@ function applyPalettes() {
     body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
     body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
   `;
+  try { localStorage.setItem('tw_rail_colors', JSON.stringify({ work: w.rail, home: h.rail, all: a.rail })); } catch(e) {}
   updateThemeColor();
 }
 
