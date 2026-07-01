@@ -5,30 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="theme-color" id="themeColor" content="#B8A898" />
+  <meta name="theme-color" id="themeColor" content="#FAF7F2" />
   <meta name="apple-mobile-web-app-title" content="Taskwell" />
-  <script>
-    // Set theme-color synchronously from localStorage so iOS Safari sees the right
-    // color before any async Supabase fetch runs.
-    (function(){
-      try {
-        var ctx = localStorage.getItem('tw_context') || 'all';
-        // Fast path: pre-computed rail colors saved by applyPalettes()
-        var rc = JSON.parse(localStorage.getItem('tw_rail_colors') || 'null');
-        if (rc && rc[ctx]) { document.getElementById('themeColor').setAttribute('content', rc[ctx]); return; }
-        // Fallback: derive from palette id — must stay in sync with PALETTES array
-        var pal = JSON.parse(localStorage.getItem('tw_palettes') || 'null');
-        if (!pal) return;
-        var RAIL = { original:'#B8A898', taupe:'#B8A898', sand:'#CEB6A4', blush:'#C5A192',
-          rose:'#C4A4A0', sage:'#7A9478', olive:'#AAA891', slate:'#7E928A',
-          forest:'#315D44', teal:'#08717A', rust:'#BB3000', amber:'#CA6922',
-          ochre:'#D47602', gold:'#D98B19', honey:'#E79F31', golden:'#D49020',
-          wheat:'#D4A840', champagne:'#C8A850', berry:'#EE7EA0' };
-        var color = RAIL[pal[ctx]];
-        if (color) document.getElementById('themeColor').setAttribute('content', color);
-      } catch(e) {}
-    })();
-  </script>
   <link rel="apple-touch-icon" sizes="512x512" href="icon.png" />
   <title>Taskwell</title>
   <style>
@@ -930,40 +908,13 @@ function applyPalettes() {
     body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
     body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
   `;
-  try { localStorage.setItem('tw_rail_colors', JSON.stringify({ work: w.rail, home: h.rail, all: a.rail })); } catch(e) {}
   updateThemeColor();
 }
 
-function rgbToHex(rgb) {
-  const m = rgb.match(/\d+/g);
-  if (!m || m.length < 3) return null;
-  return '#' + m.slice(0, 3).map(n => (+n).toString(16).padStart(2, '0')).join('');
-}
-
 function updateThemeColor() {
-  // Read the resolved --rail-bg custom property (the clean TARGET value, immune
-  // to the rail's 0.3s background transition) so chrome matches the rail exactly.
-  const railEl = document.querySelector('.rail');
-  const src = railEl || document.body;
-  let color = getComputedStyle(src).getPropertyValue('--rail-bg').trim();
-  if (color.startsWith('rgb')) color = rgbToHex(color) || '';
-  if (!color) {
-    const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
-    color = get(userPalettes[currentContext || 'work']).rail;
-  }
-  let meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.name = 'theme-color';
-    meta.id = 'themeColor';
-    document.head.appendChild(meta);
-  }
-  meta.setAttribute('content', color);
-  try {
-    const rc = JSON.parse(localStorage.getItem('tw_rail_colors') || '{}');
-    rc[currentContext || 'work'] = color;
-    localStorage.setItem('tw_rail_colors', JSON.stringify(rc));
-  } catch(e) {}
+  // Browser chrome stays a fixed cream to match the main page background.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', '#FAF7F2');
 }
 
 function renderPalettePicker() {
