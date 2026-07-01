@@ -934,18 +934,36 @@ function applyPalettes() {
   updateThemeColor();
 }
 
+function rgbToHex(rgb) {
+  const m = rgb.match(/\d+/g);
+  if (!m || m.length < 3) return null;
+  return '#' + m.slice(0, 3).map(n => (+n).toString(16).padStart(2, '0')).join('');
+}
+
 function updateThemeColor() {
-  const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
-  const ctx = currentContext || 'work';
-  const rail = get(userPalettes[ctx]).rail;
-  // Remove + recreate forces iOS Safari to re-read the meta value
-  const old = document.querySelector('meta[name="theme-color"]');
-  if (old) old.remove();
-  const meta = document.createElement('meta');
-  meta.name = 'theme-color';
-  meta.id = 'themeColor';
-  meta.setAttribute('content', rail);
-  document.head.appendChild(meta);
+  // Read the resolved --rail-bg custom property (the clean TARGET value, immune
+  // to the rail's 0.3s background transition) so chrome matches the rail exactly.
+  const railEl = document.querySelector('.rail');
+  const src = railEl || document.body;
+  let color = getComputedStyle(src).getPropertyValue('--rail-bg').trim();
+  if (color.startsWith('rgb')) color = rgbToHex(color) || '';
+  if (!color) {
+    const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
+    color = get(userPalettes[currentContext || 'work']).rail;
+  }
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    meta.id = 'themeColor';
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', color);
+  try {
+    const rc = JSON.parse(localStorage.getItem('tw_rail_colors') || '{}');
+    rc[currentContext || 'work'] = color;
+    localStorage.setItem('tw_rail_colors', JSON.stringify(rc));
+  } catch(e) {}
 }
 
 function renderPalettePicker() {
