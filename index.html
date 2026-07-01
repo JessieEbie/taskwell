@@ -8,12 +8,24 @@
   <meta name="theme-color" id="themeColor" content="#B8A898" />
   <meta name="apple-mobile-web-app-title" content="Taskwell" />
   <script>
-    // Set theme-color synchronously from localStorage before async Supabase load
+    // Set theme-color synchronously from localStorage so iOS Safari sees the right
+    // color before any async Supabase fetch runs.
     (function(){
       try {
         var ctx = localStorage.getItem('tw_context') || 'all';
+        // Fast path: pre-computed rail colors saved by applyPalettes()
         var rc = JSON.parse(localStorage.getItem('tw_rail_colors') || 'null');
-        if (rc && rc[ctx]) document.getElementById('themeColor').setAttribute('content', rc[ctx]);
+        if (rc && rc[ctx]) { document.getElementById('themeColor').setAttribute('content', rc[ctx]); return; }
+        // Fallback: derive from palette id — must stay in sync with PALETTES array
+        var pal = JSON.parse(localStorage.getItem('tw_palettes') || 'null');
+        if (!pal) return;
+        var RAIL = { original:'#B8A898', taupe:'#B8A898', sand:'#CEB6A4', blush:'#C5A192',
+          rose:'#C4A4A0', sage:'#7A9478', olive:'#AAA891', slate:'#7E928A',
+          forest:'#315D44', teal:'#08717A', rust:'#BB3000', amber:'#CA6922',
+          ochre:'#D47602', gold:'#D98B19', honey:'#E79F31', golden:'#D49020',
+          wheat:'#D4A840', champagne:'#C8A850', berry:'#EE7EA0' };
+        var color = RAIL[pal[ctx]];
+        if (color) document.getElementById('themeColor').setAttribute('content', color);
       } catch(e) {}
     })();
   </script>
