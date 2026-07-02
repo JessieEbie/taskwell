@@ -2346,7 +2346,7 @@ async function boot() {
   // self-hosted/custom backends rely on per-project isolation instead)
   if (!isCustomBackend && jwtEmail && !ALLOWED_EMAILS.includes(jwtEmail)) {
     authSession = null; localStorage.removeItem('tw_auth');
-    document.getElementById('loginErr1').textContent = 'Access denied. This app is private.';
+    document.getElementById('loginErr1').textContent = "Access denied. Don't have an account? Set up your own instance below.";
     showLoginScreen(); return;
   }
 
