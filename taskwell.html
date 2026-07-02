@@ -362,6 +362,15 @@
              font-size: 12px; padding: 8px 18px; border-radius: 20px; z-index: 200;
              opacity: 0; transition: all .3s; white-space: nowrap; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .whats-new-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 400;
+      background: var(--accent-pale); color: var(--ink); font-family: 'Helvetica Neue', sans-serif;
+      font-size: 13px; padding: 10px 16px; display: flex; align-items: center; justify-content: center;
+      gap: 14px; border-bottom: 1px solid var(--accent); transform: translateY(-100%); transition: transform .3s; }
+    .whats-new-banner.show { transform: translateY(0); }
+    .whats-new-banner.hidden { display: none; }
+    .whats-new-banner button { background: var(--paper); border: 1px solid var(--ink-faint); color: var(--ink);
+      border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer; flex-shrink: 0;
+      font-family: 'Helvetica Neue', sans-serif; }
     .loading { position: fixed; inset: 0; background: var(--paper); display: flex;
                align-items: center; justify-content: center; flex-direction: column; gap: 12px;
                z-index: 300; transition: opacity .4s; }
@@ -729,8 +738,13 @@
 <div style="position:fixed; bottom:0; left:0; right:0; text-align:center; padding:3px 0;
             font-family:'Helvetica Neue',sans-serif; font-size:10px; color:var(--ink-faint);
             background:var(--cream-dark); border-top:1px solid var(--cream-dark);
-            z-index:5; pointer-events:none;">
-  Taskwell · v 2026-07-02c
+            z-index:5; pointer-events:none;" id="appVersionFooter">
+</div>
+
+<!-- What's New banner -->
+<div class="whats-new-banner hidden" id="whatsNewBanner">
+  <span id="whatsNewText"></span>
+  <button onclick="dismissWhatsNew()">Got it</button>
 </div>
 
 <!-- New List Modal -->
@@ -832,6 +846,11 @@
 
 <script>
 // ── Config ──
+// Bump this with every deploy — also drives the footer text and the
+// "what's new" banner (shown once to returning users after it changes).
+const APP_VERSION = '2026-07-02d';
+const WHATS_NEW = "You can now set up Taskwell on your own Supabase project — see \"Set up your own Taskwell instance\" on the sign-in screen.";
+
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
 
@@ -2446,6 +2465,29 @@ async function boot() {
     }
   } catch(e) { console.error('Load error:', e); showToast('Connection error: ' + e.message, true); }
   document.getElementById('loading').classList.add('hidden');
+  checkWhatsNew();
+}
+
+function checkWhatsNew() {
+  const lastSeen = localStorage.getItem('tw_last_seen_version');
+  if (lastSeen === null) {
+    // First-ever visit — nothing to compare against, just set the baseline.
+    localStorage.setItem('tw_last_seen_version', APP_VERSION);
+    return;
+  }
+  if (lastSeen !== APP_VERSION) {
+    document.getElementById('whatsNewText').textContent = WHATS_NEW;
+    const banner = document.getElementById('whatsNewBanner');
+    banner.classList.remove('hidden');
+    requestAnimationFrame(() => banner.classList.add('show'));
+  }
+}
+
+function dismissWhatsNew() {
+  localStorage.setItem('tw_last_seen_version', APP_VERSION);
+  const banner = document.getElementById('whatsNewBanner');
+  banner.classList.remove('show');
+  setTimeout(() => banner.classList.add('hidden'), 300);
 }
 
 // ── Context ──
@@ -3612,6 +3654,7 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 5000);
 }
 
+document.getElementById('appVersionFooter').textContent = 'Taskwell · v ' + APP_VERSION;
 applyPalettes();
 boot();
 </script>
