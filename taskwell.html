@@ -486,12 +486,49 @@
   <div class="login-card">
     <div class="login-logo"><img src="https://jessieebie.github.io/taskwell/icon.png" width="72" height="72" style="border-radius:16px;display:block"></div>
     <h1 class="login-title">Taskwell</h1>
-    <p class="login-sub">Sign in to access your tasks</p>
+    <p class="login-sub" id="loginSub">Sign in to access your tasks</p>
     <div class="login-error" id="loginErr1"></div>
+
     <button class="btn-google" id="btnGoogle" onclick="signInWithGoogle()">
       <svg width="18" height="18" viewBox="0 0 48 48" style="margin-right:10px;flex-shrink:0"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.96 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
       Sign in with Google
     </button>
+
+    <div id="magicLinkForm" style="display:none">
+      <input type="email" class="login-input" id="magicEmailInput" placeholder="you@example.com" autocomplete="email" />
+      <button class="btn-login" id="btnMagicLink" onclick="sendMagicLink()">Send sign-in link</button>
+      <p class="login-sub" id="magicLinkSent" style="display:none;margin-top:10px;margin-bottom:0">Check your email for a sign-in link.</p>
+    </div>
+
+    <button class="login-back" id="btnShowSetup" onclick="showSetupScreen()">Set up your own Taskwell instance →</button>
+  </div>
+</div>
+
+<!-- Self-Host Setup Screen -->
+<div class="login-screen hidden" id="setupScreen">
+  <div class="login-card" style="max-width:480px;text-align:left">
+    <h1 class="login-title" style="text-align:center">Connect Your Own Backend</h1>
+    <p class="login-sub" style="text-align:center">
+      Run Taskwell on your own free Supabase project — your data stays fully separate from anyone else's.
+    </p>
+    <div class="login-error" id="setupErr"></div>
+
+    <p style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin-bottom:10px">
+      <b>1.</b> Create a free project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.<br/>
+      <b>2.</b> In your project's <b>SQL Editor</b>, paste and run the script below.<br/>
+      <b>3.</b> In <b>Project Settings → API</b>, copy your Project URL and <b>anon/publishable</b> key into the fields below.<br/>
+      <b>4.</b> Save — you'll sign in with an emailed link (no Google setup needed).
+    </p>
+
+    <textarea id="setupSql" readonly style="width:100%;height:110px;font-family:monospace;font-size:11px;padding:8px;
+      border:1.5px solid var(--cream-dark);border-radius:8px;background:var(--cream);color:var(--ink);
+      resize:vertical;box-sizing:border-box;margin-bottom:8px"></textarea>
+    <button class="btn btn-sm" style="width:100%;margin-bottom:14px" onclick="copySetupSql()">Copy SQL script</button>
+
+    <input type="text" class="login-input" id="setupUrlInput" placeholder="Supabase Project URL (https://xxxx.supabase.co)" />
+    <input type="text" class="login-input" id="setupKeyInput" placeholder="Supabase anon/publishable key" />
+    <button class="btn-login" id="btnSaveBackend" onclick="saveBackendConfig()">Save &amp; Continue</button>
+    <button class="login-back" onclick="hideSetupScreen()">← Back to sign in</button>
   </div>
 </div>
 
@@ -786,11 +823,72 @@
 
 <script>
 // ── Config ──
-const SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
-const SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
+const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
+const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
+
+// A visitor can point the app at their own Supabase project instead of the
+// default shared one — see showSetupScreen()/saveBackendConfig(). Their
+// choice is stored per-browser in localStorage and never touches the default backend.
+const customConfig = JSON.parse(localStorage.getItem('tw_config') || 'null');
+const isCustomBackend = !!(customConfig && customConfig.url && customConfig.key);
+const SB_URL = isCustomBackend ? customConfig.url.replace(/\/+$/, '') : DEFAULT_SB_URL;
+const SB_KEY = isCustomBackend ? customConfig.key : DEFAULT_SB_KEY;
+
 const HDRS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
                'Content-Type': 'application/json', 'Prefer': 'return=representation' };
 const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
+
+// Emails allowed to sign in on the DEFAULT shared backend — add trusted users here
+// (lowercase). Not enforced on self-hosted (custom) backends: isolation there comes
+// from each person having their own separate Supabase project.
+const ALLOWED_EMAILS = ['jessieebie@gmail.com'];
+
+const SETUP_SQL = `-- Taskwell schema setup — paste into Supabase SQL Editor and run once.
+create extension if not exists pgcrypto;
+
+create table if not exists public.lists (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  name text not null,
+  section text default 'Misc',
+  context text default 'work',
+  position int default 0,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.tasks (
+  id uuid primary key default gen_random_uuid(),
+  list_id uuid references public.lists(id) on delete cascade not null,
+  user_id uuid references auth.users,
+  title text not null,
+  completed boolean default false,
+  due_date date,
+  week_assigned date,
+  notes text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.user_settings (
+  user_id uuid primary key references auth.users not null,
+  cal_feeds jsonb,
+  google_tokens jsonb,
+  outlook_tokens jsonb,
+  outlook_email text,
+  timezone text default 'America/Phoenix',
+  palettes jsonb
+);
+
+alter table public.lists enable row level security;
+alter table public.tasks enable row level security;
+alter table public.user_settings enable row level security;
+
+create policy "lists: own rows" on public.lists for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "tasks: own rows" on public.tasks for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "user_settings: own row" on public.user_settings for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+`;
 
 // Calendar OAuth — fill in your client IDs to enable calendar sync.
 // ── State ──
@@ -1204,17 +1302,86 @@ async function refreshSession() {
 function showLoginScreen() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loading').classList.add('hidden');
+  document.getElementById('btnGoogle').style.display = isCustomBackend ? 'none' : 'flex';
+  document.getElementById('magicLinkForm').style.display = isCustomBackend ? 'block' : 'none';
+  document.getElementById('loginSub').textContent = isCustomBackend
+    ? 'Sign in to your self-hosted Taskwell'
+    : 'Sign in to access your tasks';
 }
 
-async function signInWithGoogle() {
+async function makePkceChallenge() {
   const verifier = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
   const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
   sessionStorage.setItem('pkce_verifier', verifier);
+  return challenge;
+}
+
+async function signInWithGoogle() {
+  const challenge = await makePkceChallenge();
   const redirectTo = window.location.href.split('#')[0].split('?')[0];
   window.location.href = `${SB_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${challenge}&code_challenge_method=S256`;
+}
+
+async function sendMagicLink() {
+  const email = document.getElementById('magicEmailInput').value.trim();
+  if (!email) return;
+  const btn = document.getElementById('btnMagicLink');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  document.getElementById('loginErr1').textContent = '';
+  try {
+    const challenge = await makePkceChallenge();
+    const redirectTo = window.location.href.split('#')[0].split('?')[0];
+    const res = await fetch(`${SB_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+      method: 'POST',
+      headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, create_user: true, code_challenge: challenge, code_challenge_method: 'S256' })
+    });
+    if (res.ok) {
+      document.getElementById('magicLinkSent').style.display = 'block';
+    } else {
+      document.getElementById('loginErr1').textContent = 'Could not send link: ' + await res.text();
+    }
+  } catch(e) {
+    document.getElementById('loginErr1').textContent = 'Could not send link: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = 'Send sign-in link';
+}
+
+function showSetupScreen() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('setupScreen').classList.remove('hidden');
+  document.getElementById('setupSql').value = SETUP_SQL;
+  if (isCustomBackend) {
+    document.getElementById('setupUrlInput').value = customConfig.url;
+    document.getElementById('setupKeyInput').value = customConfig.key;
+  }
+}
+
+function hideSetupScreen() {
+  document.getElementById('setupScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+}
+
+function copySetupSql() {
+  const ta = document.getElementById('setupSql');
+  ta.select();
+  navigator.clipboard?.writeText(ta.value).catch(() => document.execCommand('copy'));
+  showToast('SQL copied');
+}
+
+function saveBackendConfig() {
+  const url = document.getElementById('setupUrlInput').value.trim();
+  const key = document.getElementById('setupKeyInput').value.trim();
+  const errEl = document.getElementById('setupErr');
+  if (!/^https:\/\/.+/.test(url) || !key) {
+    errEl.textContent = 'Enter a valid Supabase Project URL and anon/publishable key.';
+    return;
+  }
+  localStorage.setItem('tw_config', JSON.stringify({ url, key }));
+  location.reload();
 }
 
 function signOut() {
@@ -2167,19 +2334,27 @@ async function boot() {
   // Require auth
   if (!authSession) { showLoginScreen(); return; }
 
-  // Extract user_id from JWT if not already stored
+  // Extract user_id + email from JWT if not already stored
+  let jwtEmail = null;
   try {
     const payload = JSON.parse(atob(authSession.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    jwtEmail = (payload.email || '').toLowerCase();
     if (!authSession.user_id) { authSession.user_id = payload.sub; localStorage.setItem('tw_auth', JSON.stringify(authSession)); }
   } catch(e) { /* JWT decode failed, proceed anyway */ }
 
-  // Verify authorized user: must have an existing account row in user_settings
+  // Verify authorized user: email must be on the allowlist (default shared backend only —
+  // self-hosted/custom backends rely on per-project isolation instead)
+  if (!isCustomBackend && jwtEmail && !ALLOWED_EMAILS.includes(jwtEmail)) {
+    authSession = null; localStorage.removeItem('tw_auth');
+    document.getElementById('loginErr1').textContent = 'Access denied. This app is private.';
+    showLoginScreen(); return;
+  }
+
+  // Auto-provision a user_settings row for first-time allowlisted users
   try {
     const check = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=user_id`);
     if (!check?.length) {
-      authSession = null; localStorage.removeItem('tw_auth');
-      document.getElementById('loginErr1').textContent = 'Access denied. This app is private.';
-      showLoginScreen(); return;
+      await api('POST', 'user_settings', { user_id: authSession.user_id }, { 'Prefer': 'resolution=merge-duplicates' });
     }
   } catch(e) { /* network error — allow through to avoid locking out on flaky connection */ }
 
