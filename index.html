@@ -2476,6 +2476,9 @@ function checkWhatsNew() {
     return;
   }
   if (lastSeen !== APP_VERSION) {
+    // Mark as seen the moment it's shown — a single view counts as "seen," even if
+    // they reload or navigate away without clicking "Got it."
+    localStorage.setItem('tw_last_seen_version', APP_VERSION);
     document.getElementById('whatsNewText').textContent = WHATS_NEW;
     const banner = document.getElementById('whatsNewBanner');
     banner.classList.remove('hidden');
@@ -2484,7 +2487,6 @@ function checkWhatsNew() {
 }
 
 function dismissWhatsNew() {
-  localStorage.setItem('tw_last_seen_version', APP_VERSION);
   const banner = document.getElementById('whatsNewBanner');
   banner.classList.remove('show');
   setTimeout(() => banner.classList.add('hidden'), 300);
