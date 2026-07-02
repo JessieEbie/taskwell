@@ -513,17 +513,26 @@
     </p>
     <div class="login-error" id="setupErr"></div>
 
-    <p style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin-bottom:10px">
-      <b>1.</b> Create a free project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.<br/>
-      <b>2.</b> In your project's <b>SQL Editor</b>, paste and run the script below.<br/>
-      <b>3.</b> In <b>Project Settings → API</b>, copy your Project URL and <b>anon/publishable</b> key into the fields below.<br/>
-      <b>4.</b> Save — you'll sign in with an emailed link (no Google setup needed).
-    </p>
-
-    <textarea id="setupSql" readonly style="width:100%;height:110px;font-family:monospace;font-size:11px;padding:8px;
-      border:1.5px solid var(--cream-dark);border-radius:8px;background:var(--cream);color:var(--ink);
-      resize:vertical;box-sizing:border-box;margin-bottom:8px"></textarea>
-    <button class="btn btn-sm" style="width:100%;margin-bottom:14px" onclick="copySetupSql()">Copy SQL script</button>
+    <ol style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin:0 0 14px;padding-left:18px">
+      <li style="margin-bottom:12px">
+        Create a free project at <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>.
+        <br/>Leave <b>Enable Data API</b>, <b>Automatically expose new tables</b>, and <b>Enable automatic RLS</b>
+        at their defaults when creating it — the script in step 2 already creates your tables and sets up security,
+        so there's nothing extra to configure there.
+      </li>
+      <li style="margin-bottom:12px">
+        In your project's <b>SQL Editor</b>, paste and run this script (creates your tables and enables
+        per-user security):
+        <textarea id="setupSql" readonly style="width:100%;height:110px;font-family:monospace;font-size:11px;padding:8px;
+          border:1.5px solid var(--cream-dark);border-radius:8px;background:var(--cream);color:var(--ink);
+          resize:vertical;box-sizing:border-box;margin:8px 0"></textarea>
+        <button class="btn btn-sm" style="width:100%" onclick="copySetupSql()">Copy SQL script</button>
+      </li>
+      <li style="margin-bottom:12px">
+        In <b>Project Settings → API</b>, copy your Project URL and <b>anon/publishable</b> key into the fields below.
+      </li>
+      <li>Save — you'll sign in with an emailed link (no Google setup needed).</li>
+    </ol>
 
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Supabase Project URL (https://xxxx.supabase.co)" />
     <input type="text" class="login-input" id="setupKeyInput" placeholder="Supabase anon/publishable key" />
