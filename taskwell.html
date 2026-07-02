@@ -368,7 +368,7 @@
     .loading.hidden { opacity: 0; pointer-events: none; }
 
     /* ── Auth / Login ── */
-    .login-screen { position: fixed; inset: 0; background: #C4A4A0; display: flex;
+    .login-screen { position: fixed; inset: 0; background: var(--paper); display: flex;
                     align-items: center; justify-content: center; z-index: 500; padding: 24px; }
     .login-screen.hidden { display: none; }
     .login-card { background: var(--paper); border-radius: 20px; padding: 36px 28px;
@@ -684,7 +684,7 @@
             font-family:'Helvetica Neue',sans-serif; font-size:10px; color:var(--ink-faint);
             background:var(--cream-dark); border-top:1px solid var(--cream-dark);
             z-index:5; pointer-events:none;">
-  Taskwell · v 2026-07-02
+  Taskwell · v 2026-07-02b
 </div>
 
 <!-- New List Modal -->
@@ -908,13 +908,6 @@ function applyPalettes() {
     body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
     body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
   `;
-  updateThemeColor();
-}
-
-function updateThemeColor() {
-  // Browser chrome stays a fixed cream to match the main page background.
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', '#FAF7F2');
 }
 
 function renderPalettePicker() {
@@ -2287,7 +2280,6 @@ function applyContext() {
   const titles = { work: 'Work Hub', home: 'Home', all: 'Hub' };
   const el = document.getElementById('hubTitle');
   if (el) el.textContent = titles[currentContext] || 'Hub';
-  updateThemeColor();
 }
 
 // ── Nav ──
