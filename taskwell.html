@@ -557,14 +557,31 @@
       </li>
       <li style="margin-bottom:12px">
         Find your <b>Project ID</b> (in the URL of your dashboard, or under Project Settings) and your
-        <b>anon/publishable</b> API key, and enter them below.
+        <b>anon/publishable</b> API key — you'll need the Project ID for the next step, and both go in
+        the fields below.
       </li>
-      <li>Save — you'll sign in with an emailed link (no Google setup needed).</li>
+      <li style="margin-bottom:12px">
+        <b>Required.</b> Set up Google Sign-In (you'll need this anyway if you want Calendar features later):
+        <br/>&nbsp;&nbsp;a. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a>
+        and create a project (or use an existing one).
+        <br/>&nbsp;&nbsp;b. Go to <b>APIs &amp; Services → OAuth consent screen</b>. Choose <b>External</b>,
+        fill in an app name and your email, and save — "Testing" mode is fine to start.
+        <br/>&nbsp;&nbsp;c. Go to <b>APIs &amp; Services → Credentials → Create Credentials → OAuth client ID</b>.
+        Choose <b>Web application</b>.
+        <br/>&nbsp;&nbsp;d. Under <b>Authorized redirect URIs</b>, add:
+        <code style="background:var(--cream);padding:1px 4px;border-radius:4px">https://YOUR-PROJECT-ID.supabase.co/auth/v1/callback</code>
+        (replace <code style="background:var(--cream);padding:1px 4px;border-radius:4px">YOUR-PROJECT-ID</code>
+        with the Project ID from the previous step).
+        <br/>&nbsp;&nbsp;e. Copy the <b>Client ID</b> and <b>Client Secret</b> it gives you.
+        <br/>&nbsp;&nbsp;f. In Supabase, go to <b>Authentication → Sign In / Providers</b>, scroll to
+        <b>Auth Providers</b>, click <b>Google</b>, toggle it on, paste in your Client ID and Client Secret,
+        and click <b>Save</b>.
+      </li>
+      <li>Save the fields below — you'll sign in with your Google account.</li>
     </ol>
     <p style="font-size:11px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint);line-height:1.5;margin:-6px 0 14px">
-      Note: Supabase's free tier limits sign-in emails to about <b>3 per hour</b>. If you test sign-in
-      a few times in a row, you may see a "rate limit exceeded" error — just wait an hour, or check
-      <b>Authentication → Emails → SMTP Settings</b> to configure your own email sender and remove the limit.
+      Note: this Google setup covers signing in only. Calendar features (Connect Google Calendar,
+      Outlook/Power Automate) need additional setup beyond this wizard — ask if you want help with those.
     </p>
 
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
@@ -1430,8 +1447,11 @@ async function refreshSession() {
 function showLoginScreen() {
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('loading').classList.add('hidden');
-  document.getElementById('btnGoogle').style.display = isCustomBackend ? 'none' : 'flex';
-  document.getElementById('magicLinkForm').style.display = isCustomBackend ? 'block' : 'none';
+  // Self-hosted instances sign in with Google too now (not magic-link) — self-hosters
+  // set up their own Google OAuth client, which they need anyway for Calendar Connect.
+  // The magic-link form/code stays in place but is no longer shown by default.
+  document.getElementById('btnGoogle').style.display = 'flex';
+  document.getElementById('magicLinkForm').style.display = 'none';
   document.getElementById('loginSub').textContent = isCustomBackend
     ? 'Sign in to your self-hosted Taskwell'
     : 'Sign in to access your tasks';
