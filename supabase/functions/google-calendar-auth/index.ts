@@ -6,7 +6,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_EMAIL = "jessieebie@gmail.com";
 const CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET")!;
 
@@ -22,7 +21,7 @@ serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user || user.email !== ALLOWED_EMAIL) {
+  if (error || !user) {
     return new Response("Forbidden", { status: 403, headers: CORS });
   }
 

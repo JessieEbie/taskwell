@@ -6,8 +6,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_EMAIL = "jessieebie@gmail.com";
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -21,7 +19,7 @@ serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user || user.email !== ALLOWED_EMAIL) {
+  if (error || !user) {
     return new Response("Forbidden", { status: 403, headers: CORS });
   }
 

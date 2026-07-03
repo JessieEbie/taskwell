@@ -6,7 +6,6 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_EMAIL = "jessieebie@gmail.com";
 const CLIENT_ID = Deno.env.get("OUTLOOK_CLIENT_ID")!;
 const CLIENT_SECRET = Deno.env.get("OUTLOOK_CLIENT_SECRET")!;
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
@@ -23,7 +22,7 @@ serve(async (req) => {
     { global: { headers: { Authorization: authHeader } } }
   );
   const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user || user.email !== ALLOWED_EMAIL) {
+  if (error || !user) {
     return new Response("Forbidden", { status: 403, headers: CORS });
   }
 
