@@ -101,7 +101,7 @@
                            cursor: pointer; padding: 4px 10px; margin-left: auto; line-height: 1; }
     .section-hdr-delete:hover { color: var(--rust); }
     .section-hdr-rename { background: none; border: none; color: var(--ink-faint); font-size: 13px;
-                           cursor: pointer; padding: 4px 6px 4px 10px; margin-left: auto; line-height: 1; }
+                           cursor: pointer; padding: 4px 4px 4px 2px; line-height: 1; }
     .section-hdr-rename:hover { color: var(--ink); }
     .section-hdr-rename + .section-hdr-delete { margin-left: 0; }
     .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
@@ -1020,7 +1020,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04g';
+const APP_VERSION = '2026-07-03h';
 const WHATS_NEW = "Fixed a bug where Home lists could vanish from the Hub if their section dropped out of your saved sections. Lists now always show under their real section, and any missing sections are restored automatically.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
