@@ -325,6 +325,7 @@
                      align-items: center; justify-content: center; z-index: 100; padding: 24px;
                      opacity: 0; pointer-events: none; transition: opacity .2s; }
     .modal-overlay.open { opacity: 1; pointer-events: all; }
+    #privacyNoticeModal { z-index: 600; } /* above .login-screen's z-index:500, since it opens from there */
     .modal { background: var(--paper); border-radius: 16px; padding: 22px; width: 100%; max-width: 340px;
              box-shadow: 0 20px 60px rgba(46,33,24,.2); }
     .modal-title { font-size: 19px; font-weight: normal; color: var(--ink); margin-bottom: 14px; }
@@ -342,13 +343,13 @@
     .stab.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
     .stab-pane { display: none; }
     .stab-pane.active { display: block; }
-    .stab-hint { font-size: 11px; color: var(--ink-faint); font-family: 'Helvetica Neue', sans-serif; }
+    .stab-hint { font-size: 13px; color: var(--ink-soft); font-family: 'Helvetica Neue', sans-serif; line-height: 1.5; }
     .settings-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 12px;
       padding: 16px 18px; margin-bottom: 14px; max-width: 520px; }
     .settings-block-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
     .palette-ctx-row { margin-bottom: 20px; }
-    .palette-ctx-label { font-size: 16px; font-weight: 700; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
-      letter-spacing: .04em; color: var(--ink); margin-bottom: 10px; }
+    .palette-ctx-label { font-size: 22px; font-weight: 700; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
+      letter-spacing: .03em; color: var(--ink); margin-bottom: 10px; }
     .palette-swatches { display: flex; gap: 14px; flex-wrap: wrap; }
     .palette-swatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .palette-swatch { width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
@@ -503,7 +504,7 @@
     <p class="login-sub" id="loginSub">Sign in to access your tasks</p>
     <div class="login-error" id="loginErr1"></div>
 
-    <button class="btn-google" id="btnGoogle" onclick="signInWithGoogle()">
+    <button class="btn-google" id="btnGoogle" onclick="handleGoogleSignInClick()">
       <svg width="18" height="18" viewBox="0 0 48 48" style="margin-right:10px;flex-shrink:0"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.96 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
       Sign in with Google
     </button>
@@ -514,7 +515,7 @@
       <p class="login-sub" id="magicLinkSent" style="display:none;margin-top:10px;margin-bottom:0">Check your email for a sign-in link.</p>
     </div>
 
-    <button class="login-back" id="btnShowSetup" onclick="showSetupScreen()">Set up your own Taskwell instance →</button>
+    <button class="login-back" id="btnShowSetup" onclick="showSetupScreen()">Set up your own self-hosted Taskwell instance →</button>
     <button class="login-back hidden" id="btnUseDefault" onclick="useDefaultBackend()">← Use default sign-in instead</button>
   </div>
 </div>
@@ -845,6 +846,22 @@
   </div>
 </div>
 
+<!-- Privacy Notice Modal -->
+<div class="modal-overlay" id="privacyNoticeModal">
+  <div class="modal">
+    <div class="modal-title">Before you sign in</div>
+    <p style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin-bottom:16px">
+      This app's database is owned and managed by the developer. Other users can't see your tasks, but
+      the database owner has administrative access and could technically view any data stored here.
+      If you'd like full privacy, click "Set up your own self-hosted Taskwell instance" below instead.
+    </p>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('privacyNoticeModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="acknowledgePrivacyNotice()">Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Task Modal -->
 <div class="modal-overlay" id="editTaskModal">
   <div class="modal">
@@ -920,8 +937,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04';
-const WHATS_NEW = "You can now add and delete your own Work Hub sections (Hub → + Add Section) instead of being limited to Service/Teaching/Research/Misc.";
+const APP_VERSION = '2026-07-04b';
+const WHATS_NEW = "Added a one-time privacy notice before signing in with Google, letting you know the database owner has administrative access to stored data.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -952,10 +969,6 @@ async function saveWorkSections() {
   } catch(e) { showToast('Could not save sections: ' + e.message, true); }
 }
 
-// Emails allowed to sign in on the DEFAULT shared backend — add trusted users here
-// (lowercase). Not enforced on self-hosted (custom) backends: isolation there comes
-// from each person having their own separate Supabase project.
-const ALLOWED_EMAILS = ['jessieebie@gmail.com'];
 
 const SETUP_SQL = `-- Taskwell schema setup — paste into Supabase SQL Editor and run once.
 create extension if not exists pgcrypto;
@@ -1441,6 +1454,22 @@ async function makePkceChallenge() {
   // new tab, which has no access to the tab that requested the link's sessionStorage.
   localStorage.setItem('pkce_verifier', verifier);
   return challenge;
+}
+
+function handleGoogleSignInClick() {
+  // Only the default shared backend needs this disclosure — a self-hosted instance's
+  // owner IS the signed-in user, so there's no separate admin who could see their data.
+  if (!isCustomBackend && !localStorage.getItem('tw_privacy_ack')) {
+    openModal('privacyNoticeModal');
+    return;
+  }
+  signInWithGoogle();
+}
+
+function acknowledgePrivacyNotice() {
+  localStorage.setItem('tw_privacy_ack', '1');
+  closeModal('privacyNoticeModal');
+  signInWithGoogle();
 }
 
 async function signInWithGoogle() {
@@ -2502,12 +2531,25 @@ async function boot() {
     if (!authSession.user_id) { authSession.user_id = payload.sub; localStorage.setItem('tw_auth', JSON.stringify(authSession)); }
   } catch(e) { /* JWT decode failed, proceed anyway */ }
 
-  // Verify authorized user: email must be on the allowlist (default shared backend only —
-  // self-hosted/custom backends rely on per-project isolation instead)
-  if (!isCustomBackend && jwtEmail && !ALLOWED_EMAILS.includes(jwtEmail)) {
-    authSession = null; localStorage.removeItem('tw_auth');
-    document.getElementById('loginErr1').textContent = "Access denied. Don't have an account? Set up your own instance below.";
-    showLoginScreen(); return;
+  // Verify authorized user: email must be on the allowlist table (default shared backend
+  // only — self-hosted/custom backends rely on per-project isolation instead). The
+  // allowlist lives in the allowed_emails table, not in code, so granting access is a
+  // Table Editor row, not a code change.
+  if (!isCustomBackend && jwtEmail) {
+    let allowed = true;
+    try {
+      const rows = await api('GET', `allowed_emails?email=eq.${encodeURIComponent(jwtEmail)}&select=email`);
+      allowed = rows.length > 0;
+    } catch(e) {
+      // If the allowed_emails table hasn't been created yet, don't lock everyone out —
+      // just skip the check until it exists. Any other error still denies.
+      if (!/does not exist|42P01/i.test(e.message)) allowed = false;
+    }
+    if (!allowed) {
+      authSession = null; localStorage.removeItem('tw_auth');
+      document.getElementById('loginErr1').textContent = "The developer hasn't given you permission to use this app. Click \"Set up your own self-hosted Taskwell instance\" below to run your own copy.";
+      showLoginScreen(); return;
+    }
   }
 
   // Auto-provision a user_settings row for first-time allowlisted users
