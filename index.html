@@ -1402,13 +1402,25 @@ function copySetupSql() {
 }
 
 function saveBackendConfig() {
-  const url = document.getElementById('setupUrlInput').value.trim();
-  const key = document.getElementById('setupKeyInput').value.trim();
   const errEl = document.getElementById('setupErr');
-  if (!/^https:\/\/.+/.test(url) || !key) {
-    errEl.textContent = 'Enter a valid Supabase Project URL and anon/publishable key.';
+  let url = document.getElementById('setupUrlInput').value.trim().replace(/\/+$/, '');
+  const key = document.getElementById('setupKeyInput').value.trim();
+
+  // Forgiving: if they pasted just the bare project ref (no protocol, no dots), expand it.
+  if (url && !/^https?:\/\//.test(url) && !url.includes('.') && !url.includes(' ')) {
+    url = `https://${url}.supabase.co`;
+  }
+
+  if (!/^https:\/\/.+\..+/.test(url)) {
+    errEl.textContent = 'Enter your Supabase Project URL, e.g. https://xxxx.supabase.co';
     return;
   }
+  if (!key) {
+    errEl.textContent = 'Enter your Supabase anon/publishable key.';
+    return;
+  }
+  errEl.textContent = '';
+  document.getElementById('setupUrlInput').value = url;
   localStorage.setItem('tw_config', JSON.stringify({ url, key }));
   location.reload();
 }
