@@ -100,6 +100,10 @@
     .section-hdr-delete { background: none; border: none; color: var(--ink-faint); font-size: 16px;
                            cursor: pointer; padding: 4px 10px; margin-left: auto; line-height: 1; }
     .section-hdr-delete:hover { color: var(--rust); }
+    .section-hdr-rename { background: none; border: none; color: var(--ink-faint); font-size: 13px;
+                           cursor: pointer; padding: 4px 6px 4px 10px; margin-left: auto; line-height: 1; }
+    .section-hdr-rename:hover { color: var(--ink); }
+    .section-hdr-rename + .section-hdr-delete { margin-left: 0; }
     .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
                   overflow: hidden; }
@@ -595,7 +599,7 @@
     </ol>
     <p style="font-size:11px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint);line-height:1.5;margin:-6px 0 14px">
       Note: this Google setup covers signing in only. Calendar features (Connect Google Calendar,
-      Outlook/Power Automate) need additional setup beyond this wizard — ask if you want help with those.
+      Outlook/Power Automate) need additional setup beyond this wizard.
     </p>
 
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
@@ -761,7 +765,17 @@
 
       <div class="settings-block">
         <div class="settings-block-title">Timezone</div>
-        <p class="stab-hint" style="margin-bottom:8px">Arizona (no DST)</p>
+        <p class="stab-hint" style="margin-bottom:8px">Used for new calendar events you create.</p>
+        <select class="modal-select" id="timezoneSelect" onchange="saveTimezone(this.value)">
+          <option value="America/Phoenix">Arizona (no DST)</option>
+          <option value="America/Los_Angeles">Pacific Time</option>
+          <option value="America/Denver">Mountain Time</option>
+          <option value="America/Chicago">Central Time</option>
+          <option value="America/New_York">Eastern Time</option>
+          <option value="America/Anchorage">Alaska Time</option>
+          <option value="Pacific/Honolulu">Hawaii Time</option>
+          <option value="UTC">UTC</option>
+        </select>
       </div>
 
       <div class="settings-block">
@@ -864,15 +878,15 @@
   </div>
 </div>
 
-<!-- Add Section Modal -->
+<!-- Add/Rename Section Modal -->
 <div class="modal-overlay" id="newSectionModal">
   <div class="modal">
-    <div class="modal-title">New Section</div>
+    <div class="modal-title" id="sectionModalTitle">New Section</div>
     <label class="modal-label">Section name</label>
-    <input class="modal-input" id="newSectionName" placeholder="e.g. Committees, Grants…" onkeydown="if(event.key==='Enter') confirmNewSection()" />
+    <input class="modal-input" id="newSectionName" placeholder="e.g. Committees, Grants…" onkeydown="if(event.key==='Enter') confirmSectionModal()" />
     <div class="modal-row">
       <button class="btn" onclick="closeModal('newSectionModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmNewSection()">Create</button>
+      <button class="btn btn-primary" id="sectionModalConfirmBtn" onclick="confirmSectionModal()">Create</button>
     </div>
   </div>
 </div>
@@ -918,6 +932,7 @@
     <div id="taskDetailNotes" class="task-detail-notes"></div>
     <div class="modal-row" style="margin-top:14px">
       <button class="btn" onclick="closeModal('taskDetailModal')">Close</button>
+      <button class="btn" id="taskDetailToggleBtn">Mark complete</button>
       <button class="btn btn-primary" id="taskDetailEditBtn">Edit</button>
     </div>
   </div>
@@ -968,8 +983,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04c';
-const WHATS_NEW = "Home now supports custom sections too (Home → + Add Section), matching what Work already had.";
+const APP_VERSION = '2026-07-04d';
+const WHATS_NEW = "You can now rename any section (including \"Misc\"), mark tasks complete from Week view, and set your timezone in Settings → Calendar.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1695,6 +1710,15 @@ async function loadCalFeeds() {
 }
 
 
+async function saveTimezone(val) {
+  userTimezone = val;
+  localStorage.setItem('tw_timezone', val);
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, timezone: val }, { 'Prefer': 'resolution=merge-duplicates' });
+    showToast('Timezone saved');
+  } catch(e) { showToast('Error: ' + e.message, true); }
+}
+
 async function saveOutlookEmail() {
   const val = document.getElementById('outlookEmailInput').value.trim();
   if (!val) return;
@@ -1801,22 +1825,28 @@ async function saveGoogleTokens(tokens) {
   updateGcalStatus();
 }
 
+// Returns { ok: true } on success, or { ok: false, invalid: true|false }.
+// invalid=true means Google confirmed the refresh token itself is dead (revoked/expired) —
+// that's the only case that should disconnect the user. Any other failure (network hiccup,
+// a transient error from our own edge function, an unparsable response, etc.) is treated as
+// invalid=false: the sync attempt just fails quietly and retries later, without wiping the
+// user's connection over what might be a momentary blip.
 async function refreshGoogleToken() {
-  if (!googleTokens?.refresh_token) return false;
+  if (!googleTokens?.refresh_token) return { ok: false, invalid: true };
   try {
     const r = await fetch(`${SB_URL}/functions/v1/google-calendar-auth`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${authSession.access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'refresh', refresh_token: googleTokens.refresh_token })
     });
-    if (!r.ok) return false;
-    const data = await r.json();
-    if (data.error || !data.access_token) return false;
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, invalid: data?.error === 'invalid_grant' };
+    if (!data.access_token) return { ok: false, invalid: false };
     await saveGoogleTokens({ ...googleTokens, access_token: data.access_token,
       expires_at: Date.now() + (data.expires_in || 3600) * 1000,
       ...(data.refresh_token ? { refresh_token: data.refresh_token } : {}) });
-    return true;
-  } catch { return false; }
+    return { ok: true };
+  } catch { return { ok: false, invalid: false }; }
 }
 
 async function gcalApi(method, path, body) {
@@ -1831,9 +1861,10 @@ async function gcalApi(method, path, body) {
   });
   let r = await doFetch();
   if (r.status === 401) {
-    const refreshed = await refreshGoogleToken();
-    if (refreshed) r = await doFetch();
-    else throw new Error('Google Calendar session expired — please reconnect in Calendars settings.');
+    const result = await refreshGoogleToken();
+    if (result.ok) r = await doFetch();
+    else if (result.invalid) throw new Error('Google Calendar session expired — please reconnect in Calendars settings.');
+    else throw new Error('Could not reach Google Calendar right now — will retry later.');
   }
   if (!r.ok) throw new Error(await r.text());
   if (r.status === 204) return null;
@@ -2739,7 +2770,11 @@ function switchSettingsTab(tab) {
   document.querySelectorAll('.stab').forEach(b => b.classList.toggle('active', b.dataset.stab === tab));
   document.querySelectorAll('.stab-pane').forEach(p => p.classList.toggle('active', p.id === 'stab' + tab.charAt(0).toUpperCase() + tab.slice(1)));
   if (tab === 'colors') renderPalettePicker();
-  if (tab === 'calendar') { renderCalFeedsList(); renderOutlookEmailSection(); }
+  if (tab === 'calendar') {
+    renderCalFeedsList(); renderOutlookEmailSection();
+    const tzSel = document.getElementById('timezoneSelect');
+    if (tzSel) tzSel.value = userTimezone;
+  }
   if (tab === 'account') renderAccountTab();
 }
 
@@ -2872,15 +2907,17 @@ function makeSectionBlock(label, ctx, sec, secLists) {
   block.className = 'section-block';
   const hdr = document.createElement('div');
   hdr.className = 'section-hdr';
-  const canDelete = sec !== 'Misc';
+  const canDelete = sectionsFor(ctx).length > 1;
   hdr.innerHTML = `
     <div class="section-hdr-bar"></div>
     <div class="section-hdr-left">
       <span>${label.toUpperCase()}</span>
       <span style="color:var(--ink-faint);font-size:10px">${collapsed ? '▸' : '▾'}</span>
     </div>
+    <button class="section-hdr-rename" title="Rename section" aria-label="Rename section">&#9998;</button>
     ${canDelete ? `<button class="section-hdr-delete" title="Delete section" aria-label="Delete section">&times;</button>` : ''}`;
   hdr.onclick = () => { sectionCollapsed[key] = !collapsed; renderHub(); };
+  hdr.querySelector('.section-hdr-rename').onclick = (e) => { e.stopPropagation(); openRenameSectionModal(ctx, sec); };
   if (canDelete) {
     hdr.querySelector('.section-hdr-delete').onclick = (e) => { e.stopPropagation(); deleteSection(ctx, sec); };
   }
@@ -3316,15 +3353,40 @@ function expandAll() {
 }
 
 // ── Sections ──
+// Sections are fully user-controlled in both contexts — none (including "Misc") are
+// protected from rename/delete, except that at least one must always remain per context
+// so there's somewhere for new lists to go (enforced in deleteSection below).
 let sectionModalCtx = 'work';
+let sectionModalMode = 'create'; // 'create' | 'rename'
+let sectionModalOldName = null;
+
 function openAddSectionModal(ctx) {
   sectionModalCtx = ctx;
+  sectionModalMode = 'create';
+  sectionModalOldName = null;
+  document.getElementById('sectionModalTitle').textContent = 'New Section';
+  document.getElementById('sectionModalConfirmBtn').textContent = 'Create';
   document.getElementById('newSectionName').value = '';
   openModal('newSectionModal');
   setTimeout(() => document.getElementById('newSectionName').focus(), 200);
 }
 function openAddSectionModalForCurrentContext() {
   openAddSectionModal(currentContext === 'home' ? 'home' : 'work');
+}
+
+function openRenameSectionModal(ctx, sec) {
+  sectionModalCtx = ctx;
+  sectionModalMode = 'rename';
+  sectionModalOldName = sec;
+  document.getElementById('sectionModalTitle').textContent = 'Rename Section';
+  document.getElementById('sectionModalConfirmBtn').textContent = 'Save';
+  document.getElementById('newSectionName').value = sec;
+  openModal('newSectionModal');
+  setTimeout(() => { const inp = document.getElementById('newSectionName'); inp.focus(); inp.select(); }, 200);
+}
+
+function confirmSectionModal() {
+  return sectionModalMode === 'rename' ? confirmRenameSection() : confirmNewSection();
 }
 
 async function confirmNewSection() {
@@ -3336,20 +3398,46 @@ async function confirmNewSection() {
     showToast('That section already exists', true); return;
   }
   closeModal('newSectionModal');
-  // Keep 'Misc' last so it always reads as the catch-all bucket.
-  setSectionsFor(ctx, [...current.filter(s => s !== 'Misc'), name, 'Misc']);
+  // Keep 'Misc' last if present, purely as a visual convention — not protected from
+  // rename/delete like it used to be.
+  setSectionsFor(ctx, [...current.filter(s => s !== 'Misc'), name, ...(current.includes('Misc') ? ['Misc'] : [])]);
   renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
   renderHub(); renderWeek();
   await saveSections(ctx);
   showToast(`"${name}" section added`);
 }
 
+async function confirmRenameSection() {
+  const name = document.getElementById('newSectionName').value.trim();
+  if (!name) return;
+  const ctx = sectionModalCtx;
+  const oldName = sectionModalOldName;
+  if (name === oldName) { closeModal('newSectionModal'); return; }
+  const current = sectionsFor(ctx);
+  if (current.some(s => s.toLowerCase() === name.toLowerCase())) {
+    showToast('That section already exists', true); return;
+  }
+  closeModal('newSectionModal');
+  setSectionsFor(ctx, current.map(s => s === oldName ? name : s));
+  lists.filter(l => (l.section || 'Misc') === oldName && (l.context || 'work') === ctx)
+    .forEach(l => { l.section = name; });
+  delete sectionCollapsed[`${ctx}:${oldName}`];
+  renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
+  renderHub(); renderWeek();
+  await saveSections(ctx);
+  try {
+    await api('PATCH', `lists?section=eq.${encodeURIComponent(oldName)}&context=eq.${ctx}&user_id=eq.${authSession.user_id}`, { section: name });
+    showToast(`Renamed to "${name}"`);
+  } catch(e) { showToast('Section renamed locally, but saving the change failed: ' + e.message, true); }
+}
+
 async function deleteSection(ctx, sec) {
-  if (sec === 'Misc') return; // protected catch-all fallback
+  const current = sectionsFor(ctx);
+  if (current.length <= 1) { showToast('You need at least one section', true); return; }
   const hasLists = lists.some(l => (l.section || 'Misc') === sec && (l.context || 'work') === ctx);
   if (hasLists) { showToast('Move or delete the lists in this section first', true); return; }
   if (!confirm(`Delete the "${sec}" section?`)) return;
-  setSectionsFor(ctx, sectionsFor(ctx).filter(s => s !== sec));
+  setSectionsFor(ctx, current.filter(s => s !== sec));
   delete sectionCollapsed[`${ctx}:${sec}`];
   renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
   renderHub(); renderWeek();
@@ -3418,6 +3506,12 @@ function openTaskDetail(id) {
   document.getElementById('taskDetailEditBtn').onclick = () => {
     closeModal('taskDetailModal');
     openEditTaskModal(id);
+  };
+  const toggleBtn = document.getElementById('taskDetailToggleBtn');
+  toggleBtn.textContent = t.completed ? 'Mark incomplete' : 'Mark complete';
+  toggleBtn.onclick = async () => {
+    await toggleTask(id);
+    closeModal('taskDetailModal');
   };
   openModal('taskDetailModal');
 }
@@ -3733,12 +3827,20 @@ function makeWeekCard(t, dayKey) {
 
   const done = t.completed;
   card.innerHTML = `
-    <div class="week-task-title${done ? ' done' : ''}">${t.title}${t.notes ? '<span class="task-notes-dot" title="Has notes"></span>' : ''}</div>
+    <div style="display:flex;align-items:flex-start;gap:6px">
+      <div class="task-check${done ? ' done' : ''}" style="margin-top:2px;flex-shrink:0"></div>
+      <div class="week-task-title${done ? ' done' : ''}" style="flex:1">${t.title}${t.notes ? '<span class="task-notes-dot" title="Has notes"></span>' : ''}</div>
+    </div>
     <div class="week-task-meta">
       <span class="week-task-list">${lst ? lst.name : ''}</span>
       ${t.due_date ? `<span class="week-task-date">${fmtDisplay(t.due_date)}</span>` : ''}
       <button class="week-task-remove" title="Remove from week">×</button>
     </div>`;
+
+  card.querySelector('.task-check').addEventListener('click', e => {
+    e.stopPropagation();
+    toggleTask(t.id);
+  });
 
   card.querySelector('.week-task-title').addEventListener('click', e => {
     e.stopPropagation();
