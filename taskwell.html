@@ -1176,6 +1176,7 @@ let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
 let outlookTokens = null;
+let serverLastSeen = null; // account-wide last-seen "what's new" version (from Supabase)
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
 
@@ -1800,6 +1801,16 @@ async function loadCalFeeds() {
       if (!HOME_SECTIONS.includes('Misc')) HOME_SECTIONS.push('Misc');
     }
   } catch(e) { /* work_sections/home_sections columns may not exist yet — keep the defaults */ }
+
+  // Account-wide "what's new" last-seen version (separate fetch; column may not
+  // exist yet). Makes the banner show at most once per person across devices.
+  try {
+    const vRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=last_seen_version`);
+    if (vRows?.[0]?.last_seen_version) {
+      serverLastSeen = vRows[0].last_seen_version;
+      try { localStorage.setItem('tw_last_seen_version', serverLastSeen); } catch(e) {}
+    }
+  } catch(e) { /* last_seen_version column may not exist yet — fall back to localStorage */ }
 }
 
 
@@ -2813,21 +2824,42 @@ async function boot() {
 }
 
 function checkWhatsNew() {
-  const lastSeen = localStorage.getItem('tw_last_seen_version');
-  if (lastSeen === null) {
-    // First-ever visit — nothing to compare against, just set the baseline.
-    localStorage.setItem('tw_last_seen_version', APP_VERSION);
+  // Prefer the account-wide value (set on any device) over this device's local
+  // copy, so the banner shows at most once per person — not once per device.
+  const lastSeen = serverLastSeen || localStorage.getItem('tw_last_seen_version');
+  if (lastSeen == null) {
+    // First time on any device — set the baseline, show nothing. This is what
+    // keeps brand-new users from seeing updates that shipped before they joined.
+    markVersionSeen(APP_VERSION);
     return;
   }
   if (lastSeen !== APP_VERSION) {
     // Mark as seen the moment it's shown — a single view counts as "seen," even if
     // they reload or navigate away without clicking "Got it."
-    localStorage.setItem('tw_last_seen_version', APP_VERSION);
+    markVersionSeen(APP_VERSION);
     document.getElementById('whatsNewText').textContent = WHATS_NEW;
     const banner = document.getElementById('whatsNewBanner');
     banner.classList.remove('hidden');
     requestAnimationFrame(() => banner.classList.add('show'));
+  } else if (serverLastSeen !== APP_VERSION) {
+    // Already current on this device, but the account doesn't know yet (e.g. first
+    // run after the column was added, or a device that only had it locally).
+    markVersionSeen(APP_VERSION);
   }
+}
+
+// Persist the last-seen version to this device AND the user's account, so it can
+// never re-show on another device. Server write is best-effort (column may not
+// exist yet); localStorage always holds it regardless.
+function markVersionSeen(v) {
+  serverLastSeen = v;
+  try { localStorage.setItem('tw_last_seen_version', v); } catch(e) {}
+  try {
+    if (authSession?.user_id) {
+      api('POST', 'user_settings', { user_id: authSession.user_id, last_seen_version: v },
+        { 'Prefer': 'resolution=merge-duplicates' }).catch(() => {});
+    }
+  } catch(e) {}
 }
 
 function dismissWhatsNew() {
