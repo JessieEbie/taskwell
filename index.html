@@ -553,8 +553,9 @@
       <li>Save — you'll sign in with an emailed link (no Google setup needed).</li>
     </ol>
     <p style="font-size:11px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint);line-height:1.5;margin:-6px 0 14px">
-      Note: Supabase's free tier limits how many sign-in emails it can send per hour. If links stop
-      arriving, check <b>Project Settings → Auth → SMTP Settings</b> to configure your own email sender.
+      Note: Supabase's free tier limits sign-in emails to about <b>3 per hour</b>. If you test sign-in
+      a few times in a row, you may see a "rate limit exceeded" error — just wait an hour, or check
+      <b>Project Settings → Auth → SMTP Settings</b> to configure your own email sender and remove the limit.
     </p>
 
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
