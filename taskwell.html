@@ -112,11 +112,13 @@
     .list-name { font-family: 'Helvetica Neue', sans-serif; font-size: 15px; font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); flex: 1; }
     .list-count { background: var(--accent-pale); color: var(--ink); font-size: 10px;
                   font-family: 'Helvetica Neue', sans-serif; padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
-    .list-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .list-dot.work { background: var(--rose); }
-    .list-dot.home { background: var(--sage); }
+    .list-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1.5px var(--paper); }
+    .list-dot.work { background: var(--work-rail-color, var(--rose)); }
+    .list-dot.home { background: var(--home-rail-color, var(--sage)); }
     .list-del { font-size: 14px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .list-del:hover { color: var(--rust); }
+    .list-rename { font-size: 12px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 4px; flex-shrink: 0; }
+    .list-rename:hover { color: var(--ink); }
     .list-drag-handle { color: var(--ink-faint); font-size: 13px; cursor: grab; padding: 0 2px; flex-shrink: 0; user-select: none; touch-action: none; }
     .list-drag-handle:active { cursor: grabbing; }
     .list-block.drag-over { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
@@ -891,6 +893,19 @@
   </div>
 </div>
 
+<!-- Rename List Modal -->
+<div class="modal-overlay" id="renameListModal">
+  <div class="modal">
+    <div class="modal-title">Rename List</div>
+    <label class="modal-label">List name</label>
+    <input class="modal-input" id="renameListName" onkeydown="if(event.key==='Enter') confirmRenameList()" />
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('renameListModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRenameList()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Privacy Notice Modal -->
 <div class="modal-overlay" id="privacyNoticeModal">
   <div class="modal">
@@ -983,8 +998,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04d';
-const WHATS_NEW = "You can now rename any section (including \"Misc\"), mark tasks complete from Week view, and set your timezone in Settings → Calendar.";
+const APP_VERSION = '2026-07-04e';
+const WHATS_NEW = "You can now rename lists (not just sections), and in the combined Hub the color dot next to each list now matches its real Work/Home color.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1183,7 +1198,8 @@ function applyPalettes() {
   let style = document.getElementById('paletteStyle');
   if (!style) { style = document.createElement('style'); style.id = 'paletteStyle'; document.head.appendChild(style); }
   style.textContent = `
-    body { --accent:${w.accent}; --accent-dark:${w.dark}; --accent-pale:${w.pale}; --rail-bg:${w.rail}; }
+    body { --accent:${w.accent}; --accent-dark:${w.dark}; --accent-pale:${w.pale}; --rail-bg:${w.rail};
+           --work-rail-color:${w.rail}; --home-rail-color:${h.rail}; }
     body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
     body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
   `;
@@ -3117,10 +3133,11 @@ function makeListBlock(lst) {
   const hdr = document.createElement('div');
   hdr.className = 'list-hdr';
   hdr.innerHTML = `
-    ${currentContext === 'all' ? `<span class="list-dot ${lctx}"></span>` : ''}
+    ${currentContext === 'all' ? `<span class="list-dot ${lctx}" title="${lctx === 'home' ? 'Home' : 'Work'} list"></span>` : ''}
     <span class="list-drag-handle" title="Drag to reorder">⠿</span>
     <span class="list-name">${lst.name}</span>
     ${openTasks.length > 0 ? `<span class="list-count">${openTasks.length}</span>` : ''}
+    <button class="list-rename" onclick="event.stopPropagation();openRenameListModal('${lst.id}')" title="Rename list">&#9998;</button>
     <button class="list-del" onclick="event.stopPropagation();deleteList('${lst.id}','${lst.name}')" title="Delete list">✕</button>`;
   hdr.onclick = () => { listCollapsed[lst.id] = !collapsed; renderHub(); };
   block.appendChild(hdr);
@@ -3304,6 +3321,29 @@ async function deleteList(id, name) {
   renderHub(); renderWeek();
   await api('DELETE', `tasks?list_id=eq.${id}`);
   await api('DELETE', `lists?id=eq.${id}`);
+}
+
+let renameListTargetId = null;
+function openRenameListModal(id) {
+  const lst = lists.find(l => l.id === id);
+  if (!lst) return;
+  renameListTargetId = id;
+  document.getElementById('renameListName').value = lst.name;
+  openModal('renameListModal');
+  setTimeout(() => { const inp = document.getElementById('renameListName'); inp.focus(); inp.select(); }, 200);
+}
+
+async function confirmRenameList() {
+  const name = document.getElementById('renameListName').value.trim();
+  if (!name || !renameListTargetId) return;
+  const lst = lists.find(l => l.id === renameListTargetId);
+  if (!lst) return;
+  closeModal('renameListModal');
+  lst.name = name;
+  renderHub(); renderWeek();
+  try {
+    await api('PATCH', `lists?id=eq.${renameListTargetId}`, { name });
+  } catch(e) { showToast('List renamed locally, but saving the change failed: ' + e.message, true); }
 }
 
 async function undoLastAction() {
