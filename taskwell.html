@@ -660,7 +660,7 @@
     </div>
     <div class="hub-controls">
       <button class="btn btn-primary" onclick="openNewListModal()">+ New List</button>
-      <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModal()">+ Add Section</button>
+      <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModalForCurrentContext()">+ Add Section</button>
       <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
       <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
@@ -968,8 +968,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04b';
-const WHATS_NEW = "Added a one-time privacy notice before signing in with Google, letting you know the database owner has administrative access to stored data.";
+const APP_VERSION = '2026-07-04c';
+const WHATS_NEW = "Home now supports custom sections too (Home → + Add Section), matching what Work already had.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -988,14 +988,20 @@ const SB_KEY = isCustomBackend ? customConfig.key : DEFAULT_SB_KEY;
 
 const HDRS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
                'Content-Type': 'application/json', 'Prefer': 'return=representation' };
-// Default work sections — overwritten per-user once user_settings.work_sections loads.
-// 'Misc' is a protected fallback: every list without an explicit section falls back to
-// it (see `l.section || 'Misc'` elsewhere), so it can't be deleted, only user-added ones can.
+// Default sections per context — overwritten per-user once user_settings.work_sections /
+// home_sections load. 'Misc' is a protected fallback in both: every list without an
+// explicit section falls back to it (see `l.section || 'Misc'` elsewhere), so it can't
+// be deleted, only user-added sections can.
 let WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
+let HOME_SECTIONS = ['Misc'];
 
-async function saveWorkSections() {
+function sectionsFor(ctx) { return ctx === 'home' ? HOME_SECTIONS : WORK_SECTIONS; }
+function setSectionsFor(ctx, arr) { if (ctx === 'home') HOME_SECTIONS = arr; else WORK_SECTIONS = arr; }
+
+async function saveSections(ctx) {
+  const col = ctx === 'home' ? 'home_sections' : 'work_sections';
   try {
-    await api('POST', 'user_settings', { user_id: authSession.user_id, work_sections: WORK_SECTIONS },
+    await api('POST', 'user_settings', { user_id: authSession.user_id, [col]: sectionsFor(ctx) },
       { 'Prefer': 'resolution=merge-duplicates' });
   } catch(e) { showToast('Could not save sections: ' + e.message, true); }
 }
@@ -1034,7 +1040,8 @@ create table if not exists public.user_settings (
   outlook_email text,
   timezone text default 'America/Phoenix',
   palettes jsonb,
-  work_sections jsonb
+  work_sections jsonb,
+  home_sections jsonb
 );
 
 alter table public.lists enable row level security;
@@ -1673,14 +1680,18 @@ async function loadCalFeeds() {
     }
   } catch(e) { /* palettes column may not exist yet — keep localStorage value */ }
 
-  // Work sections in a separate fetch so a missing column never breaks the main load
+  // Sections in a separate fetch so a missing column never breaks the main load
   try {
-    const sRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=work_sections`);
+    const sRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=work_sections,home_sections`);
     if (Array.isArray(sRows?.[0]?.work_sections) && sRows[0].work_sections.length) {
       WORK_SECTIONS = sRows[0].work_sections;
       if (!WORK_SECTIONS.includes('Misc')) WORK_SECTIONS.push('Misc');
     }
-  } catch(e) { /* work_sections column may not exist yet — keep the default list */ }
+    if (Array.isArray(sRows?.[0]?.home_sections) && sRows[0].home_sections.length) {
+      HOME_SECTIONS = sRows[0].home_sections;
+      if (!HOME_SECTIONS.includes('Misc')) HOME_SECTIONS.push('Misc');
+    }
+  } catch(e) { /* work_sections/home_sections columns may not exist yet — keep the defaults */ }
 }
 
 
@@ -2717,7 +2728,9 @@ function applyContext() {
   const el = document.getElementById('hubTitle');
   if (el) el.textContent = titles[currentContext] || 'Hub';
   const addSecBtn = document.getElementById('btnAddSection');
-  if (addSecBtn) addSecBtn.style.display = currentContext === 'home' ? 'none' : '';
+  // Shown for Work or Home (both now have sections); hidden in "all" since it's ambiguous
+  // which context a new section there would belong to.
+  if (addSecBtn) addSecBtn.style.display = (currentContext === 'work' || currentContext === 'home') ? '' : 'none';
 }
 
 // ── Nav ──
@@ -2816,30 +2829,28 @@ function renderHub() {
   if (pendingInbox.length > 0) area.appendChild(makeInboxBlock(pendingInbox));
 
   if (currentContext === 'home') {
-    if (visible.length === 0) {
-      area.innerHTML = '<div class="empty-section" style="padding:16px 0">No home lists yet.</div>';
-    } else {
-      const grid = document.createElement('div');
-      grid.className = 'section-body';
-      grid.dataset.sectionKey = 'home:home';
-      visible.slice().sort((a,b) => (a.position??0) - (b.position??0))
-        .forEach(lst => grid.appendChild(makeListBlock(lst)));
-      area.appendChild(grid);
-    }
+    HOME_SECTIONS.forEach(sec => {
+      const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home');
+      if (currentContext === 'home' || secLists.length > 0) {
+        area.appendChild(makeSectionBlock(sec, 'home', sec, secLists));
+      }
+    });
     return;
   }
 
-  // All mode: banner + Home section always shown + work sections
+  // All mode: banner + home sections + work sections
   if (currentContext === 'all') {
     const banner = document.createElement('div');
     banner.style.cssText = 'background:var(--rail-bg);padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink);';
     banner.textContent = 'Showing all contexts — Home + Work';
     area.appendChild(banner);
-    const homeLists = lists.filter(l => (l.context || 'work') === 'home');
-    area.appendChild(makeSectionBlock('HOME', '__home', homeLists, true));
+    HOME_SECTIONS.forEach(sec => {
+      const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home');
+      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'home', sec, secLists));
+    });
     WORK_SECTIONS.forEach(sec => {
       const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work');
-      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, sec, secLists, false));
+      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'work', sec, secLists));
     });
     return;
   }
@@ -2848,19 +2859,20 @@ function renderHub() {
   WORK_SECTIONS.forEach(sec => {
     const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work');
     if (currentContext === 'work' || secLists.length > 0) {
-      area.appendChild(makeSectionBlock(sec, sec, secLists, false));
+      area.appendChild(makeSectionBlock(sec, 'work', sec, secLists));
     }
   });
 }
 
-function makeSectionBlock(label, key, secLists, isHome) {
+function makeSectionBlock(label, ctx, sec, secLists) {
+  const key = `${ctx}:${sec}`;
   const collapsed = sectionCollapsed[key];
 
   const block = document.createElement('div');
   block.className = 'section-block';
   const hdr = document.createElement('div');
   hdr.className = 'section-hdr';
-  const canDelete = !isHome && key !== 'Misc';
+  const canDelete = sec !== 'Misc';
   hdr.innerHTML = `
     <div class="section-hdr-bar"></div>
     <div class="section-hdr-left">
@@ -2870,14 +2882,14 @@ function makeSectionBlock(label, key, secLists, isHome) {
     ${canDelete ? `<button class="section-hdr-delete" title="Delete section" aria-label="Delete section">&times;</button>` : ''}`;
   hdr.onclick = () => { sectionCollapsed[key] = !collapsed; renderHub(); };
   if (canDelete) {
-    hdr.querySelector('.section-hdr-delete').onclick = (e) => { e.stopPropagation(); deleteSection(key); };
+    hdr.querySelector('.section-hdr-delete').onclick = (e) => { e.stopPropagation(); deleteSection(ctx, sec); };
   }
   block.appendChild(hdr);
 
   if (!collapsed) {
     const body = document.createElement('div');
     body.className = 'section-body';
-    body.dataset.sectionKey = isHome ? 'home:home' : `work:${key}`;
+    body.dataset.sectionKey = key;
     if (secLists.length === 0) {
       body.innerHTML = '<div class="empty-section">No lists yet</div>';
     } else {
@@ -3291,66 +3303,82 @@ document.addEventListener('keydown', e => {
   undoLastAction();
 });
 
-function collapseAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = true); sectionCollapsed['__home'] = true; renderHub(); }
-function expandAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = false); sectionCollapsed['__home'] = false; lists.forEach(l => listCollapsed[l.id] = false); renderHub(); }
+function collapseAll() {
+  WORK_SECTIONS.forEach(s => sectionCollapsed['work:'+s] = true);
+  HOME_SECTIONS.forEach(s => sectionCollapsed['home:'+s] = true);
+  renderHub();
+}
+function expandAll() {
+  WORK_SECTIONS.forEach(s => sectionCollapsed['work:'+s] = false);
+  HOME_SECTIONS.forEach(s => sectionCollapsed['home:'+s] = false);
+  lists.forEach(l => listCollapsed[l.id] = false);
+  renderHub();
+}
 
 // ── Sections ──
-function openAddSectionModal() {
+let sectionModalCtx = 'work';
+function openAddSectionModal(ctx) {
+  sectionModalCtx = ctx;
   document.getElementById('newSectionName').value = '';
   openModal('newSectionModal');
   setTimeout(() => document.getElementById('newSectionName').focus(), 200);
+}
+function openAddSectionModalForCurrentContext() {
+  openAddSectionModal(currentContext === 'home' ? 'home' : 'work');
 }
 
 async function confirmNewSection() {
   const name = document.getElementById('newSectionName').value.trim();
   if (!name) return;
-  if (WORK_SECTIONS.some(s => s.toLowerCase() === name.toLowerCase())) {
+  const ctx = sectionModalCtx;
+  const current = sectionsFor(ctx);
+  if (current.some(s => s.toLowerCase() === name.toLowerCase())) {
     showToast('That section already exists', true); return;
   }
   closeModal('newSectionModal');
   // Keep 'Misc' last so it always reads as the catch-all bucket.
-  WORK_SECTIONS = [...WORK_SECTIONS.filter(s => s !== 'Misc'), name, 'Misc'];
-  renderNewListSectionOptions();
+  setSectionsFor(ctx, [...current.filter(s => s !== 'Misc'), name, 'Misc']);
+  renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
   renderHub(); renderWeek();
-  await saveWorkSections();
+  await saveSections(ctx);
   showToast(`"${name}" section added`);
 }
 
-async function deleteSection(key) {
-  if (key === 'Misc') return; // protected catch-all fallback
-  const hasLists = lists.some(l => (l.section || 'Misc') === key && (l.context || 'work') === 'work');
+async function deleteSection(ctx, sec) {
+  if (sec === 'Misc') return; // protected catch-all fallback
+  const hasLists = lists.some(l => (l.section || 'Misc') === sec && (l.context || 'work') === ctx);
   if (hasLists) { showToast('Move or delete the lists in this section first', true); return; }
-  if (!confirm(`Delete the "${key}" section?`)) return;
-  WORK_SECTIONS = WORK_SECTIONS.filter(s => s !== key);
-  delete sectionCollapsed[key];
-  renderNewListSectionOptions();
+  if (!confirm(`Delete the "${sec}" section?`)) return;
+  setSectionsFor(ctx, sectionsFor(ctx).filter(s => s !== sec));
+  delete sectionCollapsed[`${ctx}:${sec}`];
+  renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
   renderHub(); renderWeek();
-  await saveWorkSections();
+  await saveSections(ctx);
 }
 
-function renderNewListSectionOptions() {
+function renderNewListSectionOptions(ctx) {
   const sel = document.getElementById('newListSection');
   if (!sel) return;
   const prev = sel.value;
-  sel.innerHTML = WORK_SECTIONS.map(s => `<option${s === 'Misc' ? ' selected' : ''}>${s}</option>`).join('');
-  if (WORK_SECTIONS.includes(prev)) sel.value = prev;
+  const arr = sectionsFor(ctx);
+  sel.innerHTML = arr.map(s => `<option${s === 'Misc' ? ' selected' : ''}>${s}</option>`).join('');
+  if (arr.includes(prev)) sel.value = prev;
 }
 
 // ── New List ──
 function setNewListCtx(ctx) {
   document.getElementById('newListCtxWork').className = 'btn btn-sm' + (ctx === 'work' ? ' btn-primary' : '');
   document.getElementById('newListCtxHome').className = 'btn btn-sm' + (ctx === 'home' ? ' btn-primary' : '');
-  document.getElementById('newListSectionRow').style.display = ctx === 'home' ? 'none' : '';
   document.getElementById('newListCtxWork').dataset.selected = ctx === 'work' ? '1' : '';
+  renderNewListSectionOptions(ctx);
 }
 
 function openNewListModal() {
   document.getElementById('newListName').value = '';
-  renderNewListSectionOptions();
   const isAll = currentContext === 'all';
   document.getElementById('newListContextRow').style.display = isAll ? '' : 'none';
   if (isAll) setNewListCtx('work');
-  document.getElementById('newListSectionRow').style.display = currentContext === 'home' ? 'none' : '';
+  else renderNewListSectionOptions(currentContext === 'home' ? 'home' : 'work');
   openModal('newListModal');
   setTimeout(() => document.getElementById('newListName').focus(), 200);
 }
@@ -3358,11 +3386,10 @@ function openNewListModal() {
 async function confirmNewList() {
   const name = document.getElementById('newListName').value.trim();
   if (!name) return;
-  const pickedHome = currentContext === 'all'
+  const isHome = currentContext === 'all'
     ? document.getElementById('newListCtxHome').className.includes('btn-primary')
     : currentContext === 'home';
-  const isHome = pickedHome;
-  const section = isHome ? 'Misc' : document.getElementById('newListSection').value;
+  const section = document.getElementById('newListSection').value;
   const context = isHome ? 'home' : 'work';
   closeModal('newListModal');
   try {
@@ -3452,8 +3479,14 @@ async function dropTaskOnDay(taskId, key) {
 function weekCatFilterIds(visLists) {
   if (weekCategoryFilter === 'none') return new Set();
   if (weekCategoryFilter === 'all') return new Set(visLists.map(l => l.id));
-  if (weekCategoryFilter === 'Home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
-  if (WORK_SECTIONS.includes(weekCategoryFilter)) return new Set(visLists.filter(l => (l.section || 'Misc') === weekCategoryFilter && (l.context || 'work') === 'work').map(l => l.id));
+  if (typeof weekCategoryFilter === 'string' && weekCategoryFilter.startsWith('home:')) {
+    const sec = weekCategoryFilter.slice(5);
+    return new Set(visLists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home').map(l => l.id));
+  }
+  if (typeof weekCategoryFilter === 'string' && weekCategoryFilter.startsWith('work:')) {
+    const sec = weekCategoryFilter.slice(5);
+    return new Set(visLists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work').map(l => l.id));
+  }
   // specific list ID
   return new Set(visLists.filter(l => l.id === weekCategoryFilter).map(l => l.id));
 }
@@ -3495,19 +3528,22 @@ function renderWeek() {
 
   const hasHome = visLists.some(l => (l.context || 'work') === 'home');
   const hasWork = visLists.some(l => (l.context || 'work') === 'work');
+  const presentHomeSections = new Set(visLists
+    .filter(l => (l.context || 'work') === 'home')
+    .map(l => l.section || 'Misc'));
   const presentWorkSections = new Set(visLists
     .filter(l => (l.context || 'work') === 'work')
     .map(l => l.section || 'Misc'));
   // Build menu items: [value, label, indent]
   // indent=false → section-level option; indent=true → individual list
   const menuItems = [['all', 'All lists', false]];
-  if (hasHome) {
-    const homeLists = visLists.filter(l => (l.context || 'work') === 'home');
-    menuItems.push(['Home', 'Home', false]);
-    homeLists.forEach(l => menuItems.push([l.id, l.name, true]));
-  }
+  HOME_SECTIONS.filter(s => s === 'Misc' ? hasHome : presentHomeSections.has(s)).forEach(s => {
+    menuItems.push([`home:${s}`, s, false]);
+    visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'home')
+      .forEach(l => menuItems.push([l.id, l.name, true]));
+  });
   WORK_SECTIONS.filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).forEach(s => {
-    menuItems.push([s, s, false]);
+    menuItems.push([`work:${s}`, s, false]);
     visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')
       .forEach(l => menuItems.push([l.id, l.name, true]));
   });
