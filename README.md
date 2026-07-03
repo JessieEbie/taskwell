@@ -98,16 +98,14 @@ create policy "owner only" on public.tasks
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- User settings: restrict entirely to your account
--- Replace the UUID below with your Supabase user UUID
--- (find it in Authentication → Users after your first login)
+-- User settings: each user can read/write only their own row
 create policy "owner only" on public.user_settings
   for all
-  using (auth.uid() = 'YOUR-SUPABASE-USER-UUID-HERE')
-  with check (auth.uid() = 'YOUR-SUPABASE-USER-UUID-HERE');
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 ```
 
-> **Note:** Log in to the app once first, then go to **Authentication → Users** in Supabase to find your UUID, then update the `user_settings` policy with it.
+> **Note:** All three tables use the same per-user policy (`auth.uid() = user_id`), so every signed-in user is isolated to their own rows. Who is *allowed to sign in at all* is controlled separately by the `allowed_emails` table, not by RLS. (Do **not** hardcode a single UUID into the `user_settings` policy — that blocks every other account from saving its settings, e.g. Google Calendar tokens, with a `42501` row-level-security error.)
 
 ### 2e. Deploy Edge Functions
 
@@ -306,19 +304,9 @@ Then copy `taskwell.html` to `index.html` and push both to GitHub.
 1. Open `https://YOUR_USERNAME.github.io/taskwell/`.
 2. Click **Sign in with Google** and complete the OAuth flow.
 3. You will be redirected back to the app.
-4. Go to **Supabase → Authentication → Users**, copy your UUID.
-5. Run this SQL in Supabase to lock down your account:
+4. Go to **Settings → Calendar** in the app to connect Google Calendar and add any ICS feeds.
 
-```sql
-DROP POLICY IF EXISTS "owner only" ON public.user_settings;
-
-CREATE POLICY "owner only" ON public.user_settings
-  FOR ALL
-  USING (auth.uid() = 'YOUR-UUID-HERE')
-  WITH CHECK (auth.uid() = 'YOUR-UUID-HERE');
-```
-
-6. Go to **Settings → Calendar** in the app to connect Google Calendar and add any ICS feeds.
+> **Controlling who can sign in:** access is gated by the `allowed_emails` table, not by hardcoding a UUID into RLS. Add the Google email addresses you want to allow: `insert into public.allowed_emails (email) values ('you@gmail.com');`. RLS (`auth.uid() = user_id`) then keeps each allowed user isolated to their own rows.
 
 ---
 
@@ -327,8 +315,8 @@ CREATE POLICY "owner only" ON public.user_settings
 - The **Supabase anon key** is safe to include in the HTML — it is a publishable key and Supabase's RLS policies enforce all data access.
 - The **Google client secret** and **Outlook client secret** must never be in the HTML. They live only in Supabase Edge Function secrets.
 - The **Supabase service role key** must never be committed anywhere.
-- The `user_settings` RLS policy tied to your specific UUID prevents any other Google account from reading or writing your data, even if they sign in.
-- Anyone who signs in with a Google account and is not you will see "Access denied. This app is private." and be immediately signed out.
+- RLS (`auth.uid() = user_id`) isolates every user to their own rows, so no signed-in user can read or write another user's data — including yours.
+- Who is allowed to sign in at all is controlled by the `allowed_emails` table. Anyone not listed there is shown "Access denied" and signed out.
 
 ---
 
