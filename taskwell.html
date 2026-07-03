@@ -561,19 +561,33 @@
         the fields below.
       </li>
       <li style="margin-bottom:12px">
-        <b>Required.</b> Set up Google Sign-In (you'll need this anyway if you want Calendar features later):
-        <br/>&nbsp;&nbsp;a. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a>
-        and create a project (or use an existing one).
-        <br/>&nbsp;&nbsp;b. Go to <b>APIs &amp; Services → OAuth consent screen</b>. Choose <b>External</b>,
-        fill in an app name and your email, and save — "Testing" mode is fine to start.
-        <br/>&nbsp;&nbsp;c. Go to <b>APIs &amp; Services → Credentials → Create Credentials → OAuth client ID</b>.
-        Choose <b>Web application</b>.
-        <br/>&nbsp;&nbsp;d. Under <b>Authorized redirect URIs</b>, add:
+        <b>Required.</b> Set up Google Sign-In (you'll need this anyway if you want Calendar features later).
+        This takes about 10 minutes and involves creating a free Google Cloud project — go slowly and it's
+        hard to get wrong:
+        <br/>&nbsp;&nbsp;a. Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener">console.cloud.google.com</a>.
+        If you don't already have a project, click the project dropdown near the top of the page, click
+        <b>New Project</b>, name it anything (e.g. "Taskwell"), and click <b>Create</b>. Wait a few seconds
+        and make sure the new project is selected in that same dropdown.
+        <br/>&nbsp;&nbsp;b. In the search bar at the top, type <b>Google Auth Platform</b> and click it.
+        If you see "Get Started," click it to begin the setup wizard.
+        <br/>&nbsp;&nbsp;c. <b>App Information page:</b> enter an app name (e.g. "Taskwell") and your own
+        email as the support email, then click <b>Next</b>.
+        <br/>&nbsp;&nbsp;d. <b>Audience page:</b> choose <b>External</b>, then click <b>Next</b>.
+        <br/>&nbsp;&nbsp;e. <b>Contact Information page:</b> enter your email again, then click <b>Next</b>.
+        <br/>&nbsp;&nbsp;f. Check the box agreeing to the policy, click <b>Continue</b>, then click <b>Create</b>.
+        <br/>&nbsp;&nbsp;g. On the left, click the <b>Audience</b> tab. Under <b>Test users</b>, click
+        <b>Add users</b>, enter your own email (and anyone else you want to allow while testing), then
+        <b>Save</b>. <i>Without this, sign-in will fail with an "access blocked" error for anyone not on
+        this list — you can add up to 100 people, or "publish" the app later to remove this limit.</i>
+        <br/>&nbsp;&nbsp;h. On the left, click <b>Clients</b>, then click <b>Create Client</b>. For
+        Application type, choose <b>Web application</b> and give it a name.
+        <br/>&nbsp;&nbsp;i. Under <b>Authorized redirect URIs</b>, click <b>Add URI</b> and paste:
         <code style="background:var(--cream);padding:1px 4px;border-radius:4px">https://YOUR-PROJECT-ID.supabase.co/auth/v1/callback</code>
         (replace <code style="background:var(--cream);padding:1px 4px;border-radius:4px">YOUR-PROJECT-ID</code>
-        with the Project ID from the previous step).
-        <br/>&nbsp;&nbsp;e. Copy the <b>Client ID</b> and <b>Client Secret</b> it gives you.
-        <br/>&nbsp;&nbsp;f. In Supabase, go to <b>Authentication → Sign In / Providers</b>, scroll to
+        with the Project ID from the previous step), then click <b>Create</b>.
+        <br/>&nbsp;&nbsp;j. Your <b>Client ID</b> and <b>Client Secret</b> appear immediately — copy both
+        somewhere safe now. <i>The secret is only shown this once.</i>
+        <br/>&nbsp;&nbsp;k. In Supabase, go to <b>Authentication → Sign In / Providers</b>, scroll to
         <b>Auth Providers</b>, click <b>Google</b>, toggle it on, paste in your Client ID and Client Secret,
         and click <b>Save</b>.
       </li>
