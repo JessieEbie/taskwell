@@ -97,6 +97,9 @@
     .section-hdr-left { display: flex; align-items: center; gap: 6px; font-family: 'Helvetica Neue', sans-serif;
                         font-size: 15px; font-weight: 700; color: var(--ink); padding: 4px 10px; }
     .section-hdr-right { display: none; }
+    .section-hdr-delete { background: none; border: none; color: var(--ink-faint); font-size: 16px;
+                           cursor: pointer; padding: 4px 10px; margin-left: auto; line-height: 1; }
+    .section-hdr-delete:hover { color: var(--rust); }
     .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
                   overflow: hidden; }
@@ -344,8 +347,8 @@
       padding: 16px 18px; margin-bottom: 14px; max-width: 520px; }
     .settings-block-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
     .palette-ctx-row { margin-bottom: 20px; }
-    .palette-ctx-label { font-size: 11px; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
-      letter-spacing: .06em; color: var(--ink-soft); margin-bottom: 10px; }
+    .palette-ctx-label { font-size: 16px; font-weight: 700; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
+      letter-spacing: .04em; color: var(--ink); margin-bottom: 10px; }
     .palette-swatches { display: flex; gap: 14px; flex-wrap: wrap; }
     .palette-swatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
     .palette-swatch { width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
@@ -625,6 +628,7 @@
     </div>
     <div class="hub-controls">
       <button class="btn btn-primary" onclick="openNewListModal()">+ New List</button>
+      <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModal()">+ Add Section</button>
       <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
       <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
@@ -828,6 +832,19 @@
   </div>
 </div>
 
+<!-- Add Section Modal -->
+<div class="modal-overlay" id="newSectionModal">
+  <div class="modal">
+    <div class="modal-title">New Section</div>
+    <label class="modal-label">Section name</label>
+    <input class="modal-input" id="newSectionName" placeholder="e.g. Committees, Grants…" onkeydown="if(event.key==='Enter') confirmNewSection()" />
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('newSectionModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmNewSection()">Create</button>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Task Modal -->
 <div class="modal-overlay" id="editTaskModal">
   <div class="modal">
@@ -903,8 +920,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-03k';
-const WHATS_NEW = "Added an Account tab in Settings showing who's signed in, with a sign-out button — handy for switching users on a shared device.";
+const APP_VERSION = '2026-07-04';
+const WHATS_NEW = "You can now add and delete your own Work Hub sections (Hub → + Add Section) instead of being limited to Service/Teaching/Research/Misc.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -923,7 +940,17 @@ const SB_KEY = isCustomBackend ? customConfig.key : DEFAULT_SB_KEY;
 
 const HDRS = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
                'Content-Type': 'application/json', 'Prefer': 'return=representation' };
-const WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
+// Default work sections — overwritten per-user once user_settings.work_sections loads.
+// 'Misc' is a protected fallback: every list without an explicit section falls back to
+// it (see `l.section || 'Misc'` elsewhere), so it can't be deleted, only user-added ones can.
+let WORK_SECTIONS = ['Service','Teaching','Research','Misc'];
+
+async function saveWorkSections() {
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, work_sections: WORK_SECTIONS },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch(e) { showToast('Could not save sections: ' + e.message, true); }
+}
 
 // Emails allowed to sign in on the DEFAULT shared backend — add trusted users here
 // (lowercase). Not enforced on self-hosted (custom) backends: isolation there comes
@@ -962,7 +989,8 @@ create table if not exists public.user_settings (
   outlook_tokens jsonb,
   outlook_email text,
   timezone text default 'America/Phoenix',
-  palettes jsonb
+  palettes jsonb,
+  work_sections jsonb
 );
 
 alter table public.lists enable row level security;
@@ -1581,6 +1609,15 @@ async function loadCalFeeds() {
       applyPalettes();
     }
   } catch(e) { /* palettes column may not exist yet — keep localStorage value */ }
+
+  // Work sections in a separate fetch so a missing column never breaks the main load
+  try {
+    const sRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=work_sections`);
+    if (Array.isArray(sRows?.[0]?.work_sections) && sRows[0].work_sections.length) {
+      WORK_SECTIONS = sRows[0].work_sections;
+      if (!WORK_SECTIONS.includes('Misc')) WORK_SECTIONS.push('Misc');
+    }
+  } catch(e) { /* work_sections column may not exist yet — keep the default list */ }
 }
 
 
@@ -2603,6 +2640,8 @@ function applyContext() {
   const titles = { work: 'Work Hub', home: 'Home', all: 'Hub' };
   const el = document.getElementById('hubTitle');
   if (el) el.textContent = titles[currentContext] || 'Hub';
+  const addSecBtn = document.getElementById('btnAddSection');
+  if (addSecBtn) addSecBtn.style.display = currentContext === 'home' ? 'none' : '';
 }
 
 // ── Nav ──
@@ -2745,13 +2784,18 @@ function makeSectionBlock(label, key, secLists, isHome) {
   block.className = 'section-block';
   const hdr = document.createElement('div');
   hdr.className = 'section-hdr';
+  const canDelete = !isHome && key !== 'Misc';
   hdr.innerHTML = `
     <div class="section-hdr-bar"></div>
     <div class="section-hdr-left">
       <span>${label.toUpperCase()}</span>
       <span style="color:var(--ink-faint);font-size:10px">${collapsed ? '▸' : '▾'}</span>
-    </div>`;
+    </div>
+    ${canDelete ? `<button class="section-hdr-delete" title="Delete section" aria-label="Delete section">&times;</button>` : ''}`;
   hdr.onclick = () => { sectionCollapsed[key] = !collapsed; renderHub(); };
+  if (canDelete) {
+    hdr.querySelector('.section-hdr-delete').onclick = (e) => { e.stopPropagation(); deleteSection(key); };
+  }
   block.appendChild(hdr);
 
   if (!collapsed) {
@@ -3174,6 +3218,48 @@ document.addEventListener('keydown', e => {
 function collapseAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = true); sectionCollapsed['__home'] = true; renderHub(); }
 function expandAll() { WORK_SECTIONS.forEach(s => sectionCollapsed[s] = false); sectionCollapsed['__home'] = false; lists.forEach(l => listCollapsed[l.id] = false); renderHub(); }
 
+// ── Sections ──
+function openAddSectionModal() {
+  document.getElementById('newSectionName').value = '';
+  openModal('newSectionModal');
+  setTimeout(() => document.getElementById('newSectionName').focus(), 200);
+}
+
+async function confirmNewSection() {
+  const name = document.getElementById('newSectionName').value.trim();
+  if (!name) return;
+  if (WORK_SECTIONS.some(s => s.toLowerCase() === name.toLowerCase())) {
+    showToast('That section already exists', true); return;
+  }
+  closeModal('newSectionModal');
+  // Keep 'Misc' last so it always reads as the catch-all bucket.
+  WORK_SECTIONS = [...WORK_SECTIONS.filter(s => s !== 'Misc'), name, 'Misc'];
+  renderNewListSectionOptions();
+  renderHub(); renderWeek();
+  await saveWorkSections();
+  showToast(`"${name}" section added`);
+}
+
+async function deleteSection(key) {
+  if (key === 'Misc') return; // protected catch-all fallback
+  const hasLists = lists.some(l => (l.section || 'Misc') === key && (l.context || 'work') === 'work');
+  if (hasLists) { showToast('Move or delete the lists in this section first', true); return; }
+  if (!confirm(`Delete the "${key}" section?`)) return;
+  WORK_SECTIONS = WORK_SECTIONS.filter(s => s !== key);
+  delete sectionCollapsed[key];
+  renderNewListSectionOptions();
+  renderHub(); renderWeek();
+  await saveWorkSections();
+}
+
+function renderNewListSectionOptions() {
+  const sel = document.getElementById('newListSection');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = WORK_SECTIONS.map(s => `<option${s === 'Misc' ? ' selected' : ''}>${s}</option>`).join('');
+  if (WORK_SECTIONS.includes(prev)) sel.value = prev;
+}
+
 // ── New List ──
 function setNewListCtx(ctx) {
   document.getElementById('newListCtxWork').className = 'btn btn-sm' + (ctx === 'work' ? ' btn-primary' : '');
@@ -3184,6 +3270,7 @@ function setNewListCtx(ctx) {
 
 function openNewListModal() {
   document.getElementById('newListName').value = '';
+  renderNewListSectionOptions();
   const isAll = currentContext === 'all';
   document.getElementById('newListContextRow').style.display = isAll ? '' : 'none';
   if (isAll) setNewListCtx('work');
