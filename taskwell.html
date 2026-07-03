@@ -352,7 +352,16 @@
     .stab-hint { font-size: 13px; color: var(--ink-soft); font-family: 'Helvetica Neue', sans-serif; line-height: 1.5; }
     .settings-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 12px;
       padding: 16px 18px; margin-bottom: 14px; max-width: 520px; }
+    .settings-block.has-help { max-width: 820px; }
     .settings-block-title { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 8px; }
+    /* Two-column settings row: controls on the left, instructions on the right;
+       wraps the help below the controls on narrow screens. */
+    .sb-row { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: flex-start; }
+    .sb-main { flex: 1 1 300px; min-width: 0; }
+    .sb-help { flex: 1 1 250px; min-width: 0; padding-top: 2px; }
+    .sb-help .stab-hint { margin: 0 0 6px; }
+    .sb-help .stab-hint:last-child { margin-bottom: 0; }
+    .sb-help a { color: var(--accent-dark); }
     .palette-ctx-row { margin-bottom: 20px; }
     .palette-ctx-label { font-size: 22px; font-weight: 700; font-family: 'Helvetica Neue', sans-serif; text-transform: uppercase;
       letter-spacing: .03em; color: var(--ink); margin-bottom: 10px; }
@@ -743,83 +752,95 @@
 
     <!-- Calendar tab -->
     <div class="stab-pane active scroll-area" id="stabCalendar" style="padding:16px 20px 40px">
-      <div class="settings-block">
-        <div class="settings-block-title">How These Work</div>
-        <p class="stab-hint" style="margin-bottom:6px">
-          <b>ICS Feeds</b> — paste a calendar's iCal/webcal link (e.g. a shared team or class calendar) to see
-          its events here. Read-only: you can view these events, but Taskwell can't create or edit them.
-        </p>
-        <p class="stab-hint" style="margin-bottom:6px">
-          <b>Google Calendar</b> — connects your Google account so its events show up here, and lets Taskwell
-          create new events directly on that calendar.
-        </p>
-        <p class="stab-hint" style="margin-bottom:0">
-          <b>Work Calendar Email</b> — a way to add events to an Outlook/Microsoft 365 calendar without a
-          direct connection. Enter the email address your Power Automate flow watches. New Work events you
-          create in Taskwell are emailed to that address from your connected Google account (subject starts
-          with <code style="background:var(--cream);padding:1px 4px;border-radius:4px">#AddToCalendar</code>),
-          which triggers the flow to add the event to Outlook.
-          <a href="https://raw.githubusercontent.com/JessieEbie/taskwell/main/OutlookAutomatorTaskwellEventGenerator_20260630014511.zip" target="_blank" rel="noopener">Download the starter Power Automate flow →</a>
-          Import it via Power Automate → My flows → Import → Import Package (Legacy), then update its
-          connections to your own Outlook account.
-        </p>
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Timezone</div>
+            <select class="modal-select" id="timezoneSelect" onchange="saveTimezone(this.value)">
+              <option value="America/Phoenix">Arizona (no DST)</option>
+              <option value="America/Los_Angeles">Pacific Time</option>
+              <option value="America/Denver">Mountain Time</option>
+              <option value="America/Chicago">Central Time</option>
+              <option value="America/New_York">Eastern Time</option>
+              <option value="America/Anchorage">Alaska Time</option>
+              <option value="Pacific/Honolulu">Hawaii Time</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint">Sets the timezone Taskwell uses when it creates new calendar events, so they land at the right time of day.</p>
+          </div>
+        </div>
       </div>
 
-      <div class="settings-block">
-        <div class="settings-block-title">Timezone</div>
-        <p class="stab-hint" style="margin-bottom:8px">Used for new calendar events you create.</p>
-        <select class="modal-select" id="timezoneSelect" onchange="saveTimezone(this.value)">
-          <option value="America/Phoenix">Arizona (no DST)</option>
-          <option value="America/Los_Angeles">Pacific Time</option>
-          <option value="America/Denver">Mountain Time</option>
-          <option value="America/Chicago">Central Time</option>
-          <option value="America/New_York">Eastern Time</option>
-          <option value="America/Anchorage">Alaska Time</option>
-          <option value="Pacific/Honolulu">Hawaii Time</option>
-          <option value="UTC">UTC</option>
-        </select>
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">ICS Feeds — view-only calendars</div>
+            <div class="cal-feeds-list" id="calFeedsList"></div>
+            <label class="modal-label" style="margin-top:10px">Add ICS feed URL</label>
+            <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
+                   onkeydown="if(event.key==='Enter') addCalFeed()" />
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <input class="modal-input" id="calFeedUser" placeholder="Username (if required)" style="flex:1;margin-top:0" />
+              <input class="modal-input" id="calFeedPass" placeholder="Password (if required)" type="password" style="flex:1;margin-top:0" />
+            </div>
+            <p class="stab-hint" style="margin-top:4px">Leave username/password blank for public or secret-URL feeds.</p>
+            <div class="modal-row" style="margin-top:10px">
+              <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
+            </div>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint"><b>View-only.</b> Paste a calendar's iCal/webcal link to see its events inside Taskwell. You can view these events, but Taskwell can't create, edit, or delete them. For that, connect Google Calendar below.</p>
+            <p class="stab-hint"><b>Get the link from Google Calendar:</b> on a computer, open Google Calendar → hover the calendar under “My calendars” → ⋮ → <i>Settings and sharing</i> → scroll to <i>“Secret address in iCal format”</i> and copy that link.</p>
+            <p class="stab-hint"><b>Get the link from Outlook:</b> open Outlook on the web → <i>Settings → Calendar → Shared calendars</i> → under <i>Publish a calendar</i>, pick the calendar, publish it, and copy the <i>ICS</i> link.</p>
+          </div>
+        </div>
       </div>
 
-      <div class="settings-block">
-        <div class="settings-block-title">ICS Feeds</div>
-        <div class="cal-feeds-list" id="calFeedsList"></div>
-        <label class="modal-label" style="margin-top:10px">Add ICS feed URL</label>
-        <input class="modal-input" id="calFeedUrl" placeholder="https://… or webcal://…"
-               onkeydown="if(event.key==='Enter') addCalFeed()" />
-        <div style="display:flex;gap:8px;margin-top:6px">
-          <input class="modal-input" id="calFeedUser" placeholder="Username (if required)" style="flex:1;margin-top:0" />
-          <input class="modal-input" id="calFeedPass" placeholder="Password (if required)" type="password" style="flex:1;margin-top:0" />
-        </div>
-        <p class="stab-hint" style="margin-top:4px">Leave username/password blank for public or secret-URL feeds.</p>
-        <div class="modal-row" style="margin-top:10px">
-          <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
-        </div>
-      </div>
-      <div class="settings-block">
-        <div class="settings-block-title">Google Calendar</div>
-        <div id="gcalConnectedRow" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
-          <span id="gcalStatus" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink);flex:1;min-width:0"></span>
-          <button class="btn btn-sm" onclick="connectGoogleCalendar()">Reconnect</button>
-          <button class="btn btn-sm btn-danger" onclick="disconnectGoogleCalendar()">Disconnect</button>
-        </div>
-        <div id="gcalDisconnectedRow" style="display:flex;align-items:center;gap:8px">
-          <button class="btn btn-sm" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Google Calendar</div>
+            <div id="gcalConnectedRow" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+              <span id="gcalStatus" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink);flex:1;min-width:0"></span>
+              <button class="btn btn-sm" onclick="connectGoogleCalendar()">Reconnect / switch account</button>
+              <button class="btn btn-sm btn-danger" onclick="disconnectGoogleCalendar()">Disconnect</button>
+            </div>
+            <div id="gcalDisconnectedRow" style="display:flex;align-items:center;gap:8px">
+              <button class="btn btn-sm" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
+            </div>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint"><b>Only needed if you want Taskwell to add or edit events on your Google Calendar.</b> If you just want to <i>see</i> a Google calendar, add it as an ICS feed above instead — connecting isn't required.</p>
+            <p class="stab-hint"><b>To connect:</b> click <i>Connect Google Calendar</i>, choose your Google account, and tap <i>Allow</i> on the permission screen. That's it — your events will start showing up.</p>
+            <p class="stab-hint"><b>Using a different account?</b> Once connected, the box shows which account is linked. To switch, click <i>Reconnect / switch account</i> and pick the other one.</p>
+          </div>
         </div>
       </div>
-      <div class="settings-block">
-        <div class="settings-block-title">Work Calendar Email</div>
-        <p class="stab-hint" style="margin-bottom:8px">New Work events will invite this email as a guest.</p>
-        <div id="outlookEmailView" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
-          <span id="outlookEmailDisplay" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink)"></span>
-          <button class="btn btn-sm" onclick="showOutlookEmailEdit()">Change</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteOutlookEmail()">Remove</button>
+
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Add to a Managed Outlook Calendar</div>
+            <div id="outlookEmailView" style="display:none;align-items:center;gap:8px;margin-bottom:6px">
+              <span id="outlookEmailDisplay" style="font-size:13px;font-family:'Helvetica Neue',sans-serif;color:var(--ink)"></span>
+              <button class="btn btn-sm" onclick="showOutlookEmailEdit()">Change</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteOutlookEmail()">Remove</button>
+            </div>
+            <div id="outlookEmailEdit" style="display:none;gap:6px;align-items:center;margin-bottom:6px">
+              <input class="modal-input" id="outlookEmailInput" placeholder="your@work.com" type="email" style="margin:0;flex:1" />
+              <button class="btn btn-sm btn-primary" onclick="saveOutlookEmail()">Save</button>
+              <button class="btn btn-sm" onclick="cancelOutlookEmailEdit()">Cancel</button>
+            </div>
+            <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none">Add Email</button>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint"><b>For work or school Outlook calendars you can't connect to directly.</b> Enter the email address your Power Automate flow watches.</p>
+            <p class="stab-hint"><b>How it works:</b> when you create a new Work event, Taskwell emails it from your connected Google account with a subject starting <code style="background:var(--cream);padding:1px 4px;border-radius:4px">#AddToCalendar</code>. Your Power Automate flow sees that email and adds the event to your Outlook calendar automatically.</p>
+            <p class="stab-hint"><b>Set it up:</b> <a href="https://github.com/JessieEbie/taskwell/blob/main/POWER_AUTOMATE_SETUP.md" target="_blank" rel="noopener">read the step-by-step guide →</a><br><a href="https://raw.githubusercontent.com/JessieEbie/taskwell/main/OutlookAutomatorTaskwellEventGenerator_20260630014511.zip" target="_blank" rel="noopener">download the flow to import →</a></p>
+          </div>
         </div>
-        <div id="outlookEmailEdit" style="display:none;gap:6px;align-items:center;margin-bottom:6px">
-          <input class="modal-input" id="outlookEmailInput" placeholder="your@asu.edu" type="email" style="margin:0;flex:1" />
-          <button class="btn btn-sm btn-primary" onclick="saveOutlookEmail()">Save</button>
-          <button class="btn btn-sm" onclick="cancelOutlookEmailEdit()">Cancel</button>
-        </div>
-        <button class="btn btn-sm" id="outlookEmailAddBtn" onclick="showOutlookEmailEdit()" style="display:none">Add Email</button>
       </div>
     </div>
 
@@ -998,8 +1019,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04e';
-const WHATS_NEW = "You can now rename lists (not just sections), and in the combined Hub the color dot next to each list now matches its real Work/Home color.";
+const APP_VERSION = '2026-07-04f';
+const WHATS_NEW = "The Calendar settings page is clearer: each setting now has its own instructions beside it, ICS feeds explain view-only setup for Google & Outlook, and the Google Calendar box reliably shows which account is connected.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1696,10 +1717,13 @@ async function loadCalFeeds() {
       if (r.outlook_email) { outlookEmail = r.outlook_email; localStorage.setItem('tw_outlook_email', outlookEmail); }
       if (r.timezone) { userTimezone = r.timezone; localStorage.setItem('tw_timezone', userTimezone); }
     }
-    updateGcalStatus();
-    updateOutlookStatus();
-    if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
   } catch(e) { /* keep whatever was loaded from localStorage */ }
+  // Always reflect the current token state, even if the DB fetch above failed —
+  // otherwise a transient network blip on open leaves the UI stuck on "Connect"
+  // despite valid tokens loaded from localStorage.
+  updateGcalStatus();
+  updateOutlookStatus();
+  if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
 
   // Palettes in a separate fetch so a missing column never breaks the main load
   try {
@@ -2788,6 +2812,8 @@ function switchSettingsTab(tab) {
   if (tab === 'colors') renderPalettePicker();
   if (tab === 'calendar') {
     renderCalFeedsList(); renderOutlookEmailSection();
+    updateGcalStatus();
+    if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
     const tzSel = document.getElementById('timezoneSelect');
     if (tzSel) tzSel.value = userTimezone;
   }
