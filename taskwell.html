@@ -540,11 +540,22 @@
         <button class="btn btn-sm" style="width:100%" onclick="copySetupSql()">Copy SQL script</button>
       </li>
       <li style="margin-bottom:12px">
+        In <b>Authentication → URL Configuration</b>, set <b>Site URL</b> to
+        <code style="background:var(--cream);padding:1px 4px;border-radius:4px">https://jessieebie.github.io/taskwell/</code>
+        and add that same address to <b>Redirect URLs</b>. <b>Required</b> — without this, sign-in links will
+        redirect to <code style="background:var(--cream);padding:1px 4px;border-radius:4px">localhost:3000</code>
+        and fail.
+      </li>
+      <li style="margin-bottom:12px">
         Find your <b>Project ID</b> (in the URL of your dashboard, or under Project Settings) and your
         <b>anon/publishable</b> API key, and enter them below.
       </li>
       <li>Save — you'll sign in with an emailed link (no Google setup needed).</li>
     </ol>
+    <p style="font-size:11px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint);line-height:1.5;margin:-6px 0 14px">
+      Note: Supabase's free tier limits how many sign-in emails it can send per hour. If links stop
+      arriving, check <b>Project Settings → Auth → SMTP Settings</b> to configure your own email sender.
+    </p>
 
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
     <input type="text" class="login-input" id="setupKeyInput" placeholder="Supabase anon/publishable key" />
@@ -678,6 +689,7 @@
     <div class="stab-bar" id="settingsTabBar">
       <button class="stab active" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
       <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
+      <button class="stab" data-stab="account" onclick="switchSettingsTab('account')">Account</button>
     </div>
 
     <!-- Calendar tab -->
@@ -734,6 +746,16 @@
     <div class="stab-pane scroll-area" id="stabColors" style="padding:16px 20px 40px">
       <p class="stab-hint">Choose an accent color for each context.</p>
       <div id="palettePickerArea"></div>
+    </div>
+
+    <!-- Account tab -->
+    <div class="stab-pane scroll-area" id="stabAccount" style="padding:16px 20px 40px">
+      <div class="settings-block">
+        <div class="settings-block-title">Signed in as</div>
+        <p class="stab-hint" id="accountEmail" style="margin-bottom:8px"></p>
+        <p class="stab-hint" id="accountBackend" style="margin-bottom:12px"></p>
+        <button class="btn btn-sm btn-danger" onclick="signOut()">Sign out</button>
+      </div>
     </div>
   </section>
 
@@ -852,8 +874,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-03c';
-const WHATS_NEW = "Cmd+Z now undoes your last action — completing a task, deleting a task or list, or clearing completed tasks.";
+const APP_VERSION = '2026-07-03e';
+const WHATS_NEW = "Added an Account tab in Settings showing who's signed in, with a sign-out button — handy for switching users on a shared device.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2539,6 +2561,19 @@ function switchSettingsTab(tab) {
   document.querySelectorAll('.stab-pane').forEach(p => p.classList.toggle('active', p.id === 'stab' + tab.charAt(0).toUpperCase() + tab.slice(1)));
   if (tab === 'colors') renderPalettePicker();
   if (tab === 'calendar') { renderCalFeedsList(); renderOutlookEmailSection(); }
+  if (tab === 'account') renderAccountTab();
+}
+
+function renderAccountTab() {
+  let email = '(unknown)';
+  try {
+    const payload = JSON.parse(atob(authSession.access_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    email = payload.email || email;
+  } catch(e) {}
+  document.getElementById('accountEmail').textContent = email;
+  document.getElementById('accountBackend').textContent = isCustomBackend
+    ? 'Self-hosted backend: ' + SB_URL
+    : 'Default Taskwell backend';
 }
 
 function switchTab(tab) {
