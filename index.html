@@ -401,6 +401,7 @@
     .login-back { background: none; border: none; color: var(--ink-faint); font-size: 12px;
                   font-family: 'Helvetica Neue', sans-serif; cursor: pointer; margin-top: 14px;
                   padding: 4px; display: block; width: 100%; }
+    .login-back.hidden { display: none; }
     .login-back:hover { color: var(--ink); }
     .login-error { font-size: 12px; font-family: 'Helvetica Neue', sans-serif; color: var(--rust);
                    margin-bottom: 10px; min-height: 16px; }
@@ -510,6 +511,7 @@
     </div>
 
     <button class="login-back" id="btnShowSetup" onclick="showSetupScreen()">Set up your own Taskwell instance →</button>
+    <button class="login-back hidden" id="btnUseDefault" onclick="useDefaultBackend()">← Use default sign-in instead</button>
   </div>
 </div>
 
@@ -538,12 +540,13 @@
         <button class="btn btn-sm" style="width:100%" onclick="copySetupSql()">Copy SQL script</button>
       </li>
       <li style="margin-bottom:12px">
-        In <b>Project Settings → API</b>, copy your Project URL and <b>anon/publishable</b> key into the fields below.
+        Find your <b>Project ID</b> (in the URL of your dashboard, or under Project Settings) and your
+        <b>anon/publishable</b> API key, and enter them below.
       </li>
       <li>Save — you'll sign in with an emailed link (no Google setup needed).</li>
     </ol>
 
-    <input type="text" class="login-input" id="setupUrlInput" placeholder="Supabase Project URL (https://xxxx.supabase.co)" />
+    <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
     <input type="text" class="login-input" id="setupKeyInput" placeholder="Supabase anon/publishable key" />
     <button class="btn-login" id="btnSaveBackend" onclick="saveBackendConfig()">Save &amp; Continue</button>
     <button class="login-back" onclick="hideSetupScreen()">← Back to sign in</button>
@@ -1336,6 +1339,12 @@ function showLoginScreen() {
   document.getElementById('loginSub').textContent = isCustomBackend
     ? 'Sign in to your self-hosted Taskwell'
     : 'Sign in to access your tasks';
+  document.getElementById('btnUseDefault').classList.toggle('hidden', !isCustomBackend);
+}
+
+function useDefaultBackend() {
+  localStorage.removeItem('tw_config');
+  location.reload();
 }
 
 async function makePkceChallenge() {
