@@ -866,8 +866,8 @@
     <div class="stab-pane scroll-area" id="stabAbout" style="padding:16px 20px 40px">
       <div class="settings-block">
         <div class="settings-block-title">Found a bug?</div>
-        <p class="stab-hint" style="margin-bottom:10px">Something not working right, or an idea to make Taskwell better? Send it over — it opens an email with a few details filled in.</p>
-        <a class="btn btn-sm btn-primary" id="aboutReportBugBtn" href="#" style="text-decoration:none">Report a bug</a>
+        <p class="stab-hint" style="margin-bottom:10px">Something not working right, or an idea to make Taskwell better? Send it over and I'll take a look.</p>
+        <button class="btn btn-sm btn-primary" id="aboutReportBugBtn" onclick="openReportBug()">Report a bug</button>
       </div>
       <div class="settings-block">
         <div class="settings-block-title">Enjoying Taskwell?</div>
@@ -889,7 +889,7 @@
             z-index:5; pointer-events:none;" id="appVersionFooter">
   <span id="appVersionText"></span>
   <span style="opacity:.5"> · </span>
-  <a id="footerReportBug" href="#" style="color:var(--ink-faint); text-decoration:underline; pointer-events:auto;">Report a bug</a>
+  <a id="footerReportBug" href="#" onclick="event.preventDefault();openReportBug()" style="color:var(--ink-faint); text-decoration:underline; pointer-events:auto;">Report a bug</a>
 </div>
 
 <!-- What's New banner -->
@@ -946,6 +946,23 @@
     <div class="modal-row">
       <button class="btn" onclick="closeModal('renameListModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmRenameList()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Report a Bug Modal -->
+<div class="modal-overlay" id="reportBugModal">
+  <div class="modal">
+    <div class="modal-title">Report a bug</div>
+    <p class="stab-hint" style="margin-bottom:12px">Send your report or idea to the developer — pick whichever is easiest:</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <a class="btn btn-primary" id="reportBugGmail" href="#" target="_blank" rel="noopener" style="text-decoration:none">Open in Gmail</a>
+      <a class="btn" id="reportBugMailApp" href="#" style="text-decoration:none">Open in my email app</a>
+      <button class="btn" onclick="copyBugEmail()">Copy email address</button>
+    </div>
+    <p class="stab-hint" style="margin:12px 0 0">Or email <b>jessieebie@gmail.com</b> directly.</p>
+    <div class="modal-row" style="margin-top:14px">
+      <button class="btn" onclick="closeModal('reportBugModal')">Close</button>
     </div>
   </div>
 </div>
@@ -2907,17 +2924,36 @@ function switchSettingsTab(tab) {
   if (tab === 'about') renderAboutTab();
 }
 
-// mailto: link for bug reports, with the app version pre-filled in the subject
-// and a small template in the body so reports arrive with useful context.
-function bugReportMailto() {
+const BUG_EMAIL = 'jessieebie@gmail.com';
+
+// Bug reports go through a small dialog rather than a bare mailto: link, because
+// mailto: silently does nothing when there's no OS mail app registered (common in
+// the Mac app and when using webmail). The dialog offers a Gmail compose link
+// (plain https, works everywhere), a mailto for those who have a mail app, and a
+// copy-address fallback.
+function bugReportParts() {
   const subject = `Taskwell bug report (v${APP_VERSION})`;
   const body = `Describe what happened:\n\n\nWhat did you expect instead?\n\n\n---\nApp version: ${APP_VERSION}\nDevice/browser: `;
-  return `mailto:jessieebie@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return { subject, body };
+}
+function openReportBug() {
+  const { subject, body } = bugReportParts();
+  const gmail = document.getElementById('reportBugGmail');
+  const mail = document.getElementById('reportBugMailApp');
+  if (gmail) gmail.href = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(BUG_EMAIL)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  if (mail) mail.href = `mailto:${BUG_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  openModal('reportBugModal');
+}
+async function copyBugEmail() {
+  try {
+    await navigator.clipboard.writeText(BUG_EMAIL);
+    showToast('Email address copied — ' + BUG_EMAIL);
+  } catch {
+    showToast('Email me at ' + BUG_EMAIL);
+  }
 }
 
 function renderAboutTab() {
-  const btn = document.getElementById('aboutReportBugBtn');
-  if (btn) btn.href = bugReportMailto();
   const ver = document.getElementById('aboutVersion');
   if (ver) ver.textContent = 'Taskwell · v ' + APP_VERSION;
 }
@@ -4293,7 +4329,6 @@ function showToast(msg) {
 }
 
 document.getElementById('appVersionText').textContent = 'Taskwell · v ' + APP_VERSION;
-document.getElementById('footerReportBug').href = bugReportMailto();
 applyPalettes();
 boot();
 </script>
