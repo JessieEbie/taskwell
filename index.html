@@ -540,11 +540,15 @@
         <button class="btn btn-sm" style="width:100%" onclick="copySetupSql()">Copy SQL script</button>
       </li>
       <li style="margin-bottom:12px">
-        In <b>Authentication → URL Configuration</b>, set <b>Site URL</b> to
+        <b>Required.</b> Click the lock icon (<b>Authentication</b>) in the left sidebar, then click
+        <b>URL Configuration</b> under the CONFIGURATION section — not "Templates" or "Sign In / Providers".
+        On that page:
+        <br/>&nbsp;&nbsp;a. Set the <b>Site URL</b> field to
         <code style="background:var(--cream);padding:1px 4px;border-radius:4px">https://jessieebie.github.io/taskwell/</code>
-        and add that same address to <b>Redirect URLs</b>. <b>Required</b> — without this, sign-in links will
-        redirect to <code style="background:var(--cream);padding:1px 4px;border-radius:4px">localhost:3000</code>
-        and fail.
+        and click <b>Save changes</b>.
+        <br/>&nbsp;&nbsp;b. Under <b>Redirect URLs</b>, click <b>Add URL</b>, paste in the same address, and save.
+        <br/>Without both of these, sign-in links will redirect to
+        <code style="background:var(--cream);padding:1px 4px;border-radius:4px">localhost:3000</code> and fail.
       </li>
       <li style="margin-bottom:12px">
         Find your <b>Project ID</b> (in the URL of your dashboard, or under Project Settings) and your
