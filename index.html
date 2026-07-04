@@ -3000,12 +3000,12 @@ async function boot() {
     }
   }
 
-  // Auto-provision a user_settings row for first-time allowlisted users
+  // Auto-provision a user_settings row for first-time allowlisted users. A
+  // single atomic upsert (ON CONFLICT DO NOTHING via ignore-duplicates) —
+  // no separate existence check first, so there's no race window where two
+  // concurrent logins could both see "no row" and each insert one.
   try {
-    const check = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=user_id`);
-    if (!check?.length) {
-      await api('POST', 'user_settings', { user_id: authSession.user_id }, { 'Prefer': 'resolution=merge-duplicates' });
-    }
+    await api('POST', 'user_settings', { user_id: authSession.user_id }, { 'Prefer': 'resolution=ignore-duplicates' });
   } catch(e) { /* network error — allow through to avoid locking out on flaky connection */ }
 
   // Forward token to Mac app if launched from desktop
