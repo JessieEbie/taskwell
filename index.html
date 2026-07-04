@@ -827,19 +827,11 @@
             <div id="gcalDisconnectedRow" style="display:flex;align-items:center;gap:8px">
               <button class="btn btn-sm" onclick="connectGoogleCalendar()">Connect Google Calendar</button>
             </div>
-            <div style="margin-top:12px">
-              <label class="modal-label">Separate calendar for Work events (optional)</label>
-              <input class="modal-input" id="googleWorkCalIdInput" placeholder="Leave blank to use your primary calendar" style="margin-top:4px" />
-              <div class="modal-row" style="margin-top:8px;justify-content:flex-start">
-                <button class="btn btn-sm" onclick="saveGoogleWorkCalId(document.getElementById('googleWorkCalIdInput').value)">Save</button>
-              </div>
-            </div>
           </div>
           <div class="sb-help">
             <p class="stab-hint"><b>Only needed if you want Taskwell to add or edit events on your Google Calendar.</b> If you just want to <i>see</i> a Google calendar, add it as an ICS feed above instead — connecting isn't required.</p>
             <p class="stab-hint"><b>To connect:</b> click <i>Connect Google Calendar</i>, choose your Google account, and tap <i>Allow</i> on the permission screen. That's it — your events will start showing up.</p>
             <p class="stab-hint"><b>Using a different account?</b> Once connected, the box shows which account is linked. To switch, click <i>Reconnect / switch account</i> and pick the other one.</p>
-            <p class="stab-hint"><b>Separate Work calendar (optional):</b> by default, Work events go on your regular (primary) Google Calendar, same as Home events. If you'd rather Work events land on a different calendar you already have, paste its Calendar ID here — find it in Google Calendar under <i>Settings → [that calendar] → Integrate calendar → Calendar ID</i>.</p>
           </div>
         </div>
       </div>
@@ -1133,8 +1125,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-03m';
-const WHATS_NEW = "Google Calendar fixes: errors from a failed sync now show up instead of failing silently, and Work events use your regular calendar by default (you can optionally point Work events at a separate calendar in Settings → Calendar).";
+const APP_VERSION = '2026-07-03n';
+const WHATS_NEW = "Google Calendar fixes: errors from a failed sync now show up instead of failing silently, and Work events use your own regular Google Calendar (previously they went to a calendar only the developer could see).";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1237,8 +1229,7 @@ create table if not exists public.user_settings (
   palettes jsonb,
   work_sections jsonb,
   home_sections jsonb,
-  last_seen_version text,
-  google_work_cal_id text
+  last_seen_version text
 );
 
 alter table public.lists enable row level security;
@@ -1270,9 +1261,6 @@ let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
 let outlookTokens = null;
 let serverLastSeen = null; // account-wide last-seen "what's new" version (from Supabase)
-// Optional per-user secondary Google Calendar for Work events. Empty string means
-// "no secondary calendar" — Work events just use 'primary' like Home does.
-let googleWorkCalId = localStorage.getItem('tw_google_work_cal_id') || '';
 const shownGcalErrors = new Set(); // dedupes repeated Google Calendar fetch-error toasts
 let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
 let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
@@ -1907,29 +1895,6 @@ async function loadCalFeeds() {
       try { localStorage.setItem('tw_last_seen_version', serverLastSeen); } catch(e) {}
     }
   } catch(e) { /* last_seen_version column may not exist yet — fall back to localStorage */ }
-
-  // Optional per-user secondary Work Google Calendar (separate fetch; column may
-  // not exist yet). Empty/missing means Work events just use 'primary' like Home.
-  try {
-    const wRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=google_work_cal_id`);
-    if (wRows?.[0]?.google_work_cal_id) {
-      googleWorkCalId = wRows[0].google_work_cal_id;
-      try { localStorage.setItem('tw_google_work_cal_id', googleWorkCalId); } catch(e) {}
-    }
-  } catch(e) { /* google_work_cal_id column may not exist yet — fall back to localStorage */ }
-}
-
-async function saveGoogleWorkCalId(val) {
-  googleWorkCalId = (val || '').trim();
-  try {
-    if (googleWorkCalId) localStorage.setItem('tw_google_work_cal_id', googleWorkCalId);
-    else localStorage.removeItem('tw_google_work_cal_id');
-  } catch(e) {}
-  try {
-    await api('POST', 'user_settings', { user_id: authSession.user_id, google_work_cal_id: googleWorkCalId || null },
-      { 'Prefer': 'resolution=merge-duplicates' });
-    showToast(googleWorkCalId ? 'Work calendar saved' : 'Work calendar cleared — Work events will use your primary calendar');
-  } catch(e) { showToast('Could not save: ' + e.message, true); }
 }
 
 
@@ -2428,7 +2393,7 @@ async function saveCalEvent() {
       // Google Calendar
       let id = editingCalEventId;
       const isWork = editingCalEventId ? editingCalSource === 'google_work' : targetCal === 'google_work';
-      const calId = (isWork && googleWorkCalId) ? googleWorkCalId : 'primary';
+      const calId = 'primary';
       if (editingCalEventUID && !id) {
         const res = await gcalApi('GET', `calendars/${encodeURIComponent(calId)}/events?iCalUID=${encodeURIComponent(editingCalEventUID)}`);
         id = res?.items?.[0]?.id;
@@ -2456,8 +2421,7 @@ async function deleteCalEvent() {
     if (editingCalSource === 'outlook') {
       await outlookApi('DELETE', `me/events/${id}`);
     } else {
-      const delCalId = (editingCalSource === 'google_work' && googleWorkCalId) ? googleWorkCalId : 'primary';
-      await gcalApi('DELETE', `calendars/${encodeURIComponent(delCalId)}/events/${id}`);
+      await gcalApi('DELETE', `calendars/primary/events/${id}`);
     }
     closeModal('calEventModal');
     showToast('Event deleted');
@@ -2709,21 +2673,9 @@ async function fetchGoogleCalendarEvents() {
       showToast(`Google Calendar (${label}) error: ${msg}`, true);
     }
   };
-  const fetches = [
-    gcalApi('GET', `calendars/primary/events?${params}`)
-      .then(res => pushItems(res.items, homeColor, 'google'))
-      .catch(handleGcalError('Home'))
-  ];
-  // Only fetch a separate Work calendar if this account has configured one —
-  // there's no meaningful second calendar to query otherwise.
-  if (googleWorkCalId) {
-    fetches.push(
-      gcalApi('GET', `calendars/${encodeURIComponent(googleWorkCalId)}/events?${params}`)
-        .then(res => pushItems(res.items, homeColor, 'google_work'))
-        .catch(handleGcalError('Work'))
-    );
-  }
-  await Promise.all(fetches);
+  await gcalApi('GET', `calendars/primary/events?${params}`)
+    .then(res => pushItems(res.items, homeColor, 'google'))
+    .catch(handleGcalError('Home'));
 }
 
 async function fetchAllFeeds() {
@@ -3083,8 +3035,6 @@ function switchSettingsTab(tab) {
     if (googleTokens && !googleTokens.email) fetchAndSaveGcalEmail();
     const tzSel = document.getElementById('timezoneSelect');
     if (tzSel) tzSel.value = userTimezone;
-    const workCalInput = document.getElementById('googleWorkCalIdInput');
-    if (workCalInput) workCalInput.value = googleWorkCalId;
   }
   if (tab === 'account') renderAccountTab();
   if (tab === 'about') renderAboutTab();
