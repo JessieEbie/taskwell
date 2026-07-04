@@ -762,7 +762,6 @@
       <button class="stab active" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
       <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
       <button class="stab" data-stab="account" onclick="switchSettingsTab('account')">Account</button>
-      <button class="stab" data-stab="guide" onclick="switchSettingsTab('guide')">Guide</button>
       <button class="stab" data-stab="about" onclick="switchSettingsTab('about')">About</button>
     </div>
 
@@ -877,26 +876,8 @@
       </div>
     </div>
 
-    <!-- About tab -->
+    <!-- About tab (includes the user guide) -->
     <div class="stab-pane scroll-area" id="stabAbout" style="padding:16px 20px 40px">
-      <div class="settings-block">
-        <div class="settings-block-title">Found a bug?</div>
-        <p class="stab-hint" style="margin-bottom:10px">Something not working right, or an idea to make Taskwell better? Send it over and I'll take a look.</p>
-        <button class="btn btn-sm btn-primary" id="aboutReportBugBtn" onclick="openReportBug()">Report a bug</button>
-      </div>
-      <div class="settings-block">
-        <div class="settings-block-title">Enjoying Taskwell?</div>
-        <p class="stab-hint" style="margin-bottom:10px">Taskwell is built and maintained by one person, for free. If it's useful to you, you can chip in a coffee — no pressure at all.</p>
-        <a class="btn btn-sm" href="https://venmo.com/u/Jessica-Ebie" target="_blank" rel="noopener" style="text-decoration:none">☕ Buy the developer a coffee</a>
-      </div>
-      <div class="settings-block">
-        <div class="settings-block-title">Version</div>
-        <p class="stab-hint" id="aboutVersion" style="margin-bottom:0"></p>
-      </div>
-    </div>
-
-    <!-- Guide tab -->
-    <div class="stab-pane scroll-area" id="stabGuide" style="padding:16px 20px 40px">
       <div class="settings-block">
         <div class="settings-block-title">Switching between Work &amp; Home</div>
         <p class="stab-hint" style="margin-bottom:12px">Taskwell keeps two separate spaces — one for Work, one for Home — plus a combined view. Switch between them with the buttons at the top of the sidebar.</p>
@@ -945,6 +926,21 @@
         <div class="guide-item"><span class="guide-ico">🎨</span><div>Give Work and Home their own colors under <b>Settings → Colors</b>.</div></div>
         <div class="guide-item"><span class="guide-ico">↩︎</span><div>Undo your last change (like a deleted task or list) with <b>Cmd/Ctrl + Z</b>.</div></div>
         <div class="guide-item"><span class="guide-ico">📅</span><div>Connect Google Calendar or add view-only calendar feeds under <b>Settings → Calendar</b>.</div></div>
+      </div>
+
+      <div class="settings-block">
+        <div class="settings-block-title">Found a bug?</div>
+        <p class="stab-hint" style="margin-bottom:10px">Something not working right, or an idea to make Taskwell better? Send it over and I'll take a look.</p>
+        <button class="btn btn-sm btn-primary" id="aboutReportBugBtn" onclick="openReportBug()">Report a bug</button>
+      </div>
+      <div class="settings-block">
+        <div class="settings-block-title">Enjoying Taskwell?</div>
+        <p class="stab-hint" style="margin-bottom:10px">Taskwell is built and maintained by one person, for free. If it's useful to you, you can chip in a coffee — no pressure at all.</p>
+        <a class="btn btn-sm" href="https://venmo.com/u/Jessica-Ebie" target="_blank" rel="noopener" style="text-decoration:none">☕ Buy the developer a coffee</a>
+      </div>
+      <div class="settings-block">
+        <div class="settings-block-title">Version</div>
+        <p class="stab-hint" id="aboutVersion" style="margin-bottom:0"></p>
       </div>
     </div>
   </section>
@@ -1128,7 +1124,7 @@
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
 const APP_VERSION = '2026-07-03j';
-const WHATS_NEW = "New: a short user guide under Settings → Guide explains Work/Home/All and what each tab (Hub, Week, Day, Inbox, Settings) does.";
+const WHATS_NEW = "New: a short user guide under Settings → About explains Work/Home/All and what each tab (Hub, Week, Day, Inbox, Settings) does.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
