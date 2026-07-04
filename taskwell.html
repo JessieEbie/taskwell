@@ -692,6 +692,8 @@
       <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModalForCurrentContext()">+ Add Section</button>
       <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
       <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
+      <button class="btn btn-sm" id="btnCollapseWork" onclick="toggleCollapseScope('work')" style="display:none">Collapse Work</button>
+      <button class="btn btn-sm" id="btnCollapseHome" onclick="toggleCollapseScope('home')" style="display:none">Collapse Home</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
     </div>
     <div class="scroll-area" id="hubScrollArea"></div>
@@ -1123,8 +1125,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-03j';
-const WHATS_NEW = "New: a short user guide under Settings → About explains Work/Home/All and what each tab (Hub, Week, Day, Inbox, Settings) does.";
+const APP_VERSION = '2026-07-03k';
+const WHATS_NEW = "The combined Hub now has \"Collapse Work\" and \"Collapse Home\" buttons, so you can fold up just one side without touching the other.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2980,6 +2982,38 @@ function applyContext() {
   // Shown for Work or Home (both now have sections); hidden in "all" since it's ambiguous
   // which context a new section there would belong to.
   if (addSecBtn) addSecBtn.style.display = (currentContext === 'work' || currentContext === 'home') ? '' : 'none';
+  // Per-context collapse toggles only make sense in the unified Hub — in a single
+  // context, "Collapse all"/"Expand all" already only affect that context.
+  const showScopeBtns = currentContext === 'all';
+  const workBtn = document.getElementById('btnCollapseWork');
+  const homeBtn = document.getElementById('btnCollapseHome');
+  if (workBtn) workBtn.style.display = showScopeBtns ? '' : 'none';
+  if (homeBtn) homeBtn.style.display = showScopeBtns ? '' : 'none';
+  if (showScopeBtns) updateCollapseScopeButtons();
+}
+
+// Toggle collapse/expand for just one context's sections (and their lists), used
+// by the unified Hub's "Collapse Work" / "Collapse Home" buttons.
+function toggleCollapseScope(ctx) {
+  const keys = allSectionsFor(ctx).map(s => `${ctx}:${s}`);
+  const allCollapsed = keys.length > 0 && keys.every(k => sectionCollapsed[k]);
+  const collapseNow = !allCollapsed;
+  keys.forEach(k => sectionCollapsed[k] = collapseNow);
+  if (!collapseNow) {
+    lists.filter(l => (l.context || 'work') === ctx).forEach(l => { listCollapsed[l.id] = false; });
+  }
+  renderHub();
+}
+
+function updateCollapseScopeButtons() {
+  ['work', 'home'].forEach(ctx => {
+    const btn = document.getElementById(ctx === 'work' ? 'btnCollapseWork' : 'btnCollapseHome');
+    if (!btn) return;
+    const keys = allSectionsFor(ctx).map(s => `${ctx}:${s}`);
+    const allCollapsed = keys.length > 0 && keys.every(k => sectionCollapsed[k]);
+    const label = ctx === 'work' ? 'Work' : 'Home';
+    btn.textContent = allCollapsed ? `Expand ${label}` : `Collapse ${label}`;
+  });
 }
 
 // ── Nav ──
