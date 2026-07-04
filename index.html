@@ -2805,8 +2805,11 @@ async function boot() {
   if (!isCustomBackend && jwtEmail) {
     let allowed = true;
     try {
-      const rows = await api('GET', `allowed_emails?email=eq.${encodeURIComponent(jwtEmail)}&select=email`);
-      allowed = rows.length > 0;
+      // Case-insensitive match so it agrees with the server-side is_allowed_user()
+      // check (lower(email) = lower(...)). Using exact eq here was stricter than the
+      // server, so an email stored with different capitalization got denied in the UI.
+      const rows = await api('GET', `allowed_emails?email=ilike.${encodeURIComponent(jwtEmail)}&select=email`);
+      allowed = rows.some(r => (r.email || '').trim().toLowerCase() === jwtEmail);
     } catch(e) {
       // If the allowed_emails table hasn't been created yet, don't lock everyone out —
       // just skip the check until it exists. Any other error still denies.
