@@ -350,7 +350,14 @@
                     background: var(--cream); font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
                     color: var(--ink); outline: none; margin-bottom: 14px; }
     .modal-label { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); margin-bottom: 4px; display: block; }
-    .stab-bar { display: flex; gap: 4px; padding: 10px 20px 0; flex-shrink: 0; border-bottom: 1px solid var(--cream-dark); }
+    .stab-bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 20px 0; flex-shrink: 0; border-bottom: 1px solid var(--cream-dark); }
+    .guide-item { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; font-size: 13px;
+                  color: var(--ink-soft); font-family: 'Helvetica Neue', sans-serif; line-height: 1.5; }
+    .guide-item:last-child { margin-bottom: 0; }
+    .guide-item b { color: var(--ink); }
+    .guide-ico { flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; background: var(--cream-dark);
+                 display: flex; align-items: center; justify-content: center; color: var(--ink); font-weight: 700; font-size: 15px; }
+    .guide-ico svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
     .stab { font-family: inherit; font-size: 13px; color: var(--ink-soft); background: none; border: none;
       padding: 6px 14px 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
     .stab.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
@@ -755,6 +762,7 @@
       <button class="stab active" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
       <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
       <button class="stab" data-stab="account" onclick="switchSettingsTab('account')">Account</button>
+      <button class="stab" data-stab="guide" onclick="switchSettingsTab('guide')">Guide</button>
       <button class="stab" data-stab="about" onclick="switchSettingsTab('about')">About</button>
     </div>
 
@@ -884,6 +892,59 @@
       <div class="settings-block">
         <div class="settings-block-title">Version</div>
         <p class="stab-hint" id="aboutVersion" style="margin-bottom:0"></p>
+      </div>
+    </div>
+
+    <!-- Guide tab -->
+    <div class="stab-pane scroll-area" id="stabGuide" style="padding:16px 20px 40px">
+      <div class="settings-block">
+        <div class="settings-block-title">Switching between Work &amp; Home</div>
+        <p class="stab-hint" style="margin-bottom:12px">Taskwell keeps two separate spaces — one for Work, one for Home — plus a combined view. Switch between them with the buttons at the top of the sidebar.</p>
+        <div class="guide-item">
+          <span class="guide-ico">✓</span>
+          <div><b>All</b> (the Taskwell ✓ mark) — shows your Work and Home lists together in one combined view.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg></span>
+          <div><b>Work</b> — only your work lists and tasks. The app switches to your Work color.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg></span>
+          <div><b>Home</b> — only your home lists and tasks, in your Home color.</div>
+        </div>
+        <p class="stab-hint" style="margin-top:12px;margin-bottom:0">Your choice here carries through the whole app — Hub, Week, and Day all show whatever space you've picked.</p>
+      </div>
+
+      <div class="settings-block">
+        <div class="settings-block-title">The tabs</div>
+        <p class="stab-hint" style="margin-bottom:12px">Below the Work/Home buttons are the views. They all respect the Work/Home/All choice above.</p>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          <div><b>Hub</b> — your lists, grouped into sections. This is where you add lists and tasks, and rename or delete sections.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
+          <div><b>Week</b> — a 7-day board. Drag a task onto a day to plan out your week.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+          <div><b>Day</b> — today at a glance: your agenda, a mini calendar, and any connected calendar events.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></span>
+          <div><b>Inbox</b> — quick capture. Jot something down now and sort it into a list later.</div>
+        </div>
+        <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.1a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
+          <div><b>Settings</b> — calendars, colors, your account, this guide, and support. Sign out is the arrow at the very bottom of the sidebar.</div>
+        </div>
+      </div>
+
+      <div class="settings-block">
+        <div class="settings-block-title">A few handy extras</div>
+        <div class="guide-item"><span class="guide-ico">🎨</span><div>Give Work and Home their own colors under <b>Settings → Colors</b>.</div></div>
+        <div class="guide-item"><span class="guide-ico">↩︎</span><div>Undo your last change (like a deleted task or list) with <b>Cmd/Ctrl + Z</b>.</div></div>
+        <div class="guide-item"><span class="guide-ico">📅</span><div>Connect Google Calendar or add view-only calendar feeds under <b>Settings → Calendar</b>.</div></div>
       </div>
     </div>
   </section>
@@ -1066,8 +1127,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-03i';
-const WHATS_NEW = "New: a \"Report a bug\" link (in the footer and the new Settings → About tab) opens an email so you can send issues or ideas. The About tab also has a way to support the app if you'd like.";
+const APP_VERSION = '2026-07-03j';
+const WHATS_NEW = "New: a short user guide under Settings → Guide explains Work/Home/All and what each tab (Hub, Week, Day, Inbox, Settings) does.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
