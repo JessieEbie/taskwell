@@ -1746,7 +1746,12 @@ function acknowledgePrivacyNotice() {
 async function signInWithGoogle() {
   const challenge = await makePkceChallenge();
   const redirectTo = window.location.href.split('#')[0].split('?')[0];
-  window.location.href = `${SB_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${challenge}&code_challenge_method=S256`;
+  // prompt=select_account forces Google's account chooser every time, instead
+  // of silently continuing with whatever Google session is already active in
+  // the browser — without this, signing back in after "sign out" (or a
+  // different person on a shared device) skips authentication entirely if
+  // Google itself is still logged in.
+  window.location.href = `${SB_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}&code_challenge=${challenge}&code_challenge_method=S256&prompt=select_account`;
 }
 
 async function sendMagicLink() {
