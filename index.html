@@ -1942,12 +1942,8 @@ async function saveCalFeeds() {
 async function loadCalFeeds() {
   try {
     const rows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_feeds,google_tokens,outlook_tokens,outlook_email,timezone`);
-    // TEMPORARY diagnostic logging — investigating calendar connections not
-    // syncing across devices/sessions. Safe to remove once root-caused.
-    console.log('[TW-DEBUG] loadCalFeeds rows:', JSON.stringify(rows));
     if (rows?.[0]) {
       const r = rows[0];
-      console.log('[TW-DEBUG] row.google_tokens present:', !!r.google_tokens, 'row keys:', Object.keys(r));
       calFeeds = r.cal_feeds || [];
       try { localStorage.setItem('tw_cal_feeds', JSON.stringify(calFeeds)); } catch(e) {}
       // Unconditional — always reflects this account's current server truth,
@@ -1966,13 +1962,8 @@ async function loadCalFeeds() {
         else localStorage.removeItem('tw_outlook_email');
       } catch(e) {}
       if (r.timezone) { userTimezone = r.timezone; localStorage.setItem('tw_timezone', userTimezone); }
-    } else {
-      console.log('[TW-DEBUG] loadCalFeeds: no row returned for this user_id');
     }
-  } catch(e) {
-    // TEMPORARY diagnostic logging — see above.
-    console.error('[TW-DEBUG] loadCalFeeds fetch threw:', e);
-  }
+  } catch(e) { /* keep whatever was loaded from localStorage */ }
   // Always reflect the current token state, even if the DB fetch above failed —
   // otherwise a transient network blip on open leaves the UI stuck on "Connect"
   // despite valid tokens loaded from localStorage.
@@ -2115,7 +2106,6 @@ function renderOutlookEmailSection() {
 
 // ── Google Calendar ──
 function updateGcalStatus() {
-  console.log('[TW-DEBUG] updateGcalStatus called, googleTokens is', googleTokens ? 'present' : 'null');
   const connRow = document.getElementById('gcalConnectedRow');
   const discRow = document.getElementById('gcalDisconnectedRow');
   const statusEl = document.getElementById('gcalStatus');
@@ -2987,7 +2977,6 @@ async function boot() {
   if (authSession.user_id) {
     let lastOwner = null;
     try { lastOwner = localStorage.getItem('tw_data_owner_uid'); } catch(e) {}
-    console.log('[TW-DEBUG] ownership check: lastOwner=', lastOwner, 'currentUser=', authSession.user_id, 'willWipe=', !!(lastOwner && lastOwner !== authSession.user_id));
     if (lastOwner && lastOwner !== authSession.user_id) { wipeLocalUserCache(); }
     try { localStorage.setItem('tw_data_owner_uid', authSession.user_id); } catch(e) {}
   }
