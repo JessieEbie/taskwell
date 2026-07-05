@@ -85,6 +85,11 @@
     .btn-primary:hover { background: var(--cream-dark); }
     .btn-sm { padding: 5px 14px; font-size: 13px; }
     .btn-accent { background: var(--accent); border-color: var(--accent-dark); color: var(--ink) !important; }
+    .btn-danger { color: var(--rust); border-color: var(--rust); }
+    .btn-danger:hover { background: var(--rust); color: var(--paper); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn:disabled:hover { background: var(--cream); color: var(--ink); }
+    .btn-danger:disabled:hover { background: var(--cream); color: var(--rust); }
     .btn-accent:hover { background: var(--accent-dark); color: var(--ink) !important; }
 
     /* ── HUB ── */
@@ -609,9 +614,10 @@
         <span class="setup-step-required">Required</span>
       </div>
       <p style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin:0 0 8px">
-        Controls who can sign in to this instance at all. In the <b>SQL Editor</b>, edit the email below to
-        your own (the one you'll sign in with), then run it. Add a line per person for anyone else you want
-        to let in — everyone still only ever sees their own tasks.
+        Controls who can sign in to this instance at all. In the <b>SQL Editor</b>,
+        <b>replace <code style="background:var(--paper);padding:1px 4px;border-radius:4px">you@example.com</code>
+        below with your own email</b> (the one you'll sign in with), then run it. Add a line per person for
+        anyone else you want to let in — everyone still only ever sees their own tasks.
       </p>
       <textarea id="setupSqlAllowlist" style="width:100%;height:44px;font-family:monospace;font-size:11px;padding:8px;
         border:1.5px solid var(--cream-dark);border-radius:8px;background:var(--paper);color:var(--ink);
@@ -745,7 +751,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.1a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     <span>Settings</span>
   </button>
-  <button class="signout-btn" title="Sign out" onclick="openModal('signOutModal')">
+  <button class="signout-btn" title="Sign out" onclick="signOut()">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
   </button>
 </nav>
@@ -964,7 +970,16 @@
         <div class="settings-block-title">Signed in as</div>
         <p class="stab-hint" id="accountEmail" style="margin-bottom:8px"></p>
         <p class="stab-hint" id="accountBackend" style="margin-bottom:12px"></p>
-        <button class="btn btn-sm btn-danger" onclick="openModal('signOutModal')">Sign out</button>
+        <button class="btn btn-sm btn-danger" onclick="signOut()">Sign out</button>
+      </div>
+      <div class="settings-block">
+        <div class="settings-block-title">Delete my data</div>
+        <p class="stab-hint" style="margin-bottom:10px">
+          Permanently erases everything tied to your account — all lists and tasks, your Google/Outlook
+          calendar connections, ICS feeds, and every other saved setting. This cannot be undone. You'll be
+          signed out afterward; signing back in starts completely fresh.
+        </p>
+        <button class="btn btn-sm btn-danger" onclick="openDeleteDataModal()">Delete my data…</button>
       </div>
     </div>
 
@@ -1123,17 +1138,19 @@
   </div>
 </div>
 
-<!-- Sign Out Modal -->
-<div class="modal-overlay" id="signOutModal">
+<!-- Delete My Data Modal -->
+<div class="modal-overlay" id="deleteDataModal">
   <div class="modal">
-    <div class="modal-title">Sign out</div>
-    <p class="stab-hint" style="margin-bottom:12px">How would you like to sign out?</p>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <button class="btn" onclick="performSignOut(false)">Just sign out<br><span style="font-weight:normal;font-size:11px;opacity:.75">Keep Google/Outlook/calendar connections — they'll be here next time you sign in.</span></button>
-      <button class="btn btn-danger" onclick="performSignOut(true)">Sign out &amp; disconnect everything<br><span style="font-weight:normal;font-size:11px;opacity:.85">Disconnects Google Calendar, Outlook, and removes calendar feeds. You'll need to reconnect them next time — use this on a shared device.</span></button>
-    </div>
+    <div class="modal-title">Delete my data</div>
+    <p class="stab-hint" style="margin-bottom:10px">
+      This permanently deletes <b>all</b> your lists and tasks, disconnects Google Calendar and Outlook,
+      and removes every ICS feed and saved setting. <b>This cannot be undone.</b>
+    </p>
+    <p class="stab-hint" style="margin-bottom:8px">Type <b>DELETE</b> below to confirm:</p>
+    <input class="modal-input" id="deleteDataConfirmInput" placeholder="Type DELETE" autocomplete="off" />
     <div class="modal-row" style="margin-top:14px">
-      <button class="btn" onclick="closeModal('signOutModal')">Cancel</button>
+      <button class="btn" onclick="closeDeleteDataModal()">Cancel</button>
+      <button class="btn btn-danger" id="deleteDataConfirmBtn" onclick="confirmDeleteMyData()" disabled>Delete everything</button>
     </div>
   </div>
 </div>
@@ -1230,8 +1247,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04b';
-const WHATS_NEW = "Self-hosted instances now get a proper allow-list (added during setup) controlling who can sign in — enforced on the server, not just in the app.";
+const APP_VERSION = '2026-07-04c';
+const WHATS_NEW = "Settings → Account now has a \"Delete my data\" option that permanently erases your tasks, lists, and calendar connections. Sign out is back to one click (no more choosing how to sign out).";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1996,26 +2013,67 @@ function clearLocalSessionState() {
 
 function signOut() { clearLocalSessionState(); }
 
-// Called from the Sign Out modal. disconnectAll=true also disconnects Google
-// Calendar, Outlook, and removes calendar feeds from the account server-side —
-// intended for shared devices, so the next sign-in (even by the same person)
-// starts with everything reconnected from scratch.
-async function performSignOut(disconnectAll) {
-  closeModal('signOutModal');
-  if (disconnectAll && authSession?.user_id) {
-    const uid = authSession.user_id;
-    // Best-effort: revoke the Google grant itself, not just forget our copy of
-    // the token, so it also disappears from the user's Google account settings.
+// Best-effort: revokes the Google grant itself (not just our copy of the
+// token) and clears Google/Outlook/ICS feeds from this account's server row.
+// Used by "Delete my data" — a plain sign-out never touches server data, so
+// the same connections are there next time this person signs in.
+async function disconnectAllCalendarsServerSide(uid) {
+  if (googleTokens?.access_token) {
+    try {
+      await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(googleTokens.access_token)}`, { method: 'POST' });
+    } catch(e) {}
+  }
+  try {
+    await api('POST', 'user_settings',
+      { user_id: uid, google_tokens: null, outlook_tokens: null, outlook_email: null, cal_feeds: [] },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch(e) { console.error('Disconnect calendars error:', e); }
+}
+
+function openDeleteDataModal() {
+  const input = document.getElementById('deleteDataConfirmInput');
+  input.value = '';
+  document.getElementById('deleteDataConfirmBtn').disabled = true;
+  openModal('deleteDataModal');
+  setTimeout(() => input.focus(), 150);
+}
+
+function closeDeleteDataModal() {
+  closeModal('deleteDataModal');
+}
+
+// Wired up once at load — enables the confirm button only once the user has
+// typed the exact confirmation word, so a stray click can't trigger this.
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('deleteDataConfirmInput');
+  if (input) {
+    input.addEventListener('input', () => {
+      document.getElementById('deleteDataConfirmBtn').disabled = input.value.trim() !== 'DELETE';
+    });
+  }
+});
+
+// Permanently erases every row belonging to this account (lists, which
+// cascades to tasks, and the user_settings row holding calendar tokens/feeds/
+// preferences), best-effort revokes the Google grant, then signs out locally.
+// There is no undo — the confirm button only enables after typing DELETE.
+async function confirmDeleteMyData() {
+  if (document.getElementById('deleteDataConfirmInput').value.trim() !== 'DELETE') return;
+  const uid = authSession?.user_id;
+  if (!uid) return;
+  closeDeleteDataModal();
+  showToast('Deleting your data…');
+  try {
     if (googleTokens?.access_token) {
       try {
         await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(googleTokens.access_token)}`, { method: 'POST' });
       } catch(e) {}
     }
-    try {
-      await api('POST', 'user_settings',
-        { user_id: uid, google_tokens: null, outlook_tokens: null, outlook_email: null, cal_feeds: [] },
-        { 'Prefer': 'resolution=merge-duplicates' });
-    } catch(e) { console.error('Sign-out disconnect error:', e); }
+    await api('DELETE', `lists?user_id=eq.${uid}`);
+    await api('DELETE', `user_settings?user_id=eq.${uid}`);
+    showToast('Your data has been deleted.');
+  } catch(e) {
+    showToast('Something went wrong deleting your data: ' + e.message, true);
   }
   clearLocalSessionState();
 }
