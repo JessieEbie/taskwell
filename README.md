@@ -31,7 +31,8 @@ Taskwell is a personal task manager and calendar aggregator. It runs as a single
 1. Open `https://jessieebie.github.io/taskwell/`.
 2. On the sign-in screen, click **"Set up your own self-hosted Taskwell instance →"**.
 3. Follow the wizard on screen — it walks you through:
-   - Pasting and running the provided SQL script in your Supabase **SQL Editor** (creates your tables and row-level security policies)
+   - Pasting and running the provided SQL script in your Supabase **SQL Editor** (creates your tables, row-level security policies, and an `allowed_emails` table)
+   - Adding your own email (and anyone else's you want to let in) to `allowed_emails` — this is what controls who can sign in at all; skip it and you'll be locked out of your own instance
    - Setting your Supabase **Authentication → URL Configuration** (Site URL and Redirect URLs) — required, or sign-in will redirect to `localhost` and fail
    - Setting up **Google Sign-In** (a Google Cloud project, OAuth consent screen, and OAuth client) — required even if you don't plan to use Calendar features, since this is what lets you sign in at all
    - Entering your Project ID and anon key and clicking **Save & Continue**
@@ -230,7 +231,8 @@ For a managed work/school Outlook calendar you can't connect to directly.
 - Your Google/Outlook **client secrets** must never go anywhere except Supabase Edge Function secrets — never paste them into the app itself.
 - Never generate or share your Supabase **service role key** — Taskwell never needs it.
 - The setup script's row-level security means every signed-in user can only read/write their own rows, including you.
-- Anyone who can complete your Google OAuth consent screen can sign in and use your instance (with their own isolated data). While your Google Cloud project is in **Testing** status, this is limited to whoever you've added under **Test users** — that's your access control. Publishing to Production removes that limit, so only publish if you're fine with anyone able to sign in with the "Sign in with Google" screen. If you want a persistent allow-list of specific email addresses regardless of publishing status, ask about adding one — it's not part of the default setup script.
+- Who can sign in at all is controlled by the `allowed_emails` table (added during setup) — enforced on the server, not just in the app, so it can't be bypassed by calling the API directly. Add or remove people any time via the Table Editor.
+- While your Google Cloud project is in **Testing** status, Google adds a second layer: only people you've added under **Test users** can even complete the sign-in screen. Publishing to Production removes that limit — but `allowed_emails` still gates actual access either way, so publishing is safe to do once things work.
 
 ---
 
