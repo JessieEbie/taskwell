@@ -670,8 +670,13 @@
           in the URL (e.g. <code style="background:var(--paper);padding:1px 4px;border-radius:4px">abcdefghijklmnop</code>
           in <code style="background:var(--paper);padding:1px 4px;border-radius:4px;word-break:break-all">supabase.com/dashboard/project/abcdefghijklmnop</code>).</li>
         <li><b>API key:</b> click the gear icon (<b>Project Settings</b>) in the left sidebar → <b>API Keys</b>.
-          Copy the one labeled <b>anon</b>/<b>public</b> (or <b>Publishable key</b> on newer projects) — not the
-          "service_role" or "secret" one.</li>
+          You'll see tabs at the top — use whichever one you have:
+          <ul style="margin:6px 0 0;padding-left:18px">
+            <li style="margin-bottom:4px">Tab says <b>"Publishable and secret API keys"</b> → copy the key under
+              <b>Publishable key</b>.</li>
+            <li>Tab says <b>"Legacy anon, service_role API keys"</b> → copy the <b>anon public</b> key.</li>
+          </ul>
+          Either way, <b>never</b> copy the "secret" or "service_role" key.</li>
       </ol>
       <p style="font-size:12px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-soft);line-height:1.6;margin:6px 0 0">
         You'll paste both into the fields at the bottom of this page.
@@ -708,7 +713,7 @@
         <li>Under <b>Authorized redirect URIs</b>, click <b>Add URI</b> and paste:
           <code style="background:var(--paper);padding:1px 4px;border-radius:4px">https://YOUR-PROJECT-ID.supabase.co/auth/v1/callback</code>
           (replace <code style="background:var(--paper);padding:1px 4px;border-radius:4px">YOUR-PROJECT-ID</code>
-          with your Project ID from Step 4), then click <b>Create</b>.</li>
+          with your Project ID from Step 5), then click <b>Create</b>.</li>
         <li>Your <b>Client ID</b> and <b>Client Secret</b> appear immediately — copy both somewhere safe now.
           <i>The secret is only shown this once.</i></li>
         <li>Back in Supabase, go to <b>Authentication → Sign In / Providers</b>, scroll to <b>Auth Providers</b>,
@@ -724,7 +729,11 @@
     <input type="text" class="login-input" id="setupUrlInput" placeholder="Project ID (e.g. abcdefghijklmnop)" />
     <input type="text" class="login-input" id="setupKeyInput" placeholder="Supabase anon/publishable key" />
     <button class="btn-login" id="btnSaveBackend" onclick="saveBackendConfig()">Save &amp; Continue</button>
-    <button class="btn btn-sm" style="width:100%;margin-top:8px" onclick="saveBackendConfigForTab()">Try in this tab only (won't affect other tabs)</button>
+    <p style="font-size:11px;font-family:'Helvetica Neue',sans-serif;color:var(--ink-faint);line-height:1.5;text-align:center;margin:8px 0 0">
+      This page will reload and show a sign-in screen — sign in right here at
+      <code style="background:var(--paper);padding:1px 4px;border-radius:4px">jessieebie.github.io/taskwell</code>.
+      Don't try to sign in from your Supabase project's address.
+    </p>
     <button class="login-back" onclick="hideSetupScreen()">← Back to sign in</button>
   </div>
 </div>
@@ -1272,11 +1281,9 @@ const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
 
 // A visitor can point the app at their own Supabase project instead of the
 // default shared one — see showSetupScreen()/saveBackendConfig(). Their choice is
-// stored per-browser in localStorage (persists across tabs/reloads) unless they use
-// "Try in this tab only," which stores it in sessionStorage instead — scoped to just
-// this tab, so testing a self-hosted backend never affects the same browser's other
-// tabs or its normal default-backend usage. sessionStorage is checked first so it
-// can override a saved localStorage config for the duration of this tab.
+// stored per-browser in localStorage (persists across tabs/reloads). sessionStorage
+// is also checked (and takes priority) for any tooling that sets a tab-scoped
+// override without touching the browser's persistent config.
 const customConfig = JSON.parse(sessionStorage.getItem('tw_config') || localStorage.getItem('tw_config') || 'null');
 const isCustomBackend = !!(customConfig && customConfig.url && customConfig.key);
 const SB_URL = isCustomBackend ? customConfig.url.replace(/\/+$/, '') : DEFAULT_SB_URL;
@@ -1980,15 +1987,6 @@ function saveBackendConfig() {
   const config = readBackendConfigInput();
   if (!config) return;
   localStorage.setItem('tw_config', JSON.stringify(config));
-  location.reload();
-}
-
-function saveBackendConfigForTab() {
-  const config = readBackendConfigInput();
-  if (!config) return;
-  // Session-scoped: only this tab sees it, so testing a self-hosted backend never
-  // touches this browser's other tabs or its normal default-backend sign-in.
-  sessionStorage.setItem('tw_config', JSON.stringify(config));
   location.reload();
 }
 
