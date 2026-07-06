@@ -181,7 +181,8 @@
     .week-filter-btn:hover { background: var(--cream-dark); }
     .week-filter-menu { position: fixed; z-index: 2100; background: var(--paper);
       border-radius: 12px; box-shadow: 0 6px 28px rgba(46,33,24,.22);
-      padding: 6px; min-width: 150px; display: none; }
+      padding: 6px; min-width: 150px; max-height: 60vh; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; display: none; }
     .week-filter-menu button { display: flex; align-items: center; gap: 8px; width: 100%;
       text-align: left; background: none; border: none; cursor: pointer; font-family: inherit;
       font-size: 13px; color: var(--ink); padding: 7px 10px; border-radius: 8px; }
@@ -795,6 +796,8 @@
       <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModalForCurrentContext()">+ Add Section</button>
       <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
       <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
+      <button class="btn btn-sm" id="btnHubHome" onclick="toggleHubContextFilter('home')" style="display:none">Home</button>
+      <button class="btn btn-sm" id="btnHubWork" onclick="toggleHubContextFilter('work')" style="display:none">Work</button>
       <button class="btn btn-sm" id="btnCollapseWork" onclick="toggleCollapseScope('work')" style="display:none">Collapse Work</button>
       <button class="btn btn-sm" id="btnCollapseHome" onclick="toggleCollapseScope('home')" style="display:none">Collapse Home</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
@@ -1273,8 +1276,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04d';
-const WHATS_NEW = "Self-hosted instances now reconnect automatically on a new device or browser instead of showing \"access denied\" — once you've signed in successfully somewhere, signing in elsewhere finds its way back to your own backend.";
+const APP_VERSION = '2026-07-06';
+const WHATS_NEW = "Week view's list-filter dropdown now scrolls properly, and there are dedicated Home/Work buttons next to Hide Unassigned instead of digging into the dropdown. Those same Home/Work filter buttons are now also in the unified Hub.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1436,6 +1439,7 @@ const SETUP_SQL_ALLOWLIST = `insert into public.allowed_emails (email) values ('
 let lists = [], tasks = [], inboxItems = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false, weekCategoryFilter = 'all';
+let hubContextFilter = 'all';
 let activeSettingsTab = 'calendar';
 let currentContext = localStorage.getItem('tw_context') || 'all';
 let editingTaskId = null, pendingMoveIdx = null;
@@ -3420,6 +3424,23 @@ function applyContext() {
   if (workBtn) workBtn.style.display = showScopeBtns ? '' : 'none';
   if (homeBtn) homeBtn.style.display = showScopeBtns ? '' : 'none';
   if (showScopeBtns) updateCollapseScopeButtons();
+
+  if (!showScopeBtns) hubContextFilter = 'all';
+  const hubHomeBtn = document.getElementById('btnHubHome');
+  const hubWorkBtn = document.getElementById('btnHubWork');
+  if (hubHomeBtn) {
+    hubHomeBtn.style.display = showScopeBtns ? '' : 'none';
+    hubHomeBtn.classList.toggle('btn-accent', hubContextFilter === 'home');
+  }
+  if (hubWorkBtn) {
+    hubWorkBtn.style.display = showScopeBtns ? '' : 'none';
+    hubWorkBtn.classList.toggle('btn-accent', hubContextFilter === 'work');
+  }
+}
+
+function toggleHubContextFilter(ctx) {
+  hubContextFilter = hubContextFilter === ctx ? 'all' : ctx;
+  renderHub();
 }
 
 // Toggle collapse/expand for just one context's sections (and their lists), used
@@ -3600,16 +3621,22 @@ function renderHub() {
   if (currentContext === 'all') {
     const banner = document.createElement('div');
     banner.style.cssText = 'background:var(--rail-bg);padding:8px 14px;margin-bottom:12px;border-radius:6px;font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink);';
-    banner.textContent = 'Showing all contexts — Home + Work';
+    banner.textContent = hubContextFilter === 'home' ? 'Showing Home only'
+      : hubContextFilter === 'work' ? 'Showing Work only'
+      : 'Showing all contexts — Home + Work';
     area.appendChild(banner);
-    allSectionsFor('home').forEach(sec => {
-      const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home');
-      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'home', sec, secLists));
-    });
-    allSectionsFor('work').forEach(sec => {
-      const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work');
-      if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'work', sec, secLists));
-    });
+    if (hubContextFilter !== 'work') {
+      allSectionsFor('home').forEach(sec => {
+        const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home');
+        if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'home', sec, secLists));
+      });
+    }
+    if (hubContextFilter !== 'home') {
+      allSectionsFor('work').forEach(sec => {
+        const secLists = lists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'work');
+        if (secLists.length > 0) area.appendChild(makeSectionBlock(sec, 'work', sec, secLists));
+      });
+    }
     return;
   }
 
@@ -4320,6 +4347,8 @@ async function dropTaskOnDay(taskId, key) {
 function weekCatFilterIds(visLists) {
   if (weekCategoryFilter === 'none') return new Set();
   if (weekCategoryFilter === 'all') return new Set(visLists.map(l => l.id));
+  if (weekCategoryFilter === 'home') return new Set(visLists.filter(l => (l.context || 'work') === 'home').map(l => l.id));
+  if (weekCategoryFilter === 'work') return new Set(visLists.filter(l => (l.context || 'work') === 'work').map(l => l.id));
   if (typeof weekCategoryFilter === 'string' && weekCategoryFilter.startsWith('home:')) {
     const sec = weekCategoryFilter.slice(5);
     return new Set(visLists.filter(l => (l.section || 'Misc') === sec && (l.context || 'work') === 'home').map(l => l.id));
@@ -4390,8 +4419,10 @@ function renderWeek() {
   });
   menuItems.push(['none', 'Hide tasks', false]);
 
-  const currentItem = menuItems.find(([v]) => v === weekCategoryFilter) || menuItems[0];
-  const currentLabel = currentItem[1];
+  const currentItem = menuItems.find(([v]) => v === weekCategoryFilter);
+  const currentLabel = weekCategoryFilter === 'home' ? 'Home'
+    : weekCategoryFilter === 'work' ? 'Work'
+    : (currentItem || menuItems[0])[1];
 
   const filterBtn = document.createElement('button');
   filterBtn.className = 'week-filter-btn';
@@ -4432,6 +4463,22 @@ function renderWeek() {
   hideBtn.textContent = (hideUnassigned ? 'Show' : 'Hide') + ' Unassigned';
   hideBtn.onclick = () => { hideUnassigned = !hideUnassigned; renderWeek(); };
   filterRow.appendChild(hideBtn);
+
+  if (hasHome) {
+    const homeBtn = document.createElement('button');
+    homeBtn.className = 'btn btn-sm' + (weekCategoryFilter === 'home' ? ' btn-accent' : '');
+    homeBtn.textContent = 'Home';
+    homeBtn.onclick = () => { weekCategoryFilter = weekCategoryFilter === 'home' ? 'all' : 'home'; renderWeek(); };
+    filterRow.appendChild(homeBtn);
+  }
+  if (hasWork) {
+    const workBtn = document.createElement('button');
+    workBtn.className = 'btn btn-sm' + (weekCategoryFilter === 'work' ? ' btn-accent' : '');
+    workBtn.textContent = 'Work';
+    workBtn.onclick = () => { weekCategoryFilter = weekCategoryFilter === 'work' ? 'all' : 'work'; renderWeek(); };
+    filterRow.appendChild(workBtn);
+  }
+
   filterRow.appendChild(filterBtn);
   ctrl.appendChild(filterRow);
 
