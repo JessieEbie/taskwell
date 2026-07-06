@@ -794,12 +794,7 @@
     <div class="hub-controls">
       <button class="btn btn-primary" onclick="openNewListModal()">+ New List</button>
       <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModalForCurrentContext()">+ Add Section</button>
-      <button class="btn btn-sm" onclick="collapseAll()">Collapse all</button>
-      <button class="btn btn-sm" onclick="expandAll()">Expand all</button>
-      <button class="btn btn-sm" id="btnHubHome" onclick="toggleHubContextFilter('home')" style="display:none">Home</button>
-      <button class="btn btn-sm" id="btnHubWork" onclick="toggleHubContextFilter('work')" style="display:none">Work</button>
-      <button class="btn btn-sm" id="btnCollapseWork" onclick="toggleCollapseScope('work')" style="display:none">Collapse Work</button>
-      <button class="btn btn-sm" id="btnCollapseHome" onclick="toggleCollapseScope('home')" style="display:none">Collapse Home</button>
+      <button class="btn btn-sm" id="btnHubCollapseMenu" onclick="openHubCollapseMenu(event)">Collapse/Expand ▾</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
     </div>
     <div class="scroll-area" id="hubScrollArea"></div>
@@ -1276,8 +1271,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-06';
-const WHATS_NEW = "Week view's list-filter dropdown now scrolls properly, and there are dedicated Home/Work buttons next to Hide Unassigned instead of digging into the dropdown. Those same Home/Work filter buttons are now also in the unified Hub.";
+const APP_VERSION = '2026-07-06b';
+const WHATS_NEW = "Week view: Hide Unassigned/Home/Work/the list dropdown now only affect the unassigned tray, not your whole calendar, and the dropdown no longer mixes Home and Work lists together. In the unified Hub, Collapse/Expand and the Home/Work view filter are now one dropdown instead of a row of separate buttons.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3416,25 +3411,15 @@ function applyContext() {
   // Shown for Work or Home (both now have sections); hidden in "all" since it's ambiguous
   // which context a new section there would belong to.
   if (addSecBtn) addSecBtn.style.display = (currentContext === 'work' || currentContext === 'home') ? '' : 'none';
-  // Per-context collapse toggles only make sense in the unified Hub — in a single
-  // context, "Collapse all"/"Expand all" already only affect that context.
-  const showScopeBtns = currentContext === 'all';
-  const workBtn = document.getElementById('btnCollapseWork');
-  const homeBtn = document.getElementById('btnCollapseHome');
-  if (workBtn) workBtn.style.display = showScopeBtns ? '' : 'none';
-  if (homeBtn) homeBtn.style.display = showScopeBtns ? '' : 'none';
-  if (showScopeBtns) updateCollapseScopeButtons();
-
-  if (!showScopeBtns) hubContextFilter = 'all';
-  const hubHomeBtn = document.getElementById('btnHubHome');
-  const hubWorkBtn = document.getElementById('btnHubWork');
-  if (hubHomeBtn) {
-    hubHomeBtn.style.display = showScopeBtns ? '' : 'none';
-    hubHomeBtn.classList.toggle('btn-accent', hubContextFilter === 'home');
-  }
-  if (hubWorkBtn) {
-    hubWorkBtn.style.display = showScopeBtns ? '' : 'none';
-    hubWorkBtn.classList.toggle('btn-accent', hubContextFilter === 'work');
+  // Per-context filter/collapse options in the Collapse/Expand menu only make sense
+  // in the unified Hub — in a single context, "Collapse all"/"Expand all" already
+  // only affect that context.
+  if (currentContext !== 'all') hubContextFilter = 'all';
+  const menuBtn = document.getElementById('btnHubCollapseMenu');
+  if (menuBtn) {
+    menuBtn.textContent = currentContext === 'all'
+      ? (hubContextFilter === 'home' ? 'Home ▾' : hubContextFilter === 'work' ? 'Work ▾' : 'All ▾')
+      : 'Collapse/Expand ▾';
   }
 }
 
@@ -3444,7 +3429,7 @@ function toggleHubContextFilter(ctx) {
 }
 
 // Toggle collapse/expand for just one context's sections (and their lists), used
-// by the unified Hub's "Collapse Work" / "Collapse Home" buttons.
+// by the unified Hub's Collapse/Expand menu.
 function toggleCollapseScope(ctx) {
   const keys = allSectionsFor(ctx).map(s => `${ctx}:${s}`);
   const allCollapsed = keys.length > 0 && keys.every(k => sectionCollapsed[k]);
@@ -3456,15 +3441,59 @@ function toggleCollapseScope(ctx) {
   renderHub();
 }
 
-function updateCollapseScopeButtons() {
-  ['work', 'home'].forEach(ctx => {
-    const btn = document.getElementById(ctx === 'work' ? 'btnCollapseWork' : 'btnCollapseHome');
-    if (!btn) return;
-    const keys = allSectionsFor(ctx).map(s => `${ctx}:${s}`);
-    const allCollapsed = keys.length > 0 && keys.every(k => sectionCollapsed[k]);
-    const label = ctx === 'work' ? 'Work' : 'Home';
-    btn.textContent = allCollapsed ? `Expand ${label}` : `Collapse ${label}`;
+function openHubCollapseMenu(e) {
+  e.stopPropagation();
+  const btn = document.getElementById('btnHubCollapseMenu');
+  let menu = document.getElementById('hubCollapseMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'hubCollapseMenu';
+    menu.className = 'week-filter-menu';
+    document.body.appendChild(menu);
+    document.addEventListener('mousedown', ev => {
+      if (!menu.contains(ev.target) && ev.target !== btn) menu.style.display = 'none';
+    }, true);
+  }
+  const items = [];
+  if (currentContext === 'all') {
+    items.push(['All', () => toggleHubContextFilter('all'), hubContextFilter === 'all']);
+    items.push(['Home', () => toggleHubContextFilter('home'), hubContextFilter === 'home']);
+    items.push(['Work', () => toggleHubContextFilter('work'), hubContextFilter === 'work']);
+    items.push(['divider']);
+  }
+  items.push(['Collapse all', collapseAll]);
+  items.push(['Expand all', expandAll]);
+  if (currentContext === 'all') {
+    ['work', 'home'].forEach(ctx => {
+      const keys = allSectionsFor(ctx).map(s => `${ctx}:${s}`);
+      const allCollapsed = keys.length > 0 && keys.every(k => sectionCollapsed[k]);
+      const label = ctx === 'work' ? 'Work' : 'Home';
+      items.push([(allCollapsed ? 'Expand ' : 'Collapse ') + label, () => toggleCollapseScope(ctx)]);
+    });
+  }
+  menu.innerHTML = '';
+  items.forEach(([label, action, checked]) => {
+    if (label === 'divider') {
+      const hr = document.createElement('hr');
+      hr.className = 'divider';
+      menu.appendChild(hr);
+      return;
+    }
+    const b = document.createElement('button');
+    b.className = checked ? 'active' : '';
+    b.innerHTML = checked !== undefined
+      ? `<span class="week-filter-check">${checked ? '✓' : ''}</span>${label}`
+      : label;
+    b.onclick = () => { menu.style.display = 'none'; action(); };
+    menu.appendChild(b);
   });
+  const r = btn.getBoundingClientRect();
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.left = left + 'px';
 }
 
 // ── Nav ──
@@ -4404,19 +4433,35 @@ function renderWeek() {
   const presentWorkSections = new Set(visLists
     .filter(l => (l.context || 'work') === 'work')
     .map(l => l.section || 'Misc'));
+  // Which group (home/work) the current filter is scoped to, so the dropdown only
+  // offers to drill into the group you're already looking at — not the other one.
+  let activeGroup = null;
+  if (weekCategoryFilter === 'home' || (typeof weekCategoryFilter === 'string' && weekCategoryFilter.startsWith('home:'))) {
+    activeGroup = 'home';
+  } else if (weekCategoryFilter === 'work' || (typeof weekCategoryFilter === 'string' && weekCategoryFilter.startsWith('work:'))) {
+    activeGroup = 'work';
+  } else if (weekCategoryFilter !== 'all' && weekCategoryFilter !== 'none') {
+    const l = visLists.find(l => l.id === weekCategoryFilter);
+    if (l) activeGroup = l.context || 'work';
+  }
+
   // Build menu items: [value, label, indent]
   // indent=false → section-level option; indent=true → individual list
   const menuItems = [['all', 'All lists', false]];
-  allSectionsFor('home').filter(s => s === 'Misc' ? hasHome : presentHomeSections.has(s)).forEach(s => {
-    menuItems.push([`home:${s}`, s, false]);
-    visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'home')
-      .forEach(l => menuItems.push([l.id, l.name, true]));
-  });
-  allSectionsFor('work').filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).forEach(s => {
-    menuItems.push([`work:${s}`, s, false]);
-    visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')
-      .forEach(l => menuItems.push([l.id, l.name, true]));
-  });
+  if (activeGroup !== 'work') {
+    allSectionsFor('home').filter(s => s === 'Misc' ? hasHome : presentHomeSections.has(s)).forEach(s => {
+      menuItems.push([`home:${s}`, s, false]);
+      visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'home')
+        .forEach(l => menuItems.push([l.id, l.name, true]));
+    });
+  }
+  if (activeGroup !== 'home') {
+    allSectionsFor('work').filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).forEach(s => {
+      menuItems.push([`work:${s}`, s, false]);
+      visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')
+        .forEach(l => menuItems.push([l.id, l.name, true]));
+    });
+  }
   menuItems.push(['none', 'Hide tasks', false]);
 
   const currentItem = menuItems.find(([v]) => v === weekCategoryFilter);
@@ -4527,9 +4572,10 @@ function renderWeek() {
     body.dataset.daykey = key;
     setupDropZone(body, key);
 
-    // Tasks assigned or due on this day (from visible lists + active filter)
+    // Tasks assigned or due on this day (from visible lists — always shown regardless
+    // of the unassigned-tray filter above, which only controls the pending tray).
     const dayTasks = tasks.filter(t =>
-      weekFilterIds.has(t.list_id) &&
+      visListIds.has(t.list_id) &&
       (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
     );
 
