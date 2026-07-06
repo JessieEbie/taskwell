@@ -1273,8 +1273,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-04c';
-const WHATS_NEW = "Settings → Account now has a \"Delete my data\" option that permanently erases your tasks, lists, and calendar connections. Sign out is back to one click (no more choosing how to sign out).";
+const APP_VERSION = '2026-07-04d';
+const WHATS_NEW = "Self-hosted instances now reconnect automatically on a new device or browser instead of showing \"access denied\" — once you've signed in successfully somewhere, signing in elsewhere finds its way back to your own backend.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1864,6 +1864,25 @@ function useDefaultBackend() {
   sessionStorage.removeItem('tw_config');
   localStorage.removeItem('tw_config');
   location.reload();
+}
+
+// Registers this self-hosted backend in the default backend's directory, so
+// signing in from a new device/browser can be automatically reconnected here
+// instead of hitting "access denied" forever. Best-effort and silent — a
+// failure here never blocks normal use of the app. The edge function verifies
+// the caller's identity against THIS backend's own auth before writing
+// anything, so this can't be used to register someone else's email.
+async function registerSelfHostedBackend() {
+  try {
+    const projectId = SB_URL.replace(/^https?:\/\//, '').split('.')[0];
+    const res = await fetch(`${DEFAULT_SB_URL}/functions/v1/register-self-hosted-backend`, {
+      method: 'POST',
+      headers: { 'apikey': DEFAULT_SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId, anon_key: SB_KEY, access_token: authSession.access_token })
+    });
+    if (res.ok) localStorage.setItem('tw_directory_registered', '1');
+    else console.error('Directory registration failed:', await res.text());
+  } catch(e) { console.error('Directory registration error:', e); }
 }
 
 async function makePkceChallenge() {
@@ -3192,6 +3211,24 @@ async function boot() {
       if (!/does not exist|42P01/i.test(e.message)) allowed = false;
     }
     if (!allowed) {
+      // Before giving up, check whether this email already has a self-hosted
+      // backend registered (from a previous device/browser signing in there
+      // successfully) — if so, reconnect to it automatically instead of
+      // showing "access denied." Only applies on the default backend; a
+      // self-hosted instance denying someone is a separate, simpler case.
+      if (!isCustomBackend) {
+        try {
+          const dirRows = await api('GET', `self_hosted_directory?email=eq.${encodeURIComponent(jwtEmail)}&select=project_id,anon_key`);
+          const entry = dirRows?.[0];
+          if (entry?.project_id && entry?.anon_key) {
+            localStorage.setItem('tw_config', JSON.stringify({ url: `https://${entry.project_id}.supabase.co`, key: entry.anon_key }));
+            sessionStorage.setItem('tw_directory_redirect_msg', '1');
+            authSession = null; localStorage.removeItem('tw_auth');
+            location.reload();
+            return;
+          }
+        } catch(e) { /* directory table may not exist yet, or lookup failed — fall through to denied message */ }
+      }
       authSession = null; localStorage.removeItem('tw_auth');
       document.getElementById('loginErr1').textContent = isCustomBackend
         ? "This instance's owner hasn't added your email yet. Ask them to add it to the allowed_emails table in their Supabase project."
@@ -3241,6 +3278,18 @@ async function boot() {
     loadCalCache();
     fetchAllFeeds();
     setInterval(fetchAllFeeds, 5 * 60 * 1000);
+
+    // First time this browser successfully signs into a self-hosted backend,
+    // register it in the default backend's directory (best-effort, silent) so
+    // that signing in from ANY device/browser can find its way back here
+    // automatically instead of showing "access denied" forever.
+    if (isCustomBackend && !localStorage.getItem('tw_directory_registered')) {
+      registerSelfHostedBackend();
+    }
+    if (sessionStorage.getItem('tw_directory_redirect_msg')) {
+      sessionStorage.removeItem('tw_directory_redirect_msg');
+      showToast('Reconnected to your self-hosted instance');
+    }
 
     // Complete pending Google Calendar OAuth exchange
     const gcalCode = sessionStorage.getItem('gcal_pending_code');
