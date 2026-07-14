@@ -286,6 +286,13 @@
 
     /* ── MONTH VIEW ── */
     #month .page-sub { text-transform: capitalize; }
+    .month-jump-row { display: flex; align-items: center; gap: 8px; padding: 10px 20px 0; flex-shrink: 0; }
+    .month-jump-label { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: var(--ink-soft); }
+    .month-jump-input { padding: 5px 10px; border: 1.5px solid var(--cream-dark); border-radius: 8px;
+                         background: var(--cream); font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
+                         color: var(--ink); outline: none; width: 130px; }
+    .month-jump-input:focus { border-color: var(--accent); }
+    .month-jump-input-year { width: 80px; }
     .month-dow-row { display: grid; grid-template-columns: repeat(7, 1fr); flex-shrink: 0;
                       padding: 14px 20px 0; }
     .month-dow-cell { text-align: center; font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
@@ -866,6 +873,21 @@
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
     </div>
+    <div class="month-jump-row">
+      <span class="month-jump-label">Jump to</span>
+      <input class="month-jump-input" id="monthJumpMonthInput" list="monthJumpMonthList" placeholder="Month"
+             autocomplete="off" onchange="monthJumpGo()" onkeydown="if(event.key==='Enter') monthJumpGo()" />
+      <datalist id="monthJumpMonthList">
+        <option value="January"></option><option value="February"></option><option value="March"></option>
+        <option value="April"></option><option value="May"></option><option value="June"></option>
+        <option value="July"></option><option value="August"></option><option value="September"></option>
+        <option value="October"></option><option value="November"></option><option value="December"></option>
+      </datalist>
+      <input class="month-jump-input month-jump-input-year" id="monthJumpYearInput" list="monthJumpYearList" placeholder="Year"
+             autocomplete="off" inputmode="numeric" onchange="monthJumpGo()" onkeydown="if(event.key==='Enter') monthJumpGo()" />
+      <datalist id="monthJumpYearList"></datalist>
+      <button class="btn btn-sm" onclick="monthJumpGo()">Go</button>
+    </div>
     <div class="month-dow-row">
       <div class="month-dow-cell">Sun</div>
       <div class="month-dow-cell">Mon</div>
@@ -1347,7 +1369,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14a';
+const APP_VERSION = '2026-07-14b';
 const WHATS_NEW = "Outlook calendar events now show a real \"Join Meeting\" link (Zoom/Teams/etc.) instead of a generic \"Virtual\" location that wrongly opened a map. Fixed a bug where a deleted \"Misc\" section in Work or Home would silently reappear the next time you opened the app.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -5112,16 +5134,81 @@ function updateMonthStickyLabel() {
   const container = document.getElementById('monthScroll');
   const label = document.getElementById('monthStickyLabel');
   if (!container || !label) return;
-  const containerTop = container.getBoundingClientRect().top;
   const rows = container.querySelectorAll('.month-week-row');
+  if (!rows.length) return;
+  // Pick whichever week row is closest to the vertical center of the visible
+  // area — matches what scrollIntoView({block:'center'}) (Today/jump-to) puts
+  // in focus, rather than whatever happens to be scrolled to the very top.
+  const containerRect = container.getBoundingClientRect();
+  const midpoint = containerRect.top + containerRect.height / 2;
   let target = rows[0];
+  let bestDist = Infinity;
   for (const row of rows) {
-    if (row.getBoundingClientRect().bottom - containerTop > 40) { target = row; break; }
+    const r = row.getBoundingClientRect();
+    const dist = Math.abs((r.top + r.bottom) / 2 - midpoint);
+    if (dist < bestDist) { bestDist = dist; target = row; }
   }
-  if (!target) return;
   const weekStart = new Date(target.dataset.weekStart + 'T00:00:00');
   const anchor = new Date(weekStart); anchor.setDate(anchor.getDate() + 4); // Thursday "owns" the week
   label.textContent = anchor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  syncMonthJumpInputs(anchor);
+}
+
+const MONTH_JUMP_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function populateMonthJumpYearOptions() {
+  const dl = document.getElementById('monthJumpYearList');
+  if (!dl || dl.dataset.populated) return;
+  const y = new Date().getFullYear();
+  for (let yr = y - 10; yr <= y + 10; yr++) {
+    const opt = document.createElement('option');
+    opt.value = String(yr);
+    dl.appendChild(opt);
+  }
+  dl.dataset.populated = '1';
+}
+
+function syncMonthJumpInputs(date) {
+  const mi = document.getElementById('monthJumpMonthInput');
+  const yi = document.getElementById('monthJumpYearInput');
+  if (mi && document.activeElement !== mi) mi.value = MONTH_JUMP_NAMES[date.getMonth()];
+  if (yi && document.activeElement !== yi) yi.value = String(date.getFullYear());
+}
+
+function parseMonthJumpInput() {
+  const monthRaw = (document.getElementById('monthJumpMonthInput').value || '').trim().toLowerCase();
+  const yearRaw = (document.getElementById('monthJumpYearInput').value || '').trim();
+  if (!monthRaw || !yearRaw) return null;
+  const year = parseInt(yearRaw, 10);
+  if (!Number.isFinite(year) || year < 1) return null;
+  let monthIdx = MONTH_JUMP_NAMES.findIndex(m => m.toLowerCase() === monthRaw);
+  if (monthIdx === -1) monthIdx = MONTH_JUMP_NAMES.findIndex(m => m.toLowerCase().startsWith(monthRaw));
+  if (monthIdx === -1) {
+    const asNum = parseInt(monthRaw, 10);
+    if (Number.isFinite(asNum) && asNum >= 1 && asNum <= 12) monthIdx = asNum - 1;
+  }
+  if (monthIdx === -1) return null;
+  return new Date(year, monthIdx, 1);
+}
+
+function monthJumpGo() {
+  const target = parseMonthJumpInput();
+  if (!target) { showToast('Enter a valid month and year'); return; }
+  jumpMonthViewTo(target);
+}
+
+function jumpMonthViewTo(date) {
+  const container = document.getElementById('monthScroll');
+  if (!container) return;
+  const key = dateKey(date);
+  const cell = monthInitialized ? container.querySelector(`.month-day-cell[data-date="${key}"]`) : null;
+  if (cell) {
+    cell.closest('.month-week-row').scrollIntoView({ block: 'center' });
+    updateMonthStickyLabel();
+    return;
+  }
+  monthInitialized = false;
+  renderMonthView(date);
 }
 
 function extendMonthPast() {
@@ -5176,16 +5263,18 @@ function monthScrollHandler() {
   });
 }
 
-function renderMonthView() {
+function renderMonthView(centerDate) {
   const container = document.getElementById('monthScroll');
   if (!container) return;
   const addBtn = document.getElementById('monthAddEventBtn');
   if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
+  populateMonthJumpYearOptions();
   if (!monthInitialized) {
+    const center = centerDate || new Date();
     container.innerHTML = '';
-    const todayWeek = startOfWeek(new Date());
-    monthEarliestWeek = new Date(todayWeek); monthEarliestWeek.setDate(monthEarliestWeek.getDate() - 21);
-    monthLatestWeek = new Date(todayWeek); monthLatestWeek.setDate(monthLatestWeek.getDate() + 63);
+    const centerWeek = startOfWeek(center);
+    monthEarliestWeek = new Date(centerWeek); monthEarliestWeek.setDate(monthEarliestWeek.getDate() - 21);
+    monthLatestWeek = new Date(centerWeek); monthLatestWeek.setDate(monthLatestWeek.getDate() + 63);
 
     const topSentinel = document.createElement('div');
     topSentinel.id = 'monthSentinelTop';
@@ -5209,7 +5298,7 @@ function renderMonthView() {
     }
     monthInitialized = true;
     requestAnimationFrame(() => {
-      const cell = container.querySelector(`.month-day-cell[data-date="${dateKey(new Date())}"]`);
+      const cell = container.querySelector(`.month-day-cell[data-date="${dateKey(center)}"]`);
       if (cell) cell.closest('.month-week-row').scrollIntoView({ block: 'center' });
       updateMonthStickyLabel();
     });
@@ -5219,16 +5308,7 @@ function renderMonthView() {
 }
 
 function monthGoToday() {
-  const container = document.getElementById('monthScroll');
-  if (!container) return;
-  const todayKey = dateKey(new Date());
-  let cell = container.querySelector(`.month-day-cell[data-date="${todayKey}"]`);
-  if (!cell) {
-    monthInitialized = false;
-    renderMonthView();
-    return;
-  }
-  cell.closest('.month-week-row').scrollIntoView({ block: 'center' });
+  jumpMonthViewTo(new Date());
 }
 
 // ══════════════════════════════
