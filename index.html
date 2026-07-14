@@ -861,6 +861,7 @@
       <div class="page-sub" id="monthStickyLabel"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="fetchAllFeeds()">Sync</button>
+        <button class="btn btn-sm btn-primary" id="monthAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay || dateKey(new Date()))">+ Event</button>
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
     </div>
@@ -5035,8 +5036,8 @@ function dayItemsFor(key) {
     return timeToMinutes(a.time) - timeToMinutes(b.time);
   });
   return [
-    ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color })),
-    ...dayTasks.map(t => ({ type: 'task', title: t.title }))
+    ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color, ev })),
+    ...dayTasks.map(t => ({ type: 'task', title: t.title, task: t }))
   ];
 }
 
@@ -5049,6 +5050,11 @@ function fillMonthDayItems(wrap, key) {
     el.className = 'month-day-item ' + (it.type === 'task' ? 'is-task' : 'is-event');
     if (it.color) el.style.borderLeftColor = it.color;
     el.textContent = it.title;
+    if (it.type === 'event') {
+      el.onclick = (e) => { e.stopPropagation(); it.ev._dk = key; showCalEvPopup(it.ev, el); };
+    } else {
+      el.onclick = (e) => { e.stopPropagation(); openTaskDetail(it.task.id); };
+    }
     wrap.appendChild(el);
   });
   if (items.length > MAX) {
@@ -5171,6 +5177,8 @@ function monthScrollHandler() {
 function renderMonthView() {
   const container = document.getElementById('monthScroll');
   if (!container) return;
+  const addBtn = document.getElementById('monthAddEventBtn');
+  if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
   if (!monthInitialized) {
     container.innerHTML = '';
     const todayWeek = startOfWeek(new Date());
