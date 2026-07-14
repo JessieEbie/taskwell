@@ -284,6 +284,40 @@
     .cal-feeds-list { max-height: 200px; overflow-y: auto; margin: 8px 0 10px; }
     .modal.modal-wide { max-width: 440px; width: 90vw; }
 
+    /* ── MONTH VIEW ── */
+    #month .page-sub { text-transform: capitalize; }
+    .month-dow-row { display: grid; grid-template-columns: repeat(7, 1fr); flex-shrink: 0;
+                      padding: 14px 20px 0; }
+    .month-dow-cell { text-align: center; font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
+                       font-weight: 700; color: var(--ink-faint); text-transform: uppercase;
+                       padding: 4px 0 8px; letter-spacing: .04em; }
+    .month-scroll { flex: 1; overflow-y: auto; padding: 0 20px 20px; -webkit-overflow-scrolling: touch;
+                    scrollbar-width: thin; scrollbar-color: var(--accent) var(--cream); }
+    .month-scroll::-webkit-scrollbar { width: 12px; }
+    .month-scroll::-webkit-scrollbar-track { background: var(--cream); border-radius: 6px; }
+    .month-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 6px; border: 3px solid var(--cream); }
+    .month-week-row { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--cream-dark); }
+    .month-week-row:last-of-type { border-bottom: 1px solid var(--cream-dark); }
+    .month-day-cell { min-height: 104px; border-right: 1px solid var(--cream-dark); padding: 5px 5px 6px;
+                       display: flex; flex-direction: column; min-width: 0; cursor: pointer; transition: background .15s; }
+    .month-day-cell:first-child { border-left: 1px solid var(--cream-dark); }
+    .month-day-cell:hover { background: var(--cream); }
+    .month-day-hdr { display: flex; align-items: baseline; gap: 5px; flex-shrink: 0; margin-bottom: 3px; }
+    .month-day-num { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink);
+                      width: 21px; height: 21px; border-radius: 50%; display: flex; align-items: center;
+                      justify-content: center; flex-shrink: 0; }
+    .month-day-cell.is-today .month-day-num { background: var(--accent); color: var(--ink); font-weight: 700; }
+    .month-day-month-label { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; font-weight: 700;
+                              color: var(--ink-soft); text-transform: uppercase; letter-spacing: .03em; }
+    .month-day-items { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+    .month-day-item { font-size: 10.5px; font-family: 'Helvetica Neue', sans-serif; padding: 1px 5px;
+                       border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                       color: var(--ink); background: var(--cream); flex-shrink: 0; }
+    .month-day-item.is-task { background: var(--cream-dark); }
+    .month-day-item.is-event { border-left: 3px solid var(--accent); background: var(--accent-pale); }
+    .month-day-more { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); flex-shrink: 0; }
+    .month-sentinel { height: 1px; }
+
     /* ── INBOX ── */
     #inbox .inbox-inner { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 14px 20px 20px; }
     .inbox-input-row { display: flex; gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
@@ -766,6 +800,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     <span>Week</span>
   </button>
+  <button class="tab-btn" data-tab="month" onclick="switchTab('month')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="10" x2="9" y2="21"/><line x1="15" y1="10" x2="15" y2="21"/></svg>
+    <span>Month</span>
+  </button>
   <button class="tab-btn active" data-tab="day" onclick="switchTab('day')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Day</span>
@@ -814,6 +852,28 @@
     <div class="week-scroll">
       <div class="week-grid" id="weekGrid"></div>
     </div>
+  </section>
+
+  <!-- MONTH -->
+  <section id="month" class="section">
+    <div class="page-header">
+      <div class="page-title">Month</div>
+      <div class="page-sub" id="monthStickyLabel"></div>
+      <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
+        <button class="btn btn-sm" onclick="fetchAllFeeds()">Sync</button>
+        <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
+      </div>
+    </div>
+    <div class="month-dow-row">
+      <div class="month-dow-cell">Sun</div>
+      <div class="month-dow-cell">Mon</div>
+      <div class="month-dow-cell">Tue</div>
+      <div class="month-dow-cell">Wed</div>
+      <div class="month-dow-cell">Thu</div>
+      <div class="month-dow-cell">Fri</div>
+      <div class="month-dow-cell">Sat</div>
+    </div>
+    <div class="month-scroll" id="monthScroll"></div>
   </section>
 
   <!-- DAY -->
@@ -3120,13 +3180,13 @@ async function fetchAllFeeds() {
     fetchOutlookCalendarEvents()
   ]);
   try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
-  renderWeek(); renderAgenda();
+  renderWeek(); renderAgenda(); refreshMonthDayCells();
 }
 
 function loadCalCache() {
   try {
     const cached = localStorage.getItem('tw_cal_cache');
-    if (cached) { calEvents = JSON.parse(cached); renderWeek(); renderAgenda(); }
+    if (cached) { calEvents = JSON.parse(cached); renderWeek(); renderAgenda(); refreshMonthDayCells(); }
   } catch(e) {}
 }
 
@@ -3619,6 +3679,7 @@ function switchTab(tab) {
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   if (tab === 'week') renderWeek();
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
+  if (tab === 'month') renderMonthView();
   if (tab === 'settings') { switchSettingsTab(activeSettingsTab); }
 }
 
@@ -4944,6 +5005,220 @@ function renderAgenda() {
     }
     renderAgendaDay(agenda, key);
   }
+}
+
+// ══════════════════════════════
+// MONTH (continuous scroll)
+// ══════════════════════════════
+let monthInitialized = false;
+let monthEarliestWeek = null, monthLatestWeek = null;
+let monthScrollListenerAttached = false;
+let monthScrollRAF = null;
+let monthExtending = false;
+const MONTH_MAX_SPAN_WEEKS = 260; // ~5 years each direction, safety cap
+
+function startOfWeek(d) {
+  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  dt.setDate(dt.getDate() - dt.getDay());
+  return dt;
+}
+
+function dayItemsFor(key) {
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const dayTasks = tasks.filter(t =>
+    visListIds.has(t.list_id) && !t.completed &&
+    (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
+  );
+  const dayEvents = (calEvents[key] || []).slice().sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    return timeToMinutes(a.time) - timeToMinutes(b.time);
+  });
+  return [
+    ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color })),
+    ...dayTasks.map(t => ({ type: 'task', title: t.title }))
+  ];
+}
+
+function fillMonthDayItems(wrap, key) {
+  wrap.innerHTML = '';
+  const items = dayItemsFor(key);
+  const MAX = 3;
+  items.slice(0, MAX).forEach(it => {
+    const el = document.createElement('div');
+    el.className = 'month-day-item ' + (it.type === 'task' ? 'is-task' : 'is-event');
+    if (it.color) el.style.borderLeftColor = it.color;
+    el.textContent = it.title;
+    wrap.appendChild(el);
+  });
+  if (items.length > MAX) {
+    const more = document.createElement('div');
+    more.className = 'month-day-more';
+    more.textContent = `+${items.length - MAX} more`;
+    wrap.appendChild(more);
+  }
+}
+
+function buildMonthWeekRow(weekStart) {
+  const row = document.createElement('div');
+  row.className = 'month-week-row';
+  row.dataset.weekStart = dateKey(weekStart);
+  const todayKey = dateKey(new Date());
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart); d.setDate(d.getDate() + i);
+    const key = dateKey(d);
+    const cell = document.createElement('div');
+    cell.className = 'month-day-cell';
+    cell.dataset.date = key;
+    if (key === todayKey) cell.classList.add('is-today');
+    const hdr = document.createElement('div');
+    hdr.className = 'month-day-hdr';
+    const num = document.createElement('div');
+    num.className = 'month-day-num';
+    num.textContent = d.getDate();
+    hdr.appendChild(num);
+    if (d.getDate() === 1) {
+      const ml = document.createElement('div');
+      ml.className = 'month-day-month-label';
+      ml.textContent = d.toLocaleDateString('en-US', { month: 'short' });
+      hdr.appendChild(ml);
+    }
+    cell.appendChild(hdr);
+    const itemsWrap = document.createElement('div');
+    itemsWrap.className = 'month-day-items';
+    cell.appendChild(itemsWrap);
+    fillMonthDayItems(itemsWrap, key);
+    cell.onclick = () => { selectDay(key); switchTab('day'); };
+    row.appendChild(cell);
+  }
+  return row;
+}
+
+function refreshMonthDayCells() {
+  document.querySelectorAll('#monthScroll .month-day-cell').forEach(cell => {
+    fillMonthDayItems(cell.querySelector('.month-day-items'), cell.dataset.date);
+  });
+}
+
+function updateMonthStickyLabel() {
+  const container = document.getElementById('monthScroll');
+  const label = document.getElementById('monthStickyLabel');
+  if (!container || !label) return;
+  const containerTop = container.getBoundingClientRect().top;
+  const rows = container.querySelectorAll('.month-week-row');
+  let target = rows[0];
+  for (const row of rows) {
+    if (row.getBoundingClientRect().bottom - containerTop > 40) { target = row; break; }
+  }
+  if (!target) return;
+  const weekStart = new Date(target.dataset.weekStart + 'T00:00:00');
+  const anchor = new Date(weekStart); anchor.setDate(anchor.getDate() + 4); // Thursday "owns" the week
+  label.textContent = anchor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function extendMonthPast() {
+  if (monthExtending) return;
+  const cap = new Date(); cap.setDate(cap.getDate() - MONTH_MAX_SPAN_WEEKS * 7);
+  if (monthEarliestWeek <= cap) return;
+  monthExtending = true;
+  const container = document.getElementById('monthScroll');
+  const prevScrollHeight = container.scrollHeight;
+  const prevScrollTop = container.scrollTop;
+  const frag = document.createDocumentFragment();
+  const rows = [];
+  let w = new Date(monthEarliestWeek);
+  for (let i = 0; i < 6; i++) {
+    w.setDate(w.getDate() - 7);
+    rows.unshift(buildMonthWeekRow(new Date(w)));
+  }
+  rows.forEach(r => frag.appendChild(r));
+  monthEarliestWeek = new Date(w);
+  document.getElementById('monthSentinelTop').after(frag);
+  container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
+  monthExtending = false;
+}
+
+function extendMonthFuture() {
+  if (monthExtending) return;
+  const cap = new Date(); cap.setDate(cap.getDate() + MONTH_MAX_SPAN_WEEKS * 7);
+  if (monthLatestWeek >= cap) return;
+  monthExtending = true;
+  const container = document.getElementById('monthScroll');
+  const frag = document.createDocumentFragment();
+  let w = new Date(monthLatestWeek);
+  for (let i = 0; i < 6; i++) {
+    w.setDate(w.getDate() + 7);
+    frag.appendChild(buildMonthWeekRow(new Date(w)));
+  }
+  monthLatestWeek = new Date(w);
+  document.getElementById('monthSentinelBottom').before(frag);
+  monthExtending = false;
+}
+
+function monthScrollHandler() {
+  if (monthScrollRAF) return;
+  monthScrollRAF = requestAnimationFrame(() => {
+    monthScrollRAF = null;
+    updateMonthStickyLabel();
+    const container = document.getElementById('monthScroll');
+    if (!container) return;
+    const threshold = 600;
+    if (container.scrollTop < threshold) extendMonthPast();
+    else if (container.scrollHeight - container.scrollTop - container.clientHeight < threshold) extendMonthFuture();
+  });
+}
+
+function renderMonthView() {
+  const container = document.getElementById('monthScroll');
+  if (!container) return;
+  if (!monthInitialized) {
+    container.innerHTML = '';
+    const todayWeek = startOfWeek(new Date());
+    monthEarliestWeek = new Date(todayWeek); monthEarliestWeek.setDate(monthEarliestWeek.getDate() - 21);
+    monthLatestWeek = new Date(todayWeek); monthLatestWeek.setDate(monthLatestWeek.getDate() + 63);
+
+    const topSentinel = document.createElement('div');
+    topSentinel.id = 'monthSentinelTop';
+    topSentinel.className = 'month-sentinel';
+    container.appendChild(topSentinel);
+
+    let w = new Date(monthEarliestWeek);
+    while (w <= monthLatestWeek) {
+      container.appendChild(buildMonthWeekRow(new Date(w)));
+      w.setDate(w.getDate() + 7);
+    }
+
+    const bottomSentinel = document.createElement('div');
+    bottomSentinel.id = 'monthSentinelBottom';
+    bottomSentinel.className = 'month-sentinel';
+    container.appendChild(bottomSentinel);
+
+    if (!monthScrollListenerAttached) {
+      container.addEventListener('scroll', monthScrollHandler);
+      monthScrollListenerAttached = true;
+    }
+    monthInitialized = true;
+    requestAnimationFrame(() => {
+      const cell = container.querySelector(`.month-day-cell[data-date="${dateKey(new Date())}"]`);
+      if (cell) cell.closest('.month-week-row').scrollIntoView({ block: 'center' });
+      updateMonthStickyLabel();
+    });
+  } else {
+    refreshMonthDayCells();
+  }
+}
+
+function monthGoToday() {
+  const container = document.getElementById('monthScroll');
+  if (!container) return;
+  const todayKey = dateKey(new Date());
+  let cell = container.querySelector(`.month-day-cell[data-date="${todayKey}"]`);
+  if (!cell) {
+    monthInitialized = false;
+    renderMonthView();
+    return;
+  }
+  cell.closest('.month-week-row').scrollIntoView({ block: 'center' });
 }
 
 // ══════════════════════════════
