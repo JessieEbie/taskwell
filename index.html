@@ -293,6 +293,14 @@
                          color: var(--ink); outline: none; width: 130px; }
     .month-jump-input:focus { border-color: var(--accent); }
     .month-jump-input-year { width: 80px; }
+    .month-jump-menu { position: fixed; z-index: 2100; background: var(--paper);
+      border-radius: 12px; box-shadow: 0 6px 28px rgba(46,33,24,.22);
+      padding: 6px; min-width: 130px; max-height: 220px; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; display: none; }
+    .month-jump-menu button { display: block; width: 100%; text-align: left; background: none; border: none;
+      cursor: pointer; font-family: 'Helvetica Neue', sans-serif; font-size: 13px; color: var(--ink);
+      padding: 7px 10px; border-radius: 8px; }
+    .month-jump-menu button:hover { background: var(--cream); }
     .month-dow-row { display: grid; grid-template-columns: repeat(7, 1fr); flex-shrink: 0;
                       padding: 14px 20px 0; }
     .month-dow-cell { text-align: center; font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
@@ -804,6 +812,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
   </button>
+  <button class="tab-btn active" data-tab="day" onclick="switchTab('day')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <span>Day</span>
+  </button>
   <button class="tab-btn" data-tab="week" onclick="switchTab('week')">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     <span>Week</span>
@@ -811,10 +823,6 @@
   <button class="tab-btn" data-tab="month" onclick="switchTab('month')">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="10" x2="9" y2="21"/><line x1="15" y1="10" x2="15" y2="21"/></svg>
     <span>Month</span>
-  </button>
-  <button class="tab-btn active" data-tab="day" onclick="switchTab('day')">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    <span>Day</span>
   </button>
   <button class="tab-btn" data-tab="inbox" onclick="switchTab('inbox')">
     <svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
@@ -875,17 +883,13 @@
     </div>
     <div class="month-jump-row">
       <span class="month-jump-label">Jump to</span>
-      <input class="month-jump-input" id="monthJumpMonthInput" list="monthJumpMonthList" placeholder="Month"
-             autocomplete="off" onchange="monthJumpGo()" onkeydown="if(event.key==='Enter') monthJumpGo()" />
-      <datalist id="monthJumpMonthList">
-        <option value="January"></option><option value="February"></option><option value="March"></option>
-        <option value="April"></option><option value="May"></option><option value="June"></option>
-        <option value="July"></option><option value="August"></option><option value="September"></option>
-        <option value="October"></option><option value="November"></option><option value="December"></option>
-      </datalist>
-      <input class="month-jump-input month-jump-input-year" id="monthJumpYearInput" list="monthJumpYearList" placeholder="Year"
-             autocomplete="off" inputmode="numeric" onchange="monthJumpGo()" onkeydown="if(event.key==='Enter') monthJumpGo()" />
-      <datalist id="monthJumpYearList"></datalist>
+      <input class="month-jump-input" id="monthJumpMonthInput" placeholder="Month" autocomplete="off"
+             onfocus="this.select(); renderMonthJumpMenu('month', true)" oninput="renderMonthJumpMenu('month')"
+             onkeydown="monthJumpInputKeydown(event)" />
+      <input class="month-jump-input month-jump-input-year" id="monthJumpYearInput" placeholder="Year"
+             autocomplete="off" inputmode="numeric"
+             onfocus="this.select(); renderMonthJumpMenu('year', true)" oninput="renderMonthJumpMenu('year')"
+             onkeydown="monthJumpInputKeydown(event)" />
       <button class="btn btn-sm" onclick="monthJumpGo()">Go</button>
     </div>
     <div class="month-dow-row">
@@ -1369,7 +1373,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14b';
+const APP_VERSION = '2026-07-14c';
 const WHATS_NEW = "Outlook calendar events now show a real \"Join Meeting\" link (Zoom/Teams/etc.) instead of a generic \"Virtual\" location that wrongly opened a map. Fixed a bug where a deleted \"Misc\" section in Work or Home would silently reappear the next time you opened the app.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -5156,16 +5160,59 @@ function updateMonthStickyLabel() {
 
 const MONTH_JUMP_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-function populateMonthJumpYearOptions() {
-  const dl = document.getElementById('monthJumpYearList');
-  if (!dl || dl.dataset.populated) return;
+function monthJumpYearOptions() {
   const y = new Date().getFullYear();
-  for (let yr = y - 10; yr <= y + 10; yr++) {
-    const opt = document.createElement('option');
-    opt.value = String(yr);
-    dl.appendChild(opt);
+  const arr = [];
+  for (let yr = y - 10; yr <= y + 10; yr++) arr.push(String(yr));
+  return arr;
+}
+
+let monthJumpMenuEl = null;
+
+function closeMonthJumpMenu() {
+  if (monthJumpMenuEl) monthJumpMenuEl.style.display = 'none';
+}
+
+// Native <datalist> dropdown affordances are unreliable in Safari/iOS (no
+// arrow shown, spotty suggestion UI), so the month/year "jump to" fields use
+// this custom menu instead — same pattern as the existing week-filter-menu.
+function renderMonthJumpMenu(kind, showAll) {
+  const input = document.getElementById(kind === 'month' ? 'monthJumpMonthInput' : 'monthJumpYearInput');
+  if (!input) return;
+  if (!monthJumpMenuEl) {
+    monthJumpMenuEl = document.createElement('div');
+    monthJumpMenuEl.className = 'month-jump-menu';
+    document.body.appendChild(monthJumpMenuEl);
+    document.addEventListener('mousedown', (e) => {
+      if (monthJumpMenuEl && !monthJumpMenuEl.contains(e.target) &&
+          e.target.id !== 'monthJumpMonthInput' && e.target.id !== 'monthJumpYearInput') {
+        closeMonthJumpMenu();
+      }
+    }, true);
   }
-  dl.dataset.populated = '1';
+  const all = kind === 'month' ? MONTH_JUMP_NAMES : monthJumpYearOptions();
+  const q = showAll ? '' : input.value.trim().toLowerCase();
+  const filtered = q ? all.filter(v => v.toLowerCase().startsWith(q)) : all;
+  monthJumpMenuEl.innerHTML = '';
+  if (filtered.length === 0) { closeMonthJumpMenu(); return; }
+  filtered.forEach(v => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = v;
+    b.onmousedown = (e) => { e.preventDefault(); input.value = v; closeMonthJumpMenu(); monthJumpGo(); };
+    monthJumpMenuEl.appendChild(b);
+  });
+  const r = input.getBoundingClientRect();
+  monthJumpMenuEl.style.display = 'block';
+  monthJumpMenuEl.style.minWidth = r.width + 'px';
+  let top = r.bottom + 4, left = r.left;
+  monthJumpMenuEl.style.top = top + 'px';
+  monthJumpMenuEl.style.left = left + 'px';
+}
+
+function monthJumpInputKeydown(e) {
+  if (e.key === 'Enter') { closeMonthJumpMenu(); monthJumpGo(); }
+  else if (e.key === 'Escape') { closeMonthJumpMenu(); }
 }
 
 function syncMonthJumpInputs(date) {
@@ -5268,7 +5315,6 @@ function renderMonthView(centerDate) {
   if (!container) return;
   const addBtn = document.getElementById('monthAddEventBtn');
   if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
-  populateMonthJumpYearOptions();
   if (!monthInitialized) {
     const center = centerDate || new Date();
     container.innerHTML = '';
