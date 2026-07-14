@@ -301,6 +301,7 @@
     .month-day-cell { min-height: 104px; border-right: 1px solid var(--cream-dark); padding: 5px 5px 6px;
                        display: flex; flex-direction: column; min-width: 0; cursor: pointer; transition: background .15s; }
     .month-day-cell:first-child { border-left: 1px solid var(--cream-dark); }
+    .month-day-cell.is-alt-month { background: rgba(46, 33, 24, 0.035); }
     .month-day-cell:hover { background: var(--cream); }
     .month-day-hdr { display: flex; align-items: baseline; gap: 5px; flex-shrink: 0; margin-bottom: 3px; }
     .month-day-num { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink);
@@ -1346,7 +1347,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14';
+const APP_VERSION = '2026-07-14a';
 const WHATS_NEW = "Outlook calendar events now show a real \"Join Meeting\" link (Zoom/Teams/etc.) instead of a generic \"Virtual\" location that wrongly opened a map. Fixed a bug where a deleted \"Misc\" section in Work or Home would silently reappear the next time you opened the app.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -5077,6 +5078,7 @@ function buildMonthWeekRow(weekStart) {
     cell.className = 'month-day-cell';
     cell.dataset.date = key;
     if (key === todayKey) cell.classList.add('is-today');
+    if ((d.getFullYear() * 12 + d.getMonth()) % 2 === 1) cell.classList.add('is-alt-month');
     const hdr = document.createElement('div');
     hdr.className = 'month-day-hdr';
     const num = document.createElement('div');
