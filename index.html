@@ -876,7 +876,7 @@
       <div class="page-title">Month</div>
       <div class="page-sub" id="monthStickyLabel"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
-        <button class="btn btn-sm" onclick="fetchAllFeeds()">Sync</button>
+        <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm btn-primary" id="monthAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay || dateKey(new Date()))">+ Event</button>
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
@@ -910,7 +910,7 @@
       <div class="page-title">Day</div>
       <div class="page-sub" id="daySub"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
-        <button class="btn btn-sm" onclick="fetchAllFeeds()">Sync</button>
+        <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
       </div>
     </div>
@@ -1388,8 +1388,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14e';
-const WHATS_NEW = "Settings → Calendar has a new \"Birthdays\" option to hide contacts' birthdays from your Google Calendar feed instead of always showing them.";
+const APP_VERSION = '2026-07-14f';
+const WHATS_NEW = "Cancelled Outlook and ICS-feed events no longer stick around on your calendar. Outlook Calendar errors (expired connection, network issues) now show a toast instead of failing silently. The Sync button in Week/Day/Month now confirms with a toast when it's done.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1573,7 +1573,7 @@ let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
 let outlookTokens = null;
 let serverLastSeen = null; // account-wide last-seen "what's new" version (from Supabase)
-const shownGcalErrors = new Set(); // dedupes repeated Google Calendar fetch-error toasts
+const shownGcalErrors = new Set(); // dedupes repeated Google/Outlook Calendar fetch-error toasts
 // Optional second Google Calendar (e.g. a shared or work calendar), tagged as
 // 'work' or 'personal'. Empty secondCalId means there isn't one configured.
 let secondCalId = localStorage.getItem('tw_second_cal_id') || '';
@@ -2754,13 +2754,16 @@ async function fetchOutlookCalendarEvents() {
   const maxD = new Date(today); maxD.setDate(maxD.getDate() + 90);
   const params = new URLSearchParams({
     startDateTime: minD.toISOString(), endDateTime: maxD.toISOString(),
-    '$select': 'subject,start,end,location,isAllDay,iCalUId,id,bodyPreview,onlineMeeting,onlineMeetingUrl,webLink',
+    '$select': 'subject,start,end,location,isAllDay,iCalUId,id,bodyPreview,onlineMeeting,onlineMeetingUrl,webLink,isCancelled',
     '$top': '500', '$orderby': 'start/dateTime'
   });
   try {
     const res = await outlookApi('GET', `me/calendarView?${params}`);
     const color = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
     (res?.value || []).forEach(item => {
+      // Graph keeps a cancelled occurrence in calendarView (marked isCancelled) rather
+      // than removing it — without this check, cancelled meetings kept showing up.
+      if (item.isCancelled) return;
       const allDay = item.isAllDay;
       let dk, timeStr = null;
       const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -2782,7 +2785,28 @@ async function fetchOutlookCalendarEvents() {
         description: item.bodyPreview || null, meetLink,
         webLink: item.webLink || null });
     });
-  } catch(e) { console.error('Outlook Calendar fetch failed:', e); }
+  } catch(e) {
+    // Previously a silent console.error — a real failure (expired token, revoked
+    // access, network issue) looked identical to "nothing changed," and since
+    // fetchAllFeeds() rebuilds calEvents from scratch every cycle, a swallowed
+    // error meant Outlook events would just silently vanish with no explanation.
+    console.error('Outlook Calendar fetch failed:', e);
+    const msg = e?.message || 'Unknown error';
+    if (msg === 'Outlook token refresh failed') {
+      outlookTokens = null;
+      // Do NOT clear the server-side copy — it's the persistent fallback so a
+      // transient refresh hiccup gets retried on the next load instead of forcing
+      // a full reconnect (same pattern as Google's handleGcalError).
+      updateOutlookStatus();
+      showToast('Outlook Calendar disconnected — please reconnect in Settings → Calendar', true);
+      return;
+    }
+    const key = 'Outlook:' + msg;
+    if (!shownGcalErrors.has(key)) {
+      shownGcalErrors.add(key);
+      showToast(`Outlook Calendar error: ${msg}`, true);
+    }
+  }
 }
 
 function parseTimeInput(str, date) {
@@ -3092,13 +3116,16 @@ function parseICS(text, feedColor) {
     const val = raw.slice(ci + 1).trim();
     const propName = keyPart.split(';')[0].toUpperCase();
     if (propName === 'BEGIN' && val === 'VEVENT') { ev = {}; continue; }
-    if (propName === 'END' && val === 'VEVENT') { if (ev && ev.summary && ev.dtstart) vevents.push(ev); ev = null; continue; }
+    // A cancelled event stays in the feed marked STATUS:CANCELLED rather than being
+    // removed outright — same pattern as Outlook's isCancelled and Google's status.
+    if (propName === 'END' && val === 'VEVENT') { if (ev && ev.summary && ev.dtstart && ev.status !== 'CANCELLED') vevents.push(ev); ev = null; continue; }
     if (!ev) continue;
     if (propName === 'SUMMARY') ev.summary = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, ' ').trim();
     if (propName === 'DTSTART') { ev.dtstart = val; ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
     if (propName === 'DTEND') ev.dtend = val;
     if (propName === 'RRULE') ev.rrule = val;
     if (propName === 'UID') ev.uid = val;
+    if (propName === 'STATUS') ev.status = val.trim().toUpperCase();
     if (propName === 'DESCRIPTION') ev.description = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, '\n').trim();
     if (propName === 'URL') ev.url = val.trim();
     if (propName === 'LOCATION') ev.location = val.replace(/\\([,;:\\])/g, '$1').trim();
@@ -3248,6 +3275,16 @@ async function fetchAllFeeds() {
   ]);
   try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
   renderWeek(); renderAgenda(); refreshMonthDayCells();
+}
+
+// Wraps fetchAllFeeds() with a confirmation toast — used by the manual "Sync" buttons
+// in Week/Day/Month so clicking it gives visible feedback that something happened.
+// fetchAllFeeds() itself stays silent since it also runs on the 5-min background
+// timer, on boot, and after connecting/disconnecting a calendar, where a toast
+// every time would just be noise.
+async function syncCalendars() {
+  await fetchAllFeeds();
+  showToast('Calendar synced');
 }
 
 function loadCalCache() {
@@ -4601,7 +4638,7 @@ function renderWeek() {
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
-    <button class="btn btn-sm" onclick="fetchAllFeeds()">Sync</button>
+    <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
     ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}`;
   ctrl.appendChild(navRow);
 
