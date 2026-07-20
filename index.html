@@ -1388,8 +1388,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14f';
-const WHATS_NEW = "Cancelled Outlook and ICS-feed events no longer stick around on your calendar. Outlook Calendar errors (expired connection, network issues) now show a toast instead of failing silently. The Sync button in Week/Day/Month now confirms with a toast when it's done.";
+const APP_VERSION = '2026-07-14g';
+const WHATS_NEW = "Fixed a bug where a calendar event already cancelled/deleted on Outlook or Google's side would get permanently stuck in Taskwell — deleting it always failed with an \"event doesn't exist\" error. It's now correctly cleared instead.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2578,7 +2578,11 @@ async function gcalApi(method, path, body) {
     else if (result.invalid) throw new Error('Google Calendar session expired — please reconnect in Calendars settings.');
     else throw new Error('Could not reach Google Calendar right now — will retry later.');
   }
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const err = new Error(await r.text());
+    err.status = r.status;
+    throw err;
+  }
   if (r.status === 204) return null;
   return r.json();
 }
@@ -2717,7 +2721,11 @@ async function outlookApi(method, path, body) {
   const res = await fetch(`https://graph.microsoft.com/v1.0/${path}`, opts);
   if (res.status === 204) return null;
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || JSON.stringify(data));
+  if (!res.ok) {
+    const err = new Error(data?.error?.message || JSON.stringify(data));
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -2991,7 +2999,19 @@ async function deleteCalEvent() {
     closeModal('calEventModal');
     showToast('Event deleted');
     await fetchAllFeeds();
-  } catch(e) { showToast('Error: ' + e.message); }
+  } catch(e) {
+    // A 404 (Outlook) / 404-or-410 (Google) means the event is already gone on the
+    // provider's side — e.g. the organizer already cancelled it. Taskwell was just
+    // showing a stale cached copy, so treat this the same as a successful delete
+    // instead of leaving an un-removable ghost event stuck in the UI forever.
+    if (e.status === 404 || e.status === 410) {
+      closeModal('calEventModal');
+      showToast('Event was already removed');
+      await fetchAllFeeds();
+      return;
+    }
+    showToast('Error: ' + e.message);
+  }
 }
 
 function parseDTVal(val) {
