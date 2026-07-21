@@ -1362,6 +1362,17 @@
     <input class="modal-input" id="calEventTitle" placeholder="Title" />
     <input class="modal-input" id="calEventLocation" placeholder="Location (optional)" />
     <input class="modal-input" id="calEventGuests" placeholder="Guests (emails, comma-separated)" />
+    <div id="calEventGuestPerms" style="display:flex;flex-direction:column;gap:4px;margin:6px 0 2px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft)">
+        <input type="checkbox" id="calEventGuestsCanModify" /> Guests can modify event
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft)">
+        <input type="checkbox" id="calEventGuestsCanInvite" checked /> Guests can invite others
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft)">
+        <input type="checkbox" id="calEventGuestsCanSeeList" checked /> Guests can see guest list
+      </label>
+    </div>
     <textarea class="modal-input" id="calEventNotes" placeholder="Notes (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div style="display:flex;gap:8px;margin-top:6px">
       <input class="modal-input" id="calEventDate" placeholder="Date (MM/DD/YY)" style="flex:1;margin-top:0" />
@@ -1388,8 +1399,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14g';
-const WHATS_NEW = "Fixed a bug where a calendar event already cancelled/deleted on Outlook or Google's side would get permanently stuck in Taskwell — deleting it always failed with an \"event doesn't exist\" error. It's now correctly cleared instead.";
+const APP_VERSION = '2026-07-14h';
+const WHATS_NEW = "New/Edit Event now has Google Calendar's guest permission options — whether guests can modify the event, invite others, or see the guest list. Editing an existing Google event also now correctly shows its current guest list, which was silently broken before.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2836,6 +2847,11 @@ function updateCalModalColor() {
   const source = editingCalSource || targetCal;
   const isWork = source === 'outlook' || source === 'outlook_email'
     || (source === 'google_second' && secondCalContext === 'work');
+  // Guest permissions (modify/invite/see guest list) are a Google Calendar API
+  // concept — hide them for Outlook and the Power-Automate email routing, which
+  // don't support the same fields.
+  const guestPerms = document.getElementById('calEventGuestPerms');
+  if (guestPerms) guestPerms.style.display = (source === 'google' || source === 'google_second') ? '' : 'none';
   const p = isWork ? get(userPalettes.work) : get(userPalettes.home);
   const modal = document.querySelector('#calEventModal .modal');
   if (!modal) return;
@@ -2883,6 +2899,10 @@ function openNewCalEvent(date, startStr = '', endStr = '') {
   document.getElementById('calEventLocation').value = '';
   document.getElementById('calEventGuests').value = '';
   document.getElementById('calEventNotes').value = '';
+  // Matches Google Calendar's own defaults for a new event.
+  document.getElementById('calEventGuestsCanModify').checked = false;
+  document.getElementById('calEventGuestsCanInvite').checked = true;
+  document.getElementById('calEventGuestsCanSeeList').checked = true;
   const [y,mo,d] = date.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
   document.getElementById('calEventStart').value = startStr;
@@ -2903,6 +2923,11 @@ function openEditCalEvent(ev, dateKey) {
   document.getElementById('calEventTitle').value = ev.title;
   document.getElementById('calEventLocation').value = ev.location || '';
   document.getElementById('calEventGuests').value = (ev.attendees || []).join(', ');
+  // Google defaults: guestsCanModify off, invite-others/see-guest-list on. Only
+  // meaningful for Google events; hidden for Outlook via updateCalModalColor above.
+  document.getElementById('calEventGuestsCanModify').checked = !!ev.guestsCanModify;
+  document.getElementById('calEventGuestsCanInvite').checked = ev.guestsCanInviteOthers !== false;
+  document.getElementById('calEventGuestsCanSeeList').checked = ev.guestsCanSeeOtherGuests !== false;
   document.getElementById('calEventNotes').value = ev.description || '';
   const [y,mo,d] = dateKey.split('-');
   document.getElementById('calEventDate').value = `${mo}/${d}/${y.slice(2)}`;
@@ -2977,7 +3002,10 @@ async function saveCalEvent() {
       const body = { summary: title, start, end,
         ...(location ? { location } : {}),
         ...(notes ? { description: notes } : {}),
-        ...(attendees.length ? { attendees } : {}) };
+        ...(attendees.length ? { attendees } : {}),
+        guestsCanModify: document.getElementById('calEventGuestsCanModify').checked,
+        guestsCanInviteOthers: document.getElementById('calEventGuestsCanInvite').checked,
+        guestsCanSeeOtherGuests: document.getElementById('calEventGuestsCanSeeList').checked };
       if (id) { await gcalApi('PUT', `calendars/${encodeURIComponent(calId)}/events/${id}`, body); }
       else { await gcalApi('POST', `calendars/${encodeURIComponent(calId)}/events`, body); }
       closeModal('calEventModal'); showToast(id ? 'Event updated' : 'Event created');
@@ -3231,9 +3259,14 @@ async function fetchGoogleCalendarEvents() {
       const endVal = item.end?.dateTime || item.end?.date;
       if (!calEvents[dk]) calEvents[dk] = [];
       const meetLink = item.hangoutLink || item.conferenceData?.entryPoints?.find(e => e.entryPointType === 'video')?.uri || null;
+      // Guests other than the organizer/self — used to prefill the Guests field on edit.
+      const attendees = (item.attendees || []).filter(a => !a.self && !a.organizer).map(a => a.email);
       calEvents[dk].push({ title: item.summary || '(No title)', time: timeStr, allDay, color, source,
         gcalId: item.id, endTime: endVal, location: item.location || null,
-        description: item.description || null, meetLink, webLink: item.htmlLink || null });
+        description: item.description || null, meetLink, webLink: item.htmlLink || null,
+        attendees, guestsCanModify: item.guestsCanModify || false,
+        guestsCanInviteOthers: item.guestsCanInviteOthers !== false,
+        guestsCanSeeOtherGuests: item.guestsCanSeeOtherGuests !== false });
     });
   };
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
