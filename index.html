@@ -878,6 +878,7 @@
       <div class="page-sub" id="monthStickyLabel"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
+        <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
         <button class="btn btn-sm btn-primary" id="monthAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay || dateKey(new Date()))">+ Event</button>
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
@@ -912,6 +913,7 @@
       <div class="page-sub" id="daySub"></div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
+        <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
         <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
       </div>
     </div>
@@ -1046,16 +1048,24 @@
           <div class="sb-main">
             <div class="settings-block-title">Second calendar account</div>
             <input class="modal-input" id="secondCalIdInput" placeholder="Calendar ID (optional)" />
-            <select class="modal-select" id="secondCalContextSelect" style="margin-top:8px">
-              <option value="work">Work</option>
-              <option value="personal">Personal</option>
-            </select>
             <div class="modal-row" style="margin-top:8px;justify-content:flex-start">
               <button class="btn btn-sm" onclick="saveSecondCal()">Save</button>
             </div>
           </div>
           <div class="sb-help">
-            <p class="stab-hint">Optional — add a second Google Calendar and say whether it's for Work or Personal events. Once saved, it shows up as a choice when creating a new event, and its events sync alongside your main calendar. Find the Calendar ID in Google Calendar under <i>Settings → [that calendar] → Integrate calendar</i>.</p>
+            <p class="stab-hint">Optional — add a second Google Calendar. Once saved, it shows up as a choice when creating a new event, its events sync alongside your main calendar, and it appears below in "Manage Calendars" to name and assign it. Find the Calendar ID in Google Calendar under <i>Settings → [that calendar] → Integrate calendar</i>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Manage Calendars</div>
+            <div id="manageCalendarsList"></div>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint">Every calendar you've connected (Google, Outlook, and each ICS feed). Assign each to <b>Work</b> or <b>Home</b> to match that context's color, or give it its own name and color as an "Other" calendar.</p>
           </div>
         </div>
       </div>
@@ -1408,8 +1418,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14i';
-const WHATS_NEW = "Tasks can now repeat — Edit Task has a new Repeat option (Daily/Weekly/Monthly/Yearly). Checking off a repeating task creates the next occurrence automatically, marked with a ↻ icon.";
+const APP_VERSION = '2026-07-14j';
+const WHATS_NEW = "Week/Day/Month now have a \"Calendars ▾\" toggle to show/hide each connected calendar. Settings → Calendar has a new \"Manage Calendars\" section to name each calendar and assign it to Work, Home, or a custom-colored \"Other.\" Also fixed a bug where every ICS feed's events rendered in the Work color regardless of its own assigned color.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1520,7 +1530,9 @@ create table if not exists public.user_settings (
   second_cal_id text,
   second_cal_context text default 'work',
   auto_clear_completed boolean default false,
-  hide_birthdays boolean default false
+  hide_birthdays boolean default false,
+  cal_source_visibility jsonb,
+  cal_source_styles jsonb
 );
 
 -- Controls who is allowed to sign in at all (add rows for yourself and anyone
@@ -1589,6 +1601,14 @@ let editingTaskId = null, pendingMoveIdx = null;
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
 let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
+// Per-calendar-source show/hide, keyed by source id ('google', 'google_second',
+// 'outlook', or 'ics:<feedId>'). Missing/undefined means visible — so events from
+// before this feature existed, or a source not yet in the map, default to shown.
+let calSourceVisibility = JSON.parse(localStorage.getItem('tw_cal_source_visibility') || '{}');
+// Per-calendar-source name/context/color overrides, keyed the same way as
+// calSourceVisibility. context is 'work' | 'home' | 'other' — work/home always use
+// that context's theme color; 'other' calendars carry their own explicit color.
+let calSourceStyles = JSON.parse(localStorage.getItem('tw_cal_source_styles') || '{}');
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
@@ -2167,6 +2187,7 @@ function saveBackendConfig() {
 const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw_outlook_email',
   'tw_palettes', 'tw_timezone', 'tw_inbox', 'tw_last_seen_version',
   'tw_second_cal_id', 'tw_second_cal_context', 'tw_auto_clear_completed', 'tw_hide_birthdays',
+  'tw_cal_source_visibility', 'tw_cal_source_styles',
   'gcal_verifier', 'pkce_verifier', 'outlook_verifier'];
 
 // Clears every piece of per-user cached data from this browser (tokens, feeds,
@@ -2183,6 +2204,8 @@ function wipeLocalUserCache() {
   userTimezone = 'America/Phoenix';
   autoClearCompleted = false;
   hideBirthdays = false;
+  calSourceVisibility = {};
+  calSourceStyles = {};
   WORK_SECTIONS = []; HOME_SECTIONS = [];
   sectionCollapsed = {}; listCollapsed = {};
 }
@@ -2373,6 +2396,24 @@ async function loadCalFeeds() {
     }
   } catch(e) { /* hide_birthdays column may not exist yet — keep localStorage value */ }
 
+  // Per-calendar-source visibility (separate fetch; column may not exist yet).
+  try {
+    const csRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_source_visibility`);
+    if (csRows?.[0]?.cal_source_visibility) {
+      calSourceVisibility = csRows[0].cal_source_visibility;
+      try { localStorage.setItem('tw_cal_source_visibility', JSON.stringify(calSourceVisibility)); } catch(e) {}
+    }
+  } catch(e) { /* cal_source_visibility column may not exist yet — keep localStorage value */ }
+
+  // Per-calendar-source name/context/color overrides (separate fetch; column may not exist yet).
+  try {
+    const styleRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=cal_source_styles`);
+    if (styleRows?.[0]?.cal_source_styles) {
+      calSourceStyles = styleRows[0].cal_source_styles;
+      try { localStorage.setItem('tw_cal_source_styles', JSON.stringify(calSourceStyles)); } catch(e) {}
+    }
+  } catch(e) { /* cal_source_styles column may not exist yet — keep localStorage value */ }
+
   // Account-wide "what's new" last-seen version (separate fetch; column may not
   // exist yet). Makes the banner show at most once per person across devices.
   try {
@@ -2402,14 +2443,14 @@ async function loadCalFeeds() {
 
 async function saveSecondCal() {
   secondCalId = (document.getElementById('secondCalIdInput').value || '').trim();
-  secondCalContext = document.getElementById('secondCalContextSelect').value || 'work';
+  // secondCalContext itself is legacy — kept only as the initial default context for
+  // 'google_second' in getCalendarSources() until the user assigns it a context via
+  // the Manage Calendars list below.
   try {
     if (secondCalId) {
       localStorage.setItem('tw_second_cal_id', secondCalId);
-      localStorage.setItem('tw_second_cal_context', secondCalContext);
     } else {
       localStorage.removeItem('tw_second_cal_id');
-      localStorage.removeItem('tw_second_cal_context');
     }
   } catch(e) {}
   try {
@@ -2417,6 +2458,7 @@ async function saveSecondCal() {
       { user_id: authSession.user_id, second_cal_id: secondCalId || null, second_cal_context: secondCalContext },
       { 'Prefer': 'resolution=merge-duplicates' });
     showToast(secondCalId ? 'Second calendar saved' : 'Second calendar removed');
+    renderManageCalendarsList();
     fetchAllFeeds();
   } catch(e) { showToast('Could not save: ' + e.message, true); }
 }
@@ -2788,7 +2830,8 @@ async function fetchOutlookCalendarEvents() {
   });
   try {
     const res = await outlookApi('GET', `me/calendarView?${params}`);
-    const color = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
+    const color = getCalendarSources().find(s => s.key === 'outlook')?.color
+      || (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
     (res?.value || []).forEach(item => {
       // Graph keeps a cancelled occurrence in calendarView (marked isCancelled) rather
       // than removing it — without this check, cancelled meetings kept showing up.
@@ -2856,7 +2899,7 @@ function updateCalModalColor() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
   const source = editingCalSource || targetCal;
   const isWork = source === 'outlook' || source === 'outlook_email'
-    || (source === 'google_second' && secondCalContext === 'work');
+    || (source === 'google_second' && getCalendarSources().find(s => s.key === 'google_second')?.context !== 'home');
   // Guest permissions (modify/invite/see guest list) are a Google Calendar API
   // concept — hide them for Outlook and the Power-Automate email routing, which
   // don't support the same fields.
@@ -2887,7 +2930,8 @@ function renderCalTargetPicker(isNew) {
     opts.push({ id: 'google', label: 'Personal' });
   }
   if (googleTokens && secondCalId) {
-    opts.push({ id: 'google_second', label: secondCalContext === 'work' ? 'Work' : 'Personal (2nd)' });
+    const secondSource = getCalendarSources().find(s => s.key === 'google_second');
+    opts.push({ id: 'google_second', label: secondSource?.name || 'Second Calendar' });
   }
   if (outlookEmail) opts.push({ id: 'outlook_email', label: 'Outlook' });
   opts.forEach(opt => {
@@ -3279,7 +3323,9 @@ async function fetchGoogleCalendarEvents() {
         guestsCanSeeOtherGuests: item.guestsCanSeeOtherGuests !== false });
     });
   };
-  const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
+  const calSources = getCalendarSources();
+  const homeColor = calSources.find(s => s.key === 'google')?.color
+    || (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
   let gcalAuthFailed = false;
   // Any failure here used to be silently console.error'd with no visible feedback —
   // a fetch that failed for a real reason (wrong scope, wrong calendar ID, quota,
@@ -3311,8 +3357,7 @@ async function fetchGoogleCalendarEvents() {
       .catch(handleGcalError('Home'))
   ];
   if (secondCalId) {
-    const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
-    const secondColor = secondCalContext === 'work' ? workColor : homeColor;
+    const secondColor = calSources.find(s => s.key === 'google_second')?.color || homeColor;
     fetches.push(
       gcalApi('GET', `calendars/${encodeURIComponent(secondCalId)}/events?${params}`)
         .then(res => pushItems(res.items, secondColor, 'google_second'))
@@ -3326,11 +3371,14 @@ async function fetchAllFeeds() {
   calEvents = {};
   await Promise.all([
     ...calFeeds.map(async (feed) => {
-      const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
-      const evs = await fetchFeed({ ...feed, color: workColor });
+      const sourceKey = 'ics:' + feed.id;
+      // Was hardcoded to the Work theme color regardless of the feed's own assigned
+      // color or Work/Home/Other setting — this pulls the actual effective color.
+      const color = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
+      const evs = await fetchFeed({ ...feed, color });
       Object.entries(evs).forEach(([dk, arr]) => {
         if (!calEvents[dk]) calEvents[dk] = [];
-        calEvents[dk].push(...arr);
+        calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
       });
     }),
     fetchGoogleCalendarEvents(),
@@ -3355,6 +3403,146 @@ function loadCalCache() {
     const cached = localStorage.getItem('tw_cal_cache');
     if (cached) { calEvents = JSON.parse(cached); renderWeek(); renderAgenda(); refreshMonthDayCells(); }
   } catch(e) {}
+}
+
+// Every connected calendar source, for the show/hide toggle menu in Week/Day/Month.
+// Every connected calendar source, with its effective name/context/color — the
+// user's calSourceStyles override wins, falling back to a sensible per-source
+// default (Google primary/home, Outlook/work, second calendar carries forward
+// its legacy Work/Personal choice, ICS feeds default to work like before this
+// feature existed). 'other' is the only context where the stored color is used
+// directly; work/home always render in that context's current theme color.
+function getCalendarSources() {
+  const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
+  const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
+  const defaults = [];
+  if (googleTokens) defaults.push({ key: 'google', name: googleTokens.email || 'Google Calendar', context: 'home' });
+  if (googleTokens && secondCalId) {
+    defaults.push({ key: 'google_second', name: 'Second Calendar', context: secondCalContext === 'work' ? 'work' : 'home' });
+  }
+  if (outlookTokens) defaults.push({ key: 'outlook', name: 'Outlook Calendar', context: 'work' });
+  calFeeds.forEach(f => defaults.push({ key: 'ics:' + f.id, name: f.name || 'Calendar', context: 'work' }));
+
+  return defaults.map(d => {
+    const style = calSourceStyles[d.key] || {};
+    const context = style.context || d.context;
+    const name = style.name || d.name;
+    const color = context === 'work' ? workColor : context === 'home' ? homeColor : (style.color || CAL_COLORS[0]);
+    return { key: d.key, name, context, color };
+  });
+}
+
+function isCalSourceVisible(key) { return calSourceVisibility[key] !== false; }
+
+async function setCalSourceStyle(key, patch) {
+  calSourceStyles[key] = { ...(calSourceStyles[key] || {}), ...patch };
+  try { localStorage.setItem('tw_cal_source_styles', JSON.stringify(calSourceStyles)); } catch(e) {}
+  renderManageCalendarsList();
+  await fetchAllFeeds();
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, cal_source_styles: calSourceStyles },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch(e) { showToast('Could not save: ' + e.message, true); }
+}
+
+function renderManageCalendarsList() {
+  const el = document.getElementById('manageCalendarsList');
+  if (!el) return;
+  const sources = getCalendarSources();
+  el.innerHTML = '';
+  if (sources.length === 0) {
+    el.innerHTML = '<div style="color:var(--ink-faint);font-size:12px;font-style:italic;padding:6px 0">No calendars connected yet.</div>';
+    return;
+  }
+  sources.forEach(s => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--cream-dark)';
+    const mainRow = document.createElement('div');
+    mainRow.style.cssText = 'display:flex;gap:8px;align-items:center';
+    mainRow.innerHTML = `
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${s.color};flex-shrink:0"></span>
+      <input class="modal-input" style="margin:0;flex:1" value="${s.name.replace(/"/g,'&quot;')}" />
+      <select class="modal-select" style="margin:0;width:auto">
+        <option value="work"${s.context === 'work' ? ' selected' : ''}>Work</option>
+        <option value="home"${s.context === 'home' ? ' selected' : ''}>Home</option>
+        <option value="other"${s.context === 'other' ? ' selected' : ''}>Other</option>
+      </select>`;
+    const nameInput = mainRow.querySelector('input');
+    const contextSelect = mainRow.querySelector('select');
+    nameInput.onchange = () => setCalSourceStyle(s.key, { name: nameInput.value.trim() || undefined });
+    contextSelect.onchange = () => setCalSourceStyle(s.key, { context: contextSelect.value });
+    row.appendChild(mainRow);
+    if (s.context === 'other') {
+      const swatchRow = document.createElement('div');
+      swatchRow.style.cssText = 'display:flex;gap:6px;padding-left:18px';
+      CAL_COLORS.forEach(c => {
+        const dot = document.createElement('button');
+        dot.style.cssText = `width:18px;height:18px;border-radius:50%;background:${c};border:2px solid ${c === s.color ? 'var(--ink)' : 'transparent'};cursor:pointer;padding:0`;
+        dot.onclick = () => setCalSourceStyle(s.key, { color: c });
+        swatchRow.appendChild(dot);
+      });
+      row.appendChild(swatchRow);
+    }
+    el.appendChild(row);
+  });
+}
+
+function visibleCalEvents(key) {
+  return (calEvents[key] || []).filter(ev => isCalSourceVisible(ev.source));
+}
+
+async function toggleCalSourceVisibility(key) {
+  calSourceVisibility[key] = !isCalSourceVisible(key);
+  try { localStorage.setItem('tw_cal_source_visibility', JSON.stringify(calSourceVisibility)); } catch(e) {}
+  renderWeek(); renderAgenda(); refreshMonthDayCells();
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, cal_source_visibility: calSourceVisibility },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch(e) { /* cal_source_visibility column may not exist yet — keep localStorage value */ }
+}
+
+function renderCalSourceMenuItems(menu) {
+  const sources = getCalendarSources();
+  menu.innerHTML = '';
+  if (sources.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding:7px 10px;font-size:12px;color:var(--ink-faint);font-style:italic';
+    empty.textContent = 'No calendars connected yet';
+    menu.appendChild(empty);
+    return;
+  }
+  sources.forEach(({ key, name, color }) => {
+    const b = document.createElement('button');
+    const visible = isCalSourceVisible(key);
+    b.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color};flex-shrink:0"></span>` +
+      `<span class="week-filter-check">${visible ? '✓' : ''}</span>${name}`;
+    b.onclick = (ev) => { ev.stopPropagation(); toggleCalSourceVisibility(key); renderCalSourceMenuItems(menu); };
+    menu.appendChild(b);
+  });
+}
+
+function openCalSourceMenu(e) {
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  let menu = document.getElementById('calSourceMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'calSourceMenu';
+    menu.className = 'week-filter-menu';
+    document.body.appendChild(menu);
+    document.addEventListener('mousedown', ev => {
+      if (!menu.contains(ev.target) && ev.target !== menu._openerBtn) menu.style.display = 'none';
+    }, true);
+  }
+  menu._openerBtn = btn;
+  renderCalSourceMenuItems(menu);
+  menu.style.display = 'block';
+  const r = btn.getBoundingClientRect();
+  const mw = menu.offsetWidth;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.left = left + 'px';
 }
 
 function goToCalSettings() {
@@ -3399,19 +3587,39 @@ async function addCalFeed() {
   document.getElementById('calFeedUser').value = '';
   document.getElementById('calFeedPass').value = '';
   renderCalFeedsList();
-  const evs = await fetchFeed(feed);
+  const sourceKey = 'ics:' + feed.id;
+  const effectiveColor = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
+  const evs = await fetchFeed({ ...feed, color: effectiveColor });
   Object.entries(evs).forEach(([dk, arr]) => {
     if (!calEvents[dk]) calEvents[dk] = [];
-    calEvents[dk].push(...arr);
+    calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
   });
   renderCalFeedsList();
+  renderManageCalendarsList();
   renderWeek(); renderAgenda();
 }
 
 async function removeCalFeed(i) {
-  calFeeds.splice(i, 1);
+  const [removed] = calFeeds.splice(i, 1);
   await saveCalFeeds();
+  // Clean up any name/context/color/visibility override so it doesn't linger
+  // orphaned in storage (or get reused if a future feed id ever collided).
+  if (removed) {
+    const key = 'ics:' + removed.id;
+    delete calSourceStyles[key];
+    delete calSourceVisibility[key];
+    try {
+      localStorage.setItem('tw_cal_source_styles', JSON.stringify(calSourceStyles));
+      localStorage.setItem('tw_cal_source_visibility', JSON.stringify(calSourceVisibility));
+    } catch(e) {}
+    try {
+      await api('POST', 'user_settings',
+        { user_id: authSession.user_id, cal_source_styles: calSourceStyles, cal_source_visibility: calSourceVisibility },
+        { 'Prefer': 'resolution=merge-duplicates' });
+    } catch(e) {}
+  }
   renderCalFeedsList();
+  renderManageCalendarsList();
   fetchAllFeeds();
 }
 
@@ -3786,8 +3994,7 @@ function switchSettingsTab(tab) {
     if (hbSel) hbSel.value = hideBirthdays ? 'hide' : 'show';
     const secondCalInput = document.getElementById('secondCalIdInput');
     if (secondCalInput) secondCalInput.value = secondCalId;
-    const secondCalSel = document.getElementById('secondCalContextSelect');
-    if (secondCalSel) secondCalSel.value = secondCalContext;
+    renderManageCalendarsList();
   }
   if (tab === 'account') renderAccountTab();
   if (tab === 'about') renderAboutTab();
@@ -4748,6 +4955,7 @@ function renderWeek() {
     ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
     <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
+    <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
     ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}`;
   ctrl.appendChild(navRow);
 
@@ -4922,7 +5130,7 @@ function renderWeek() {
       (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
     );
 
-    const dayCalEvs = (calEvents[key] || []).slice().sort((a, b) => {
+    const dayCalEvs = visibleCalEvents(key).sort((a, b) => {
       if (a.allDay && !b.allDay) return -1;
       if (!a.allDay && b.allDay) return 1;
       return timeToMinutes(a.time) - timeToMinutes(b.time);
@@ -5163,7 +5371,7 @@ function renderAgendaDay(agenda, key) {
     });
   }
 
-  const agendaCalEvs = (calEvents[key] || []).slice().sort((a, b) => {
+  const agendaCalEvs = visibleCalEvents(key).sort((a, b) => {
     if (a.allDay && !b.allDay) return -1;
     if (!a.allDay && b.allDay) return 1;
     return timeToMinutes(a.time) - timeToMinutes(b.time);
@@ -5244,7 +5452,7 @@ function dayItemsFor(key) {
     visListIds.has(t.list_id) && !t.completed &&
     (t.week_assigned === key || (!t.week_assigned && t.due_date === key))
   );
-  const dayEvents = (calEvents[key] || []).slice().sort((a, b) => {
+  const dayEvents = visibleCalEvents(key).sort((a, b) => {
     if (a.allDay && !b.allDay) return -1;
     if (!a.allDay && b.allDay) return 1;
     return timeToMinutes(a.time) - timeToMinutes(b.time);
