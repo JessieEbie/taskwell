@@ -1410,8 +1410,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14m';
-const WHATS_NEW = "The calendar naming/coloring controls now live right where you connect each calendar (Google Calendar, Second calendar account, and each ICS feed) instead of a separate \"Manage Calendars\" section.";
+const APP_VERSION = '2026-07-22';
+const WHATS_NEW = "Week view: \"Today\" now always sits in the same spot next to \"Next ›\" instead of popping in between Prev and Next and shifting Next out from under repeated clicks.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -4972,8 +4972,8 @@ function renderWeek() {
   navRow.className = 'week-nav-row';
   navRow.innerHTML = `
     <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
-    ${weekOffset !== 0 ? `<button class="btn btn-sm btn-accent" onclick="weekNav(0)">Today</button>` : ''}
     <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
+    <button class="btn btn-sm${weekOffset !== 0 ? ' btn-accent' : ''}" onclick="weekNav(0)">Today</button>
     <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
     <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
     ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}`;
