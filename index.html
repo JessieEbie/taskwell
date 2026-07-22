@@ -1410,7 +1410,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-14l';
+const APP_VERSION = '2026-07-14m';
 const WHATS_NEW = "The calendar naming/coloring controls now live right where you connect each calendar (Google Calendar, Second calendar account, and each ICS feed) instead of a separate \"Manage Calendars\" section.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -2816,12 +2816,12 @@ function extractMeetingLinkFromText(text) {
 async function fetchOutlookCalendarEvents() {
   if (!outlookTokens) return;
   const today = new Date(); today.setHours(0,0,0,0);
-  const minD = new Date(today); minD.setDate(minD.getDate() - 180);
-  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 365);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 365);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 1095);
   const params = new URLSearchParams({
     startDateTime: minD.toISOString(), endDateTime: maxD.toISOString(),
     '$select': 'subject,start,end,location,isAllDay,iCalUId,id,bodyPreview,onlineMeeting,onlineMeetingUrl,webLink,isCancelled',
-    '$top': '500', '$orderby': 'start/dateTime'
+    '$top': '999', '$orderby': 'start/dateTime'
   });
   try {
     const res = await outlookApi('GET', `me/calendarView?${params}`);
@@ -3150,8 +3150,16 @@ function expandEvent(ev, minD, maxD) {
     // Multi-day weekly: iterate week by week, count ALL occurrences toward COUNT limit
     const weekStart = new Date(startDate);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const maxN = rr.COUNT ? +rr.COUNT : 500;
+    const maxN = rr.COUNT ? +rr.COUNT : 1500;
     let n = 0;
+    // Fast-forward for infinite (no COUNT) series so a long-running old series
+    // doesn't burn its whole cap on occurrences that already fell before minD.
+    if (!rr.COUNT) {
+      while (weekStart < minD) {
+        n += byDays.length;
+        weekStart.setDate(weekStart.getDate() + 7 * interval);
+      }
+    }
     while (weekStart <= maxD && n < maxN) {
       let stop = false;
       for (const dow of byDays) {
@@ -3171,7 +3179,7 @@ function expandEvent(ev, minD, maxD) {
     }
   } else {
     const cursor = new Date(startDate);
-    const maxN = rr.COUNT ? +rr.COUNT : 500;
+    const maxN = rr.COUNT ? +rr.COUNT : 1500;
     // Fast-forward for infinite events only (no COUNT, no past UNTIL)
     // COUNT events must iterate from start so n correctly tracks series end
     if (!rr.COUNT && cursor < minD) {
@@ -3229,8 +3237,8 @@ function parseICS(text, feedColor) {
   }
 
   const today = new Date(); today.setHours(0,0,0,0);
-  const minD = new Date(today); minD.setDate(minD.getDate() - 180);
-  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 365);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 365);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 1095);
 
   const result = {};
   vevents.forEach(ev => {
@@ -3283,11 +3291,11 @@ async function fetchFeed(feed) {
 async function fetchGoogleCalendarEvents() {
   if (!googleTokens) return;
   const today = new Date(); today.setHours(0,0,0,0);
-  const minD = new Date(today); minD.setDate(minD.getDate() - 180);
-  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 365);
+  const minD = new Date(today); minD.setDate(minD.getDate() - 365);
+  const maxD = new Date(today); maxD.setDate(maxD.getDate() + 1095);
   const params = new URLSearchParams({
     timeMin: minD.toISOString(), timeMax: maxD.toISOString(),
-    singleEvents: 'true', orderBy: 'startTime', maxResults: '500'
+    singleEvents: 'true', orderBy: 'startTime', maxResults: '2500'
   });
   const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const pushItems = (items, color, source) => {
