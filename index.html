@@ -326,13 +326,12 @@
     .month-day-cell.is-today .month-day-num { background: var(--accent); color: var(--ink); font-weight: 700; }
     .month-day-month-label { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; font-weight: 700;
                               color: var(--ink-soft); text-transform: uppercase; letter-spacing: .03em; }
-    .month-day-items { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+    .month-day-items { flex: 1; display: flex; flex-direction: column; gap: 2px; }
     .month-day-item { font-size: 10.5px; font-family: 'Helvetica Neue', sans-serif; padding: 1px 5px;
                        border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
                        color: var(--ink); background: var(--cream); flex-shrink: 0; }
     .month-day-item.is-task { background: var(--cream-dark); }
     .month-day-item.is-event { border: 1.5px solid var(--accent); background: var(--accent-pale); font-weight: 600; }
-    .month-day-more { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; color: var(--ink-faint); flex-shrink: 0; }
     .month-sentinel { height: 1px; }
 
     /* ── INBOX ── */
@@ -1410,7 +1409,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-22';
+const APP_VERSION = '2026-07-22a';
 const WHATS_NEW = "Week view: \"Today\" now always sits in the same spot next to \"Next ›\" instead of popping in between Prev and Next and shifting Next out from under repeated clicks.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -5485,9 +5484,10 @@ function dayItemsFor(key) {
 
 function fillMonthDayItems(wrap, key) {
   wrap.innerHTML = '';
+  // Render every task/event for the day — the cell (and its whole week row)
+  // grows to fit them rather than truncating behind a "+N more" indicator.
   const items = dayItemsFor(key);
-  const MAX = 3;
-  items.slice(0, MAX).forEach(it => {
+  items.forEach(it => {
     const el = document.createElement('div');
     el.className = 'month-day-item ' + (it.type === 'task' ? 'is-task' : 'is-event');
     if (it.color) {
@@ -5502,12 +5502,6 @@ function fillMonthDayItems(wrap, key) {
     }
     wrap.appendChild(el);
   });
-  if (items.length > MAX) {
-    const more = document.createElement('div');
-    more.className = 'month-day-more';
-    more.textContent = `+${items.length - MAX} more`;
-    wrap.appendChild(more);
-  }
 }
 
 function buildMonthWeekRow(weekStart) {
