@@ -1482,8 +1482,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-03b';
-const WHATS_NEW = "Cleaner toolbars across Hub, Agenda, Week, and Month: navigation, filters, and actions are now visually grouped instead of a wall of same-looking buttons. Agenda now loads more future days as you scroll instead of stopping at 3. Fixed the sidebar logo disappearing along with the Work/Home toggle when it's hidden.";
+const APP_VERSION = '2026-08-03c';
+const WHATS_NEW = "The Week/Agenda/Month scope dropdown is now All, None, Work, or Home — no more hunting for a separate \"Show Unassigned\" toggle. The list drill-down dropdown now only shows lists that match the active scope.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1661,8 +1661,9 @@ let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 // filter) — cached in localStorage for instant load, then reconciled against the
 // server copy in boot() so they carry across devices, same pattern as other prefs.
 let viewPrefs = JSON.parse(localStorage.getItem('tw_view_prefs') || '{}');
-let weekOffset = 0, activeWeekList = 'all', hideUnassigned = viewPrefs.hideUnassigned || false;
-let weekBroadFilter = viewPrefs.weekBroadFilter || 'all'; // 'all' | 'home' | 'work' — which context the unassigned tray shows
+let weekOffset = 0, activeWeekList = 'all';
+// Migrate the old standalone "hide unassigned" toggle into the 'none' scope value.
+let weekBroadFilter = viewPrefs.weekBroadFilter || (viewPrefs.hideUnassigned ? 'none' : 'all'); // 'all' | 'none' | 'home' | 'work' — which lists the unassigned tray/drill-down draw from
 let weekListFilter = viewPrefs.weekListFilter || null;    // null | 'home:<section>' | 'work:<section>' | a specific list id
 let hubContextFilter = viewPrefs.hubContextFilter || 'all';
 let activeSettingsTab = 'calendar';
@@ -2289,7 +2290,7 @@ function wipeLocalUserCache() {
   calSourceStyles = {};
   unifiedCalendarView = false;
   hideContextToggle = false;
-  viewPrefs = {}; hubContextFilter = 'all'; weekBroadFilter = 'all'; weekListFilter = null; hideUnassigned = false;
+  viewPrefs = {}; hubContextFilter = 'all'; weekBroadFilter = 'all'; weekListFilter = null;
   WORK_SECTIONS = []; HOME_SECTIONS = [];
   sectionCollapsed = {}; listCollapsed = {};
 }
@@ -2514,9 +2515,8 @@ async function loadCalFeeds() {
     if (vpRows?.[0]?.view_prefs) {
       viewPrefs = vpRows[0].view_prefs;
       hubContextFilter = viewPrefs.hubContextFilter || 'all';
-      weekBroadFilter = viewPrefs.weekBroadFilter || 'all';
+      weekBroadFilter = viewPrefs.weekBroadFilter || (viewPrefs.hideUnassigned ? 'none' : 'all');
       weekListFilter = viewPrefs.weekListFilter || null;
-      hideUnassigned = viewPrefs.hideUnassigned || false;
       try { localStorage.setItem('tw_view_prefs', JSON.stringify(viewPrefs)); } catch(e) {}
     }
   } catch(e) { /* view_prefs column may not exist yet — keep localStorage value */ }
@@ -4091,7 +4091,7 @@ function toggleHubContextFilter(ctx) {
 // unassigned-tray filter) so they're still set the next time the app is opened —
 // cached instantly to localStorage, and synced server-side for other devices.
 async function saveViewPrefs() {
-  viewPrefs = { hubContextFilter, weekBroadFilter, weekListFilter, hideUnassigned };
+  viewPrefs = { hubContextFilter, weekBroadFilter, weekListFilter };
   try { localStorage.setItem('tw_view_prefs', JSON.stringify(viewPrefs)); } catch(e) {}
   if (!authSession?.user_id) return;
   try {
@@ -5144,6 +5144,7 @@ async function dropTaskOnDay(taskId, key) {
 }
 
 function weekCatFilterIds(visLists) {
+  if (weekBroadFilter === 'none') return new Set();
   let base = weekBroadFilter === 'home' ? visLists.filter(l => (l.context || 'work') === 'home')
     : weekBroadFilter === 'work' ? visLists.filter(l => (l.context || 'work') === 'work')
     : visLists;
@@ -5172,12 +5173,15 @@ function positionDropdownMenu(menu, btn) {
   menu.style.left = left + 'px';
 }
 
-// Shared All/Home/Work + Hide Unassigned scope dropdown and list drill-down
-// dropdown — used by both Week and Agenda so the unassigned-tray filter stays
-// in sync between them (same weekBroadFilter/weekListFilter/hideUnassigned state).
+// Shared All/None/Work/Home scope dropdown and list drill-down dropdown —
+// used by Week, Agenda, and Month so the unassigned-tray filter stays in sync
+// between them (same weekBroadFilter/weekListFilter state).
 function renderUnassignedFilterRow(container) {
   container.innerHTML = '';
-  document.querySelectorAll('.pending-area').forEach(el => el.style.display = hideUnassigned ? 'none' : '');
+  // The tray itself always stays visible now — "None" (below) is what shows
+  // nothing, rather than a separate hide/show toggle that could leave the tray
+  // invisible without an obvious way to tell why.
+  document.querySelectorAll('.pending-area').forEach(el => el.style.display = '');
 
   const visLists = getVisibleLists();
   const hasHome = visLists.some(l => (l.context || 'work') === 'home');
@@ -5199,10 +5203,12 @@ function renderUnassignedFilterRow(container) {
 
   const refreshBoth = () => { renderWeek(); renderAgenda(); saveViewPrefs(); };
 
-  // Dropdown A: All / Home / Work scope + Hide Unassigned
+  // Dropdown A: which group of lists the tray/second dropdown draws from —
+  // All, None (shows nothing), Work, or Home.
   const scopeBtn = document.createElement('button');
   scopeBtn.className = 'week-filter-btn';
-  scopeBtn.textContent = (weekBroadFilter === 'home' ? 'Home' : weekBroadFilter === 'work' ? 'Work' : 'All') + ' ▾';
+  const scopeLabels = { all: 'All', none: 'None', work: 'Work', home: 'Home' };
+  scopeBtn.textContent = (scopeLabels[weekBroadFilter] || 'All') + ' ▾';
   scopeBtn.onclick = (e) => {
     e.stopPropagation();
     let menu = document.getElementById('weekScopeMenu');
@@ -5217,34 +5223,29 @@ function renderUnassignedFilterRow(container) {
     }
     menu._openerBtn = scopeBtn;
     menu.innerHTML = '';
-    [['all', 'All'], ['home', 'Home'], ['work', 'Work']].forEach(([val, label]) => {
+    [['all', 'All'], ['none', 'None'], ['work', 'Work'], ['home', 'Home']].forEach(([val, label]) => {
       const b = document.createElement('button');
       b.className = val === weekBroadFilter ? 'active' : '';
       b.innerHTML = `<span class="week-filter-check">${val === weekBroadFilter ? '✓' : ''}</span>${label}`;
       b.onclick = () => { weekBroadFilter = val; weekListFilter = null; menu.style.display = 'none'; refreshBoth(); };
       menu.appendChild(b);
     });
-    const hr = document.createElement('hr');
-    hr.className = 'divider';
-    menu.appendChild(hr);
-    const hideItem = document.createElement('button');
-    hideItem.textContent = (hideUnassigned ? 'Show' : 'Hide') + ' Unassigned';
-    hideItem.onclick = () => { hideUnassigned = !hideUnassigned; menu.style.display = 'none'; refreshBoth(); };
-    menu.appendChild(hideItem);
     positionDropdownMenu(menu, scopeBtn);
   };
   container.appendChild(scopeBtn);
 
-  // Dropdown B: drill into a specific section or list within the active group
+  // Dropdown B: drill into a specific section or list within the active group —
+  // hidden entirely when scope is "None" since there's nothing to drill into.
+  if (weekBroadFilter === 'none') return;
   const listMenuItems = [['all', 'All lists', false]];
-  if (weekBroadFilter !== 'work') {
+  if (weekBroadFilter === 'all' || weekBroadFilter === 'home') {
     allSectionsFor('home').filter(s => s === 'Misc' ? hasHome : presentHomeSections.has(s)).forEach(s => {
       listMenuItems.push([`home:${s}`, s, false]);
       visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'home')
         .forEach(l => listMenuItems.push([l.id, l.name, true]));
     });
   }
-  if (weekBroadFilter !== 'home') {
+  if (weekBroadFilter === 'all' || weekBroadFilter === 'work') {
     allSectionsFor('work').filter(s => s === 'Misc' ? hasWork : presentWorkSections.has(s)).forEach(s => {
       listMenuItems.push([`work:${s}`, s, false]);
       visLists.filter(l => (l.section || 'Misc') === s && (l.context || 'work') === 'work')
