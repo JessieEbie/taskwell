@@ -331,6 +331,7 @@
     .month-day-cell:first-child { border-left: 1px solid var(--cream-dark); }
     .month-day-cell.is-alt-month { background: rgba(46, 33, 24, 0.035); }
     .month-day-cell:hover { background: var(--cream); }
+    .month-day-cell.drag-over { background: var(--accent-pale); }
     .month-day-hdr { display: flex; align-items: baseline; gap: 5px; flex-shrink: 0; margin-bottom: 3px; }
     .month-day-num { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 600; color: var(--ink);
                       width: 21px; height: 21px; border-radius: 50%; display: flex; align-items: center;
@@ -345,24 +346,6 @@
     .month-day-item.is-task { background: var(--cream-dark); }
     .month-day-item.is-event { border: 1.5px solid var(--accent); background: var(--accent-pale); font-weight: 600; }
     .month-sentinel { height: 1px; }
-
-    /* ── INBOX ── */
-    #inbox .inbox-inner { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 14px 20px 20px; }
-    .inbox-input-row { display: flex; gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
-    .inbox-input { flex: 1; padding: 8px 12px; border: 1.5px solid var(--cream-dark);
-                   border-radius: 8px; background: var(--cream); font-family: Georgia, serif;
-                   font-size: 13px; color: var(--ink); outline: none; }
-    .inbox-input:focus { border-color: var(--accent); }
-    .inbox-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-    .inbox-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--cream-dark); }
-    .inbox-check { width: 18px; height: 18px; border: 1.5px solid var(--accent); border-radius: 50%;
-                   flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; }
-    .inbox-check.done { background: var(--accent); border-color: var(--accent); }
-    .inbox-check.done::after { content: ''; display: block; width: 4px; height: 7px;
-                                border: 2px solid white; border-top: none; border-left: none;
-                                transform: rotate(45deg) translateY(-1px); }
-    .inbox-item-text { flex: 1; font-size: 13px; color: var(--ink); }
-    .inbox-item-text.done { text-decoration: line-through; color: var(--ink-faint); }
 
     /* ── Modal ── */
     /* ── DATE PICKER ── */
@@ -542,7 +525,7 @@
     /* ── Touch sizes ── */
     .tab-btn { min-height: 52px; }
     .ctx-btn { min-height: 38px; }
-    .task-check, .inbox-check { width: 24px; height: 24px; flex-shrink: 0; }
+    .task-check { width: 24px; height: 24px; flex-shrink: 0; }
     .btn { min-height: 36px; }
     .btn-sm { min-height: 32px; }
     .chip { min-height: 36px; display: flex; align-items: center; }
@@ -840,10 +823,6 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     <span>Calendar</span>
   </button>
-  <button class="tab-btn" data-tab="inbox" onclick="switchTab('inbox')">
-    <svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
-    <span>Inbox</span>
-  </button>
   <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.1a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
     <span>Settings</span>
@@ -863,6 +842,7 @@
     </div>
     <div class="hub-controls">
       <button class="btn btn-primary" onclick="openNewListModal()">+ New List</button>
+      <button class="btn btn-primary" onclick="openAddTaskModal()">+ Add Task</button>
       <button class="btn btn-sm" id="btnAddSection" onclick="openAddSectionModalForCurrentContext()">+ Add Section</button>
       <button class="btn btn-sm" id="btnHubCollapseMenu" onclick="openHubCollapseMenu(event)">Collapse/Expand ▾</button>
       <button class="btn btn-sm" onclick="clearAllCompleted()">Clear all completed</button>
@@ -904,10 +884,14 @@
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
-        <button class="btn btn-sm btn-primary" id="monthAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay || dateKey(new Date()))">+ Event</button>
-        <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
+    </div>
+    <div class="week-lists-row" id="monthFilterRow"></div>
+    <div class="pending-area">
+      <div class="pending-label">Unassigned — drag onto a day</div>
+      <div class="pending-chips" id="monthPendingChips"></div>
     </div>
     <div class="month-jump-row">
       <span class="month-jump-label">Jump to</span>
@@ -945,10 +929,10 @@
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
-        <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
-        <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
       </div>
     </div>
+    <div class="week-lists-row" id="dayFilterRow"></div>
     <div class="pending-area">
       <div class="pending-label">Unassigned — drag onto a day</div>
       <div class="pending-chips" id="dayPendingChips"></div>
@@ -968,21 +952,6 @@
     </div>
   </section>
 
-  <!-- INBOX -->
-  <section id="inbox" class="section">
-    <div class="page-header">
-      <div class="page-title">Inbox</div>
-      <div class="page-sub">Tasks to assign to a list</div>
-    </div>
-    <div class="inbox-inner">
-      <div class="inbox-input-row">
-        <input class="inbox-input" id="inboxInput" placeholder="Add a task to assign…" inputmode="text" autocomplete="off" onkeydown="if(event.key==='Enter') addInboxItem()" />
-        <button class="btn btn-primary" onclick="addInboxItem()">Add</button>
-      </div>
-      <div class="inbox-list" id="inboxList"></div>
-    </div>
-  </section>
-
   <!-- SETTINGS -->
   <section id="settings" class="section">
     <div class="page-header">
@@ -990,7 +959,7 @@
     </div>
     <div class="stab-bar" id="settingsTabBar">
       <button class="stab active" data-stab="calendar" onclick="switchSettingsTab('calendar')">Calendar</button>
-      <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Colors</button>
+      <button class="stab" data-stab="colors" onclick="switchSettingsTab('colors')">Configuration</button>
       <button class="stab" data-stab="account" onclick="switchSettingsTab('account')">Account</button>
       <button class="stab" data-stab="about" onclick="switchSettingsTab('about')">About</button>
     </div>
@@ -1124,14 +1093,8 @@
       </div>
     </div>
 
-    <!-- Colors tab -->
+    <!-- Configuration tab (formerly "Colors") -->
     <div class="stab-pane scroll-area" id="stabColors" style="padding:16px 20px 40px">
-      <p class="stab-hint">Choose an accent color for each context.</p>
-      <div id="palettePickerArea"></div>
-    </div>
-
-    <!-- Account tab -->
-    <div class="stab-pane scroll-area" id="stabAccount" style="padding:16px 20px 40px">
       <div class="settings-block has-help">
         <div class="sb-row">
           <div class="sb-main">
@@ -1147,6 +1110,15 @@
         </div>
       </div>
 
+      <div class="settings-block">
+        <div class="settings-block-title">Colors</div>
+        <p class="stab-hint">Choose an accent color for each context.</p>
+        <div id="palettePickerArea"></div>
+      </div>
+    </div>
+
+    <!-- Account tab -->
+    <div class="stab-pane scroll-area" id="stabAccount" style="padding:16px 20px 40px">
       <div class="settings-block has-help">
         <div class="sb-row">
           <div class="sb-main">
@@ -1212,10 +1184,6 @@
         <div class="guide-item">
           <span class="guide-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
           <div><b>Day</b> — today at a glance: your agenda, a mini calendar, and any connected calendar events.</div>
-        </div>
-        <div class="guide-item">
-          <span class="guide-ico"><svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></span>
-          <div><b>Inbox</b> — quick capture. Jot something down now and sort it into a list later.</div>
         </div>
         <div class="guide-item">
           <span class="guide-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9.1a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></span>
@@ -1423,17 +1391,6 @@
 </div>
 
 <!-- Move to List Modal -->
-<div class="modal-overlay" id="moveModal">
-  <div class="modal">
-    <div class="modal-title">Assign to List</div>
-    <select class="modal-select" id="moveSelect"></select>
-    <div class="modal-row">
-      <button class="btn" onclick="closeModal('moveModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmMove()">Assign</button>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="calEventModal">
   <div class="modal">
     <div class="modal-title" id="calEventModalTitle">New Event</div>
@@ -1478,8 +1435,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-23';
-const WHATS_NEW = "New: Settings → Account → \"Calendar layout\" lets you switch to a Unified Calendar view — one Calendar tab with an Agenda/Week/Month switcher instead of separate Day/Week/Month tabs. Agenda view now supports dragging unassigned tasks onto a day, and there's a new \"+ Task\" quick-add (pick a list and an optional due date) on every calendar view.";
+const APP_VERSION = '2026-07-23b';
+const WHATS_NEW = "Agenda and Month views now have the same list filters and \"drag onto a day\" tray as Week. Every calendar view's toolbar is tidier (Event/Task merged into one + Add menu). Settings → Configuration (renamed from Colors) now also holds the Calendar layout option. Hub gets a general \"+ Add Task\" button, your Hub/Week/Agenda filter choices are remembered across sessions, and Inbox has been removed.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1593,7 +1550,8 @@ create table if not exists public.user_settings (
   hide_birthdays boolean default false,
   cal_source_visibility jsonb,
   cal_source_styles jsonb,
-  unified_calendar_view boolean default false
+  unified_calendar_view boolean default false,
+  view_prefs jsonb
 );
 
 -- Controls who is allowed to sign in at all (add rows for yourself and anyone
@@ -1649,15 +1607,19 @@ const SETUP_SQL_ALLOWLIST = `insert into public.allowed_emails (email) values ('
 
 // Calendar OAuth — fill in your client IDs to enable calendar sync.
 // ── State ──
-let lists = [], tasks = [], inboxItems = [];
+let lists = [], tasks = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
-let weekOffset = 0, activeWeekList = 'all', hideUnassigned = false;
-let weekBroadFilter = 'all'; // 'all' | 'home' | 'work' — which context the unassigned tray shows
-let weekListFilter = null;   // null | 'home:<section>' | 'work:<section>' | a specific list id
-let hubContextFilter = 'all';
+// Last-used view preferences (Hub's Home/Work filter, Week/Agenda's unassigned-tray
+// filter) — cached in localStorage for instant load, then reconciled against the
+// server copy in boot() so they carry across devices, same pattern as other prefs.
+let viewPrefs = JSON.parse(localStorage.getItem('tw_view_prefs') || '{}');
+let weekOffset = 0, activeWeekList = 'all', hideUnassigned = viewPrefs.hideUnassigned || false;
+let weekBroadFilter = viewPrefs.weekBroadFilter || 'all'; // 'all' | 'home' | 'work' — which context the unassigned tray shows
+let weekListFilter = viewPrefs.weekListFilter || null;    // null | 'home:<section>' | 'work:<section>' | a specific list id
+let hubContextFilter = viewPrefs.hubContextFilter || 'all';
 let activeSettingsTab = 'calendar';
 let currentContext = localStorage.getItem('tw_context') || 'all';
-let editingTaskId = null, pendingMoveIdx = null;
+let editingTaskId = null;
 // list drag state is managed inside initListDrag (pointer-events based)
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
@@ -2251,9 +2213,9 @@ function saveBackendConfig() {
 // All per-user cached keys — anything that could leak one account's data into
 // another's session on a shared device.
 const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw_outlook_email',
-  'tw_palettes', 'tw_timezone', 'tw_inbox', 'tw_last_seen_version',
+  'tw_palettes', 'tw_timezone', 'tw_last_seen_version',
   'tw_second_cal_id', 'tw_second_cal_context', 'tw_auto_clear_completed', 'tw_hide_birthdays',
-  'tw_cal_source_visibility', 'tw_cal_source_styles', 'tw_unified_calendar_view',
+  'tw_cal_source_visibility', 'tw_cal_source_styles', 'tw_unified_calendar_view', 'tw_view_prefs',
   'gcal_verifier', 'pkce_verifier', 'outlook_verifier'];
 
 // Clears every piece of per-user cached data from this browser (tokens, feeds,
@@ -2263,7 +2225,7 @@ const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw
 // leaking into someone else's session) and as the shared base for sign-out.
 function wipeLocalUserCache() {
   USER_CACHE_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch(e) {} });
-  lists = []; tasks = []; inboxItems = []; calEvents = {};
+  lists = []; tasks = []; calEvents = {};
   googleTokens = null; outlookTokens = null; outlookEmail = ''; calFeeds = [];
   serverLastSeen = null; secondCalId = ''; secondCalContext = 'work';
   userPalettes = { work: 'original', home: 'sage', all: 'rose' };
@@ -2273,6 +2235,7 @@ function wipeLocalUserCache() {
   calSourceVisibility = {};
   calSourceStyles = {};
   unifiedCalendarView = false;
+  viewPrefs = {}; hubContextFilter = 'all'; weekBroadFilter = 'all'; weekListFilter = null; hideUnassigned = false;
   WORK_SECTIONS = []; HOME_SECTIONS = [];
   sectionCollapsed = {}; listCollapsed = {};
 }
@@ -2490,6 +2453,19 @@ async function loadCalFeeds() {
     }
   } catch(e) { /* unified_calendar_view column may not exist yet — keep localStorage value */ }
   applyCalendarViewMode();
+
+  // Last-used view preferences (separate fetch; column may not exist yet).
+  try {
+    const vpRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=view_prefs`);
+    if (vpRows?.[0]?.view_prefs) {
+      viewPrefs = vpRows[0].view_prefs;
+      hubContextFilter = viewPrefs.hubContextFilter || 'all';
+      weekBroadFilter = viewPrefs.weekBroadFilter || 'all';
+      weekListFilter = viewPrefs.weekListFilter || null;
+      hideUnassigned = viewPrefs.hideUnassigned || false;
+      try { localStorage.setItem('tw_view_prefs', JSON.stringify(viewPrefs)); } catch(e) {}
+    }
+  } catch(e) { /* view_prefs column may not exist yet — keep localStorage value */ }
 
   // Account-wide "what's new" last-seen version (separate fetch; column may not
   // exist yet). Makes the banner show at most once per person across devices.
@@ -3891,8 +3867,7 @@ async function boot() {
     ]);
     await healMissingSections();
     rolloverPastTasks();
-    inboxItems = JSON.parse(localStorage.getItem('tw_inbox') || '[]');
-    renderHub(); renderWeek(); renderInbox(); renderMiniCal(); renderAgenda();
+    renderHub(); renderWeek(); renderMiniCal(); renderAgenda();
     loadCalCache();
     fetchAllFeeds();
     setInterval(fetchAllFeeds, 5 * 60 * 1000);
@@ -4045,6 +4020,20 @@ function applyContext() {
 function toggleHubContextFilter(ctx) {
   hubContextFilter = hubContextFilter === ctx ? 'all' : ctx;
   renderHub();
+  saveViewPrefs();
+}
+
+// Persists last-used view preferences (Hub's Home/Work filter, Week/Agenda's
+// unassigned-tray filter) so they're still set the next time the app is opened —
+// cached instantly to localStorage, and synced server-side for other devices.
+async function saveViewPrefs() {
+  viewPrefs = { hubContextFilter, weekBroadFilter, weekListFilter, hideUnassigned };
+  try { localStorage.setItem('tw_view_prefs', JSON.stringify(viewPrefs)); } catch(e) {}
+  if (!authSession?.user_id) return;
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, view_prefs: viewPrefs },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch(e) { /* view_prefs column may not exist yet — keep localStorage value */ }
 }
 
 // Toggle collapse/expand for every section across both contexts at once, used by
@@ -4111,7 +4100,11 @@ function switchSettingsTab(tab) {
   activeSettingsTab = tab;
   document.querySelectorAll('.stab').forEach(b => b.classList.toggle('active', b.dataset.stab === tab));
   document.querySelectorAll('.stab-pane').forEach(p => p.classList.toggle('active', p.id === 'stab' + tab.charAt(0).toUpperCase() + tab.slice(1)));
-  if (tab === 'colors') renderPalettePicker();
+  if (tab === 'colors') {
+    renderPalettePicker();
+    const ucvSel = document.getElementById('unifiedCalendarSelect');
+    if (ucvSel) ucvSel.value = unifiedCalendarView ? 'unified' : 'classic';
+  }
   if (tab === 'calendar') {
     renderCalFeedsList(); renderOutlookEmailSection();
     updateGcalStatus();
@@ -4174,8 +4167,6 @@ function renderAccountTab() {
     : 'Default Taskwell backend';
   const acSel = document.getElementById('autoClearSelect');
   if (acSel) acSel.value = autoClearCompleted ? 'auto' : 'manual';
-  const ucvSel = document.getElementById('unifiedCalendarSelect');
-  if (ucvSel) ucvSel.value = unifiedCalendarView ? 'unified' : 'classic';
 }
 
 function switchTab(tab) {
@@ -4240,53 +4231,6 @@ function applyCalendarViewMode() {
 // ══════════════════════════════
 // HUB
 // ══════════════════════════════
-function makeInboxBlock(pendingItems) {
-  const key = '__inbox';
-  const collapsed = sectionCollapsed[key];
-  const block = document.createElement('div');
-  block.className = 'section-block';
-  const hdr = document.createElement('div');
-  hdr.className = 'section-hdr';
-  hdr.innerHTML = `
-    <div class="section-hdr-bar"></div>
-    <div class="section-hdr-left">
-      <span>INBOX</span>
-      <span style="color:var(--ink-faint);font-size:10px">${collapsed ? '▸' : '▾'}</span>
-    </div>
-    <span style="margin-left:auto;font-size:11px;color:var(--ink-faint)">${pendingItems.length} item${pendingItems.length !== 1 ? 's' : ''}</span>`;
-  hdr.onclick = () => { sectionCollapsed[key] = !collapsed; renderHub(); };
-  block.appendChild(hdr);
-  if (!collapsed) {
-    const body = document.createElement('div');
-    body.className = 'section-body';
-    pendingItems.forEach(({ item, i }) => {
-      const row = document.createElement('div');
-      row.className = 'inbox-item';
-      const check = document.createElement('div');
-      check.className = 'inbox-check';
-      check.onclick = () => { inboxItems[i].done = true; saveInbox(); renderHub(); renderInbox(); };
-      const text = document.createElement('div');
-      text.className = 'inbox-item-text';
-      text.textContent = item.text;
-      const assign = document.createElement('button');
-      assign.className = 'btn btn-sm'; assign.textContent = 'Assign →';
-      assign.onclick = () => openMoveModal(i);
-      row.appendChild(check); row.appendChild(text); row.appendChild(assign);
-      body.appendChild(row);
-    });
-    const footer = document.createElement('div');
-    footer.style.cssText = 'padding:6px 0 2px;';
-    const viewBtn = document.createElement('button');
-    viewBtn.className = 'btn btn-sm';
-    viewBtn.textContent = 'View all in Inbox →';
-    viewBtn.onclick = () => switchTab('inbox');
-    footer.appendChild(viewBtn);
-    body.appendChild(footer);
-    block.appendChild(body);
-  }
-  return block;
-}
-
 function renderHub() {
   applyContext();
   const area = document.getElementById('hubScrollArea');
@@ -4294,11 +4238,6 @@ function renderHub() {
   const visible = getVisibleLists();
   document.getElementById('hubSub').textContent =
     visible.length === 0 ? 'Your task lists' : `${visible.length} list${visible.length !== 1 ? 's' : ''}`;
-
-  const pendingInbox = inboxItems
-    .map((item, i) => ({ item, i }))
-    .filter(({ item }) => !item.done && (currentContext === 'all' || (item.context || 'work') === currentContext));
-  if (pendingInbox.length > 0) area.appendChild(makeInboxBlock(pendingInbox));
 
   if (currentContext === 'home') {
     allSectionsFor('home').forEach(sec => {
@@ -5135,44 +5074,24 @@ function weekCatFilterIds(visLists) {
   return new Set(base.map(l => l.id));
 }
 
-function timeToMinutes(t) {
-  if (!t) return -1;
-  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!m) return -1;
-  let h = parseInt(m[1]), min = parseInt(m[2]), ap = m[3].toUpperCase();
-  if (ap === 'AM' && h === 12) h = 0;
-  if (ap === 'PM' && h !== 12) h += 12;
-  return h * 60 + min;
+function positionDropdownMenu(menu, btn) {
+  const r = btn.getBoundingClientRect();
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth;
+  let left = r.left;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  menu.style.top = (r.bottom + 4) + 'px';
+  menu.style.left = left + 'px';
 }
 
-function renderWeek() {
-  const days = getWeekDays();
-  const todayKey = dateKey(new Date());
-  document.getElementById('weekSub').textContent =
-    `${days[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${days[6].toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+// Shared All/Home/Work + Hide Unassigned scope dropdown and list drill-down
+// dropdown — used by both Week and Agenda so the unassigned-tray filter stays
+// in sync between them (same weekBroadFilter/weekListFilter/hideUnassigned state).
+function renderUnassignedFilterRow(container) {
+  container.innerHTML = '';
+  document.querySelectorAll('.pending-area').forEach(el => el.style.display = hideUnassigned ? 'none' : '');
 
-  const ctrl = document.getElementById('weekControls');
-  ctrl.innerHTML = '';
-
-  // Navigation row
-  const navRow = document.createElement('div');
-  navRow.className = 'week-nav-row';
-  navRow.innerHTML = `
-    <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
-    <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
-    <button class="btn btn-sm${weekOffset !== 0 ? ' btn-accent' : ''}" onclick="weekNav(0)">Today</button>
-    <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
-    <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
-    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
-    <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>`;
-  ctrl.appendChild(navRow);
-
-  // Filter row: a scope dropdown (All/Home/Work + Hide Unassigned) and a list
-  // drill-down dropdown, scoped to whichever group is active above.
   const visLists = getVisibleLists();
-  const filterRow = document.createElement('div');
-  filterRow.className = 'week-lists-row';
-
   const hasHome = visLists.some(l => (l.context || 'work') === 'home');
   const hasWork = visLists.some(l => (l.context || 'work') === 'work');
   const presentHomeSections = new Set(visLists
@@ -5190,6 +5109,8 @@ function renderWeek() {
     if (filterGroup !== weekBroadFilter) weekListFilter = null;
   }
 
+  const refreshBoth = () => { renderWeek(); renderAgenda(); saveViewPrefs(); };
+
   // Dropdown A: All / Home / Work scope + Hide Unassigned
   const scopeBtn = document.createElement('button');
   scopeBtn.className = 'week-filter-btn';
@@ -5203,15 +5124,16 @@ function renderWeek() {
       menu.className = 'week-filter-menu';
       document.body.appendChild(menu);
       document.addEventListener('mousedown', ev => {
-        if (!menu.contains(ev.target) && ev.target !== scopeBtn) menu.style.display = 'none';
+        if (!menu.contains(ev.target) && ev.target !== menu._openerBtn) menu.style.display = 'none';
       }, true);
     }
+    menu._openerBtn = scopeBtn;
     menu.innerHTML = '';
     [['all', 'All'], ['home', 'Home'], ['work', 'Work']].forEach(([val, label]) => {
       const b = document.createElement('button');
       b.className = val === weekBroadFilter ? 'active' : '';
       b.innerHTML = `<span class="week-filter-check">${val === weekBroadFilter ? '✓' : ''}</span>${label}`;
-      b.onclick = () => { weekBroadFilter = val; weekListFilter = null; menu.style.display = 'none'; renderWeek(); };
+      b.onclick = () => { weekBroadFilter = val; weekListFilter = null; menu.style.display = 'none'; refreshBoth(); };
       menu.appendChild(b);
     });
     const hr = document.createElement('hr');
@@ -5219,17 +5141,11 @@ function renderWeek() {
     menu.appendChild(hr);
     const hideItem = document.createElement('button');
     hideItem.textContent = (hideUnassigned ? 'Show' : 'Hide') + ' Unassigned';
-    hideItem.onclick = () => { hideUnassigned = !hideUnassigned; menu.style.display = 'none'; renderWeek(); };
+    hideItem.onclick = () => { hideUnassigned = !hideUnassigned; menu.style.display = 'none'; refreshBoth(); };
     menu.appendChild(hideItem);
-    const r = scopeBtn.getBoundingClientRect();
-    menu.style.display = 'block';
-    const mw = menu.offsetWidth;
-    let left = r.left;
-    if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-    menu.style.top = (r.bottom + 4) + 'px';
-    menu.style.left = left + 'px';
+    positionDropdownMenu(menu, scopeBtn);
   };
-  filterRow.appendChild(scopeBtn);
+  container.appendChild(scopeBtn);
 
   // Dropdown B: drill into a specific section or list within the active group
   const listMenuItems = [['all', 'All lists', false]];
@@ -5262,9 +5178,10 @@ function renderWeek() {
       menu.className = 'week-filter-menu';
       document.body.appendChild(menu);
       document.addEventListener('mousedown', ev => {
-        if (!menu.contains(ev.target) && ev.target !== listBtn) menu.style.display = 'none';
+        if (!menu.contains(ev.target) && ev.target !== menu._openerBtn) menu.style.display = 'none';
       }, true);
     }
+    menu._openerBtn = listBtn;
     menu.innerHTML = '';
     listMenuItems.forEach(([val, label, indent]) => {
       const b = document.createElement('button');
@@ -5272,42 +5189,92 @@ function renderWeek() {
       b.style.paddingLeft = indent ? '28px' : '';
       b.style.fontSize = indent ? '12px' : '';
       b.innerHTML = `<span class="week-filter-check">${val === currentListVal ? '✓' : ''}</span>${label}`;
-      b.onclick = () => { weekListFilter = val === 'all' ? null : val; menu.style.display = 'none'; renderWeek(); };
+      b.onclick = () => { weekListFilter = val === 'all' ? null : val; menu.style.display = 'none'; refreshBoth(); };
       menu.appendChild(b);
     });
-    const r = listBtn.getBoundingClientRect();
-    menu.style.display = 'block';
-    const mw = menu.offsetWidth;
-    let left = r.left;
-    if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-    menu.style.top = (r.bottom + 4) + 'px';
-    menu.style.left = left + 'px';
+    positionDropdownMenu(menu, listBtn);
   };
-  filterRow.appendChild(listBtn);
+  container.appendChild(listBtn);
+}
+
+// Merges "+ Event" and "+ Task" into one dropdown, available on every calendar
+// view (Agenda/Week/Month) — cuts a button off an already-busy toolbar.
+function openAddMenu(e) {
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  let menu = document.getElementById('addMenuDropdown');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'addMenuDropdown';
+    menu.className = 'week-filter-menu';
+    document.body.appendChild(menu);
+    document.addEventListener('mousedown', ev => {
+      if (!menu.contains(ev.target) && ev.target !== menu._openerBtn) menu.style.display = 'none';
+    }, true);
+  }
+  menu._openerBtn = btn;
+  menu.innerHTML = '';
+  if (googleTokens || outlookTokens || outlookEmail) {
+    const evBtn = document.createElement('button');
+    evBtn.textContent = 'Event';
+    evBtn.onclick = () => {
+      menu.style.display = 'none';
+      const n = new Date();
+      const todayKey = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+      openNewCalEvent(selectedDay || todayKey);
+    };
+    menu.appendChild(evBtn);
+  }
+  const taskBtn = document.createElement('button');
+  taskBtn.textContent = 'Task';
+  taskBtn.onclick = () => { menu.style.display = 'none'; openAddTaskModal(); };
+  menu.appendChild(taskBtn);
+  positionDropdownMenu(menu, btn);
+}
+
+function timeToMinutes(t) {
+  if (!t) return -1;
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return -1;
+  let h = parseInt(m[1]), min = parseInt(m[2]), ap = m[3].toUpperCase();
+  if (ap === 'AM' && h === 12) h = 0;
+  if (ap === 'PM' && h !== 12) h += 12;
+  return h * 60 + min;
+}
+
+function renderWeek() {
+  const days = getWeekDays();
+  const todayKey = dateKey(new Date());
+  document.getElementById('weekSub').textContent =
+    `${days[0].toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${days[6].toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+
+  const ctrl = document.getElementById('weekControls');
+  ctrl.innerHTML = '';
+
+  // Navigation row
+  const navRow = document.createElement('div');
+  navRow.className = 'week-nav-row';
+  navRow.innerHTML = `
+    <button class="btn btn-sm" onclick="weekNav(-1)">‹ Prev</button>
+    <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
+    <button class="btn btn-sm${weekOffset !== 0 ? ' btn-accent' : ''}" onclick="weekNav(0)">Today</button>
+    <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
+    <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
+    <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>`;
+  ctrl.appendChild(navRow);
+
+  // Filter row: a scope dropdown (All/Home/Work + Hide Unassigned) and a list
+  // drill-down dropdown, scoped to whichever group is active above. Shared with
+  // Agenda view via renderUnassignedFilterRow() so both stay in sync.
+  const visLists = getVisibleLists();
+  const filterRow = document.createElement('div');
+  filterRow.className = 'week-lists-row';
+  renderUnassignedFilterRow(filterRow);
   ctrl.appendChild(filterRow);
 
   // Pending chips
-  document.querySelector('.pending-area').style.display = hideUnassigned ? 'none' : '';
-  const chips = document.getElementById('pendingChips');
-  chips.innerHTML = '';
   const visListIds = new Set(visLists.map(l => l.id));
-  const weekFilterIds = weekCatFilterIds(visLists);
-  const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed &&
-    weekFilterIds.has(t.list_id));
-
-  if (unassigned.length === 0) {
-    chips.innerHTML = '<span style="font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink-faint)">All tasks assigned ✓</span>';
-  } else {
-    unassigned.forEach(t => {
-      const chip = document.createElement('div');
-      chip.className = 'chip';
-      const lst = lists.find(l => l.id === t.list_id);
-      chip.innerHTML = `<span>${t.title}${t.due_date ? ` · ${fmtDisplay(t.due_date)}` : ''}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
-      chip.draggable = true;
-      setupChipDrag(chip, t.id);
-      chips.appendChild(chip);
-    });
-  }
+  renderPendingChipsInto('pendingChips');
 
   // Day columns
   const grid = document.getElementById('weekGrid');
@@ -5621,12 +5588,15 @@ function renderAgendaDay(agenda, key) {
 
 // Unassigned tray for Agenda view — same idea as Week's, so tasks can be dragged
 // onto one of the visible days instead of only being assignable from Week.
-function renderDayPendingChips() {
-  const chips = document.getElementById('dayPendingChips');
+// Shared "Unassigned — drag onto a day" tray renderer — used by Week, Agenda,
+// and Month so dragging a task onto any calendar view works the same way.
+// Respects the same weekBroadFilter/weekListFilter scope as the filter dropdowns.
+function renderPendingChipsInto(containerId) {
+  const chips = document.getElementById(containerId);
   if (!chips) return;
   chips.innerHTML = '';
-  const visListIds = new Set(getVisibleLists().map(l => l.id));
-  const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed && visListIds.has(t.list_id));
+  const filterIds = weekCatFilterIds(getVisibleLists());
+  const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed && filterIds.has(t.list_id));
   if (unassigned.length === 0) {
     chips.innerHTML = '<span style="font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink-faint)">All tasks assigned ✓</span>';
     return;
@@ -5635,7 +5605,7 @@ function renderDayPendingChips() {
     const chip = document.createElement('div');
     chip.className = 'chip';
     const lst = lists.find(l => l.id === t.list_id);
-    chip.innerHTML = `<span>${t.title}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
+    chip.innerHTML = `<span>${t.title}${t.due_date ? ` · ${fmtDisplay(t.due_date)}` : ''}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
     chip.draggable = true;
     setupChipDrag(chip, t.id);
     chips.appendChild(chip);
@@ -5646,9 +5616,8 @@ function renderAgenda() {
   const agenda = document.getElementById('dayAgenda');
   if (!agenda) return;
   agenda.innerHTML = '';
-  const addBtn = document.getElementById('dayAddEventBtn');
-  if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
-  renderDayPendingChips();
+  renderUnassignedFilterRow(document.getElementById('dayFilterRow'));
+  renderPendingChipsInto('dayPendingChips');
   const base = new Date(selectedDay + 'T00:00:00');
   for (let i = 0; i < 3; i++) {
     const d = new Date(base); d.setDate(base.getDate() + i);
@@ -5758,7 +5727,12 @@ function buildMonthWeekRow(weekStart) {
     itemsWrap.className = 'month-day-items';
     cell.appendChild(itemsWrap);
     fillMonthDayItems(itemsWrap, key);
-    cell.onclick = () => { selectDay(key); switchTab('day'); };
+    cell.dataset.daykey = key;
+    setupDropZone(cell, key);
+    cell.onclick = () => {
+      selectDay(key);
+      if (unifiedCalendarView) selectCalendarSubView('agenda'); else switchTab('day');
+    };
     row.appendChild(cell);
   }
   return row;
@@ -5949,8 +5923,9 @@ function monthScrollHandler() {
 function renderMonthView(centerDate) {
   const container = document.getElementById('monthScroll');
   if (!container) return;
-  const addBtn = document.getElementById('monthAddEventBtn');
-  if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
+  const filterRow = document.getElementById('monthFilterRow');
+  if (filterRow) renderUnassignedFilterRow(filterRow);
+  renderPendingChipsInto('monthPendingChips');
   if (!monthInitialized) {
     const center = centerDate || new Date();
     container.innerHTML = '';
@@ -5991,76 +5966,6 @@ function renderMonthView(centerDate) {
 
 function monthGoToday() {
   jumpMonthViewTo(new Date());
-}
-
-// ══════════════════════════════
-// INBOX
-// ══════════════════════════════
-function renderInbox() {
-  const list = document.getElementById('inboxList');
-  list.innerHTML = '';
-  const visible = inboxItems.map((item, i) => ({ item, i }))
-    .filter(({ item }) => currentContext === 'all' || (item.context || 'work') === currentContext);
-  if (visible.length === 0) {
-    const msg = inboxItems.length === 0 ? 'No items.' : `No ${currentContext} items.`;
-    list.innerHTML = `<div class="no-tasks">${msg} Add tasks you need to assign to a list.</div>`;
-    return;
-  }
-  visible.forEach(({ item, i }) => {
-    const row = document.createElement('div');
-    row.className = 'inbox-item';
-
-    const check = document.createElement('div');
-    check.className = 'inbox-check' + (item.done ? ' done' : '');
-    check.onclick = () => { inboxItems[i].done = !inboxItems[i].done; saveInbox(); renderInbox(); };
-
-    const text = document.createElement('div');
-    text.className = 'inbox-item-text' + (item.done ? ' done' : '');
-    text.textContent = item.text;
-
-    const assign = document.createElement('button');
-    assign.className = 'btn btn-sm'; assign.textContent = 'Assign →';
-    assign.onclick = () => openMoveModal(i);
-
-    const del = document.createElement('button');
-    del.className = 'task-del'; del.textContent = '×';
-    del.onclick = () => { inboxItems.splice(i, 1); saveInbox(); renderInbox(); };
-
-    row.appendChild(check); row.appendChild(text); row.appendChild(assign); row.appendChild(del);
-    list.appendChild(row);
-  });
-}
-
-function addInboxItem() {
-  const inp = document.getElementById('inboxInput');
-  const val = inp.value.trim(); if (!val) return;
-  inp.value = '';
-  const ctx = currentContext === 'all' ? 'work' : currentContext;
-  inboxItems.unshift({ text: val, done: false, context: ctx });
-  saveInbox(); renderInbox();
-}
-
-function saveInbox() { localStorage.setItem('tw_inbox', JSON.stringify(inboxItems)); }
-
-function openMoveModal(i) {
-  if (lists.length === 0) { showToast('Create a list first'); return; }
-  pendingMoveIdx = i;
-  const sel = document.getElementById('moveSelect');
-  const opts = getVisibleLists().length ? getVisibleLists() : lists;
-  sel.innerHTML = opts.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-  openModal('moveModal');
-}
-
-async function confirmMove() {
-  const listId = document.getElementById('moveSelect').value;
-  const item = inboxItems[pendingMoveIdx];
-  closeModal('moveModal');
-  inboxItems[pendingMoveIdx].done = true;
-  saveInbox(); renderInbox();
-  try {
-    const [t] = await api('POST', 'tasks', { list_id: listId, title: item.text, completed: false, user_id: authSession?.user_id });
-    tasks.push(t); renderHub(); renderWeek(); showToast('Assigned to list ✓');
-  } catch(e) { showToast('Error'); }
 }
 
 // ── Modals ──
