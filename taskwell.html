@@ -67,6 +67,17 @@
                     letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
     .tab-btn.active { background: rgba(255,255,255,0.28); }
     .tab-btn:hover { background: rgba(255,255,255,0.2); }
+    /* Unified Calendar view: swap the separate Day/Week/Month rail tabs for one
+       Calendar tab. Toggled via .rail.unified-cal, applied instantly (no reload). */
+    .tab-unified-cal { display: none; }
+    .rail.unified-cal .tab-unified-cal { display: flex; }
+    .rail.unified-cal .tab-classic-cal { display: none; }
+    .calendar-subnav { display: none; gap: 6px; margin-left: 4px; }
+    .cal-subnav-pill { padding: 5px 14px; border-radius: 8px; border: 1.5px solid var(--cream-dark);
+      background: var(--cream); color: var(--ink); font-family: 'Helvetica Neue', sans-serif;
+      font-size: 13px; cursor: pointer; }
+    .cal-subnav-pill:hover { background: var(--cream-dark); }
+    .cal-subnav-pill.active { background: var(--accent); border-color: var(--accent-dark); font-weight: 600; }
 
     /* ── Main ── */
     .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: var(--paper); }
@@ -219,6 +230,7 @@
     .day-body { background: var(--cream); padding: 6px; overflow-y: visible; flex: 1;
                 min-height: 160px; transition: background .15s; touch-action: pan-x pan-y; }
     .day-body.drag-over { background: var(--accent-pale); }
+    .agenda-day-dropzone.drag-over { background: var(--accent-pale); border-radius: 8px; }
     .day-empty { font-family: Georgia, serif; font-size: 11px; font-style: italic; color: var(--ink-faint); padding: 6px 0; }
     .week-task { background: var(--paper); border-radius: 6px; padding: 5px 7px; margin-bottom: 5px; cursor: grab; touch-action: pan-x pan-y; }
     .week-task.dragging { opacity: .5; }
@@ -812,17 +824,21 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
   </button>
-  <button class="tab-btn active" data-tab="day" onclick="switchTab('day')">
+  <button class="tab-btn tab-classic-cal active" data-tab="day" onclick="switchTab('day')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Day</span>
   </button>
-  <button class="tab-btn" data-tab="week" onclick="switchTab('week')">
+  <button class="tab-btn tab-classic-cal" data-tab="week" onclick="switchTab('week')">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
     <span>Week</span>
   </button>
-  <button class="tab-btn" data-tab="month" onclick="switchTab('month')">
+  <button class="tab-btn tab-classic-cal" data-tab="month" onclick="switchTab('month')">
     <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="10" x2="9" y2="21"/><line x1="15" y1="10" x2="15" y2="21"/></svg>
     <span>Month</span>
+  </button>
+  <button class="tab-btn tab-unified-cal" data-tab="calendar" onclick="switchTab('calendar')">
+    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <span>Calendar</span>
   </button>
   <button class="tab-btn" data-tab="inbox" onclick="switchTab('inbox')">
     <svg viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
@@ -859,6 +875,11 @@
     <div class="page-header">
       <div class="page-title">Week</div>
       <div class="page-sub" id="weekSub"></div>
+      <div class="calendar-subnav" id="calSubNav_week">
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('agenda')">Agenda</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('week')">Week</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('month')">Month</button>
+      </div>
     </div>
     <div class="week-controls" id="weekControls"></div>
     <div class="pending-area">
@@ -875,10 +896,16 @@
     <div class="page-header">
       <div class="page-title">Month</div>
       <div class="page-sub" id="monthStickyLabel"></div>
+      <div class="calendar-subnav" id="calSubNav_month">
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('agenda')">Agenda</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('week')">Week</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('month')">Month</button>
+      </div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
         <button class="btn btn-sm btn-primary" id="monthAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay || dateKey(new Date()))">+ Event</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>
         <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       </div>
     </div>
@@ -910,11 +937,21 @@
     <div class="page-header">
       <div class="page-title">Day</div>
       <div class="page-sub" id="daySub"></div>
+      <div class="calendar-subnav" id="calSubNav_day">
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('agenda')">Agenda</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('week')">Week</button>
+        <button class="cal-subnav-pill" onclick="selectCalendarSubView('month')">Month</button>
+      </div>
       <div style="display:flex;gap:6px;margin-left:auto;align-items:center">
         <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
         <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
         <button class="btn btn-sm btn-primary" id="dayAddEventBtn" style="display:none" onclick="openNewCalEvent(selectedDay)">+ Event</button>
+        <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>
       </div>
+    </div>
+    <div class="pending-area">
+      <div class="pending-label">Unassigned — drag onto a day</div>
+      <div class="pending-chips" id="dayPendingChips"></div>
     </div>
     <div class="day-view-inner">
       <div class="day-sidebar">
@@ -1095,6 +1132,21 @@
 
     <!-- Account tab -->
     <div class="stab-pane scroll-area" id="stabAccount" style="padding:16px 20px 40px">
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Calendar layout</div>
+            <select class="modal-select" id="unifiedCalendarSelect" onchange="saveUnifiedCalendarView(this.value)">
+              <option value="classic">Original — separate Day/Week/Month tabs</option>
+              <option value="unified">Unified — one Calendar tab with Agenda/Week/Month switcher</option>
+            </select>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint">The unified layout replaces the Day/Week/Month rail tabs with a single Calendar tab, with Agenda/Week/Month as a switcher at the top of the page instead. Takes effect immediately — no reload needed.</p>
+          </div>
+        </div>
+      </div>
+
       <div class="settings-block has-help">
         <div class="sb-row">
           <div class="sb-main">
@@ -1339,6 +1391,23 @@
   </div>
 </div>
 
+<!-- Add Task Modal (available from Agenda/Week/Month calendar views) -->
+<div class="modal-overlay" id="addTaskModal">
+  <div class="modal">
+    <div class="modal-title">Add Task</div>
+    <label class="modal-label">List</label>
+    <select class="modal-select" id="addTaskListSelect"></select>
+    <label class="modal-label">Task</label>
+    <input class="modal-input" id="addTaskTitle" onkeydown="if(event.key==='Enter') confirmAddTask()" />
+    <label class="modal-label">Due date (optional)</label>
+    <input class="modal-input" id="addTaskDate" placeholder="MM/DD/YY (leave blank for unassigned)" maxlength="8" inputmode="numeric" />
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('addTaskModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmAddTask()">Add</button>
+    </div>
+  </div>
+</div>
+
 <!-- Task Detail Modal -->
 <div class="modal-overlay" id="taskDetailModal">
   <div class="modal">
@@ -1409,8 +1478,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-22b';
-const WHATS_NEW = "Month view: task chips now show their list's Work or Home color instead of a flat neutral background — they were never assigned a color at all before.";
+const APP_VERSION = '2026-07-23';
+const WHATS_NEW = "New: Settings → Account → \"Calendar layout\" lets you switch to a Unified Calendar view — one Calendar tab with an Agenda/Week/Month switcher instead of separate Day/Week/Month tabs. Agenda view now supports dragging unassigned tasks onto a day, and there's a new \"+ Task\" quick-add (pick a list and an optional due date) on every calendar view.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1523,7 +1592,8 @@ create table if not exists public.user_settings (
   auto_clear_completed boolean default false,
   hide_birthdays boolean default false,
   cal_source_visibility jsonb,
-  cal_source_styles jsonb
+  cal_source_styles jsonb,
+  unified_calendar_view boolean default false
 );
 
 -- Controls who is allowed to sign in at all (add rows for yourself and anyone
@@ -1600,6 +1670,11 @@ let calSourceVisibility = JSON.parse(localStorage.getItem('tw_cal_source_visibil
 // calSourceVisibility. context is 'work' | 'home' | 'other' — work/home always use
 // that context's theme color; 'other' calendars carry their own explicit color.
 let calSourceStyles = JSON.parse(localStorage.getItem('tw_cal_source_styles') || '{}');
+// Unified Calendar view — a single "Calendar" rail tab with an Agenda/Week/Month
+// sub-nav, vs. the original separate Day/Week/Month rail tabs. Purely a UI-layout
+// preference; both modes render the same underlying #day/#week/#month sections.
+let unifiedCalendarView = localStorage.getItem('tw_unified_calendar_view') === '1';
+let calendarSubView = localStorage.getItem('tw_calendar_subview') || 'week'; // 'agenda' | 'week' | 'month'
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
@@ -2178,7 +2253,7 @@ function saveBackendConfig() {
 const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw_outlook_email',
   'tw_palettes', 'tw_timezone', 'tw_inbox', 'tw_last_seen_version',
   'tw_second_cal_id', 'tw_second_cal_context', 'tw_auto_clear_completed', 'tw_hide_birthdays',
-  'tw_cal_source_visibility', 'tw_cal_source_styles',
+  'tw_cal_source_visibility', 'tw_cal_source_styles', 'tw_unified_calendar_view',
   'gcal_verifier', 'pkce_verifier', 'outlook_verifier'];
 
 // Clears every piece of per-user cached data from this browser (tokens, feeds,
@@ -2197,6 +2272,7 @@ function wipeLocalUserCache() {
   hideBirthdays = false;
   calSourceVisibility = {};
   calSourceStyles = {};
+  unifiedCalendarView = false;
   WORK_SECTIONS = []; HOME_SECTIONS = [];
   sectionCollapsed = {}; listCollapsed = {};
 }
@@ -2405,6 +2481,16 @@ async function loadCalFeeds() {
     }
   } catch(e) { /* cal_source_styles column may not exist yet — keep localStorage value */ }
 
+  // Unified Calendar view preference (separate fetch; column may not exist yet).
+  try {
+    const ucvRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=unified_calendar_view`);
+    if (typeof ucvRows?.[0]?.unified_calendar_view === 'boolean') {
+      unifiedCalendarView = ucvRows[0].unified_calendar_view;
+      try { localStorage.setItem('tw_unified_calendar_view', unifiedCalendarView ? '1' : '0'); } catch(e) {}
+    }
+  } catch(e) { /* unified_calendar_view column may not exist yet — keep localStorage value */ }
+  applyCalendarViewMode();
+
   // Account-wide "what's new" last-seen version (separate fetch; column may not
   // exist yet). Makes the banner show at most once per person across devices.
   try {
@@ -2461,6 +2547,28 @@ async function saveTimezone(val) {
   try {
     await api('POST', 'user_settings', { user_id: authSession.user_id, timezone: val }, { 'Prefer': 'resolution=merge-duplicates' });
     showToast('Timezone saved');
+  } catch(e) { showToast('Error: ' + e.message, true); }
+}
+
+async function saveUnifiedCalendarView(val) {
+  unifiedCalendarView = val === 'unified';
+  try { localStorage.setItem('tw_unified_calendar_view', unifiedCalendarView ? '1' : '0'); } catch(e) {}
+  applyCalendarViewMode();
+  // If a calendar section is currently showing, keep it visible but fix up which
+  // rail tab reads as active for the mode just switched to.
+  const activeSection = document.querySelector('.section.active')?.id;
+  if (['day', 'week', 'month'].includes(activeSection)) {
+    calendarSubView = activeSection === 'day' ? 'agenda' : activeSection;
+    try { localStorage.setItem('tw_calendar_subview', calendarSubView); } catch(e) {}
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    const target = unifiedCalendarView ? '[data-tab="calendar"]' : `[data-tab="${activeSection}"]`;
+    document.querySelector(target)?.classList.add('active');
+    renderCalendarSubNav();
+  }
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, unified_calendar_view: unifiedCalendarView },
+      { 'Prefer': 'resolution=merge-duplicates' });
+    showToast('Preference saved');
   } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
@@ -3774,6 +3882,7 @@ async function boot() {
   applyContext();
   wireAutoDate(document.getElementById('editTaskDate'));
   wireAutoDate(document.getElementById('calEventDate'));
+  wireAutoDate(document.getElementById('addTaskDate'));
   try {
     [lists, tasks] = await Promise.all([
       api('GET','lists?order=created_at.asc'),
@@ -4065,9 +4174,14 @@ function renderAccountTab() {
     : 'Default Taskwell backend';
   const acSel = document.getElementById('autoClearSelect');
   if (acSel) acSel.value = autoClearCompleted ? 'auto' : 'manual';
+  const ucvSel = document.getElementById('unifiedCalendarSelect');
+  if (ucvSel) ucvSel.value = unifiedCalendarView ? 'unified' : 'classic';
 }
 
 function switchTab(tab) {
+  // The unified Calendar rail tab has no #calendar section of its own — it just
+  // shows whichever of #day/#week/#month matches the current sub-view.
+  if (tab === 'calendar') { selectCalendarSubView(calendarSubView); return; }
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
@@ -4076,6 +4190,51 @@ function switchTab(tab) {
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
   if (tab === 'month') renderMonthView();
   if (tab === 'settings') { switchSettingsTab(activeSettingsTab); }
+}
+
+// Switches between Agenda/Week/Month while staying "inside" the unified Calendar
+// tab — same underlying #day/#week/#month sections and render functions as
+// switchTab(), just marks the Calendar rail button (not day/week/month) active
+// and keeps the sub-nav pills in sync.
+function selectCalendarSubView(view) {
+  calendarSubView = view;
+  try { localStorage.setItem('tw_calendar_subview', view); } catch(e) {}
+  const sectionId = view === 'agenda' ? 'day' : view;
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById(sectionId).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-tab="calendar"]')?.classList.add('active');
+  if (sectionId === 'week') renderWeek();
+  if (sectionId === 'day') { renderMiniCal(); renderAgenda(); }
+  if (sectionId === 'month') renderMonthView();
+  renderCalendarSubNav();
+}
+
+function renderCalendarSubNav() {
+  ['day', 'week', 'month'].forEach(id => {
+    const el = document.getElementById('calSubNav_' + id);
+    if (!el) return;
+    el.style.display = unifiedCalendarView ? 'flex' : 'none';
+    [...el.children].forEach(btn => {
+      const view = btn.textContent.trim().toLowerCase();
+      btn.classList.toggle('active', view === calendarSubView);
+    });
+  });
+}
+
+// Applies the Unified Calendar view preference to the rail and sub-nav — called
+// on boot and immediately whenever the Settings toggle changes, no reload needed.
+function applyCalendarViewMode() {
+  const rail = document.querySelector('.rail');
+  if (rail) rail.classList.toggle('unified-cal', unifiedCalendarView);
+  if (unifiedCalendarView) {
+    // At initial page load the active section is whichever tab-btn's HTML already
+    // says active (Day, by default) — force it to match the saved sub-view instead,
+    // and route through selectCalendarSubView so the rail button and pills agree.
+    selectCalendarSubView(calendarSubView);
+  } else {
+    renderCalendarSubNav();
+  }
 }
 
 // ══════════════════════════════
@@ -4905,6 +5064,35 @@ async function confirmEditTask() {
   await api('PATCH', `tasks?id=eq.${editingTaskId}`, { title, due_date, week_assigned: due_date, notes, repeat_freq });
 }
 
+// Quick "+ Task" add, available from every calendar view (Agenda/Week/Month).
+// Lets you pick any list and an optional due date — blank leaves it unassigned,
+// same as adding a task from the Hub with no date.
+function openAddTaskModal() {
+  const sel = document.getElementById('addTaskListSelect');
+  sel.innerHTML = lists.map(l => `<option value="${l.id}">${l.name} — ${(l.context || 'work') === 'home' ? 'Home' : 'Work'}</option>`).join('');
+  document.getElementById('addTaskTitle').value = '';
+  document.getElementById('addTaskDate').value = '';
+  openModal('addTaskModal');
+  setTimeout(() => document.getElementById('addTaskTitle').focus(), 50);
+}
+
+async function confirmAddTask() {
+  const listId = document.getElementById('addTaskListSelect').value;
+  const title = document.getElementById('addTaskTitle').value.trim();
+  if (!listId || !title) { showToast('Pick a list and enter a title'); return; }
+  const due_date = parseDate(document.getElementById('addTaskDate').value);
+  try {
+    const [t] = await api('POST', 'tasks', {
+      list_id: listId, title, completed: false, due_date, week_assigned: due_date,
+      user_id: authSession?.user_id
+    });
+    tasks.push(t);
+    closeModal('addTaskModal');
+    renderHub(); renderWeek(); renderAgenda(); refreshMonthDayCells();
+    showToast('Task added');
+  } catch(e) { showToast('Error adding task: ' + e.message, true); }
+}
+
 // ══════════════════════════════
 // WEEK
 // ══════════════════════════════
@@ -4975,7 +5163,8 @@ function renderWeek() {
     <button class="btn btn-sm${weekOffset !== 0 ? ' btn-accent' : ''}" onclick="weekNav(0)">Today</button>
     <button class="btn btn-sm" onclick="syncCalendars()">Sync</button>
     <button class="btn btn-sm" onclick="openCalSourceMenu(event)">Calendars ▾</button>
-    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}`;
+    ${(googleTokens||outlookTokens||outlookEmail) ? `<button class="btn btn-sm btn-primary" onclick="openNewCalEvent(selectedDay||'${(() => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()}')">+ Event</button>` : ''}
+    <button class="btn btn-sm btn-primary" onclick="openAddTaskModal()">+ Task</button>`;
   ctrl.appendChild(navRow);
 
   // Filter row: a scope dropdown (All/Home/Work + Hide Unassigned) and a list
@@ -5214,17 +5403,17 @@ function touchMoveHandler(e) {
   if (!dragTaskId) return;
   e.preventDefault();
   const touch = e.touches[0];
-  document.querySelectorAll('.day-body').forEach(b => b.classList.remove('drag-over'));
+  document.querySelectorAll('[data-daykey]').forEach(b => b.classList.remove('drag-over'));
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  const body = el && el.closest('.day-body');
+  const body = el && el.closest('[data-daykey]');
   if (body) body.classList.add('drag-over');
 }
 
 function touchEndHandler(e) {
-  document.querySelectorAll('.day-body').forEach(b => b.classList.remove('drag-over'));
+  document.querySelectorAll('[data-daykey]').forEach(b => b.classList.remove('drag-over'));
   const touch = e.changedTouches[0];
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
-  const body = el && el.closest('.day-body');
+  const body = el && el.closest('[data-daykey]');
   if (body && dragTaskId) dropTaskOnDay(dragTaskId, body.dataset.daykey);
   dragTaskId = null;
 }
@@ -5430,12 +5619,36 @@ function renderAgendaDay(agenda, key) {
   }
 }
 
+// Unassigned tray for Agenda view — same idea as Week's, so tasks can be dragged
+// onto one of the visible days instead of only being assignable from Week.
+function renderDayPendingChips() {
+  const chips = document.getElementById('dayPendingChips');
+  if (!chips) return;
+  chips.innerHTML = '';
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const unassigned = tasks.filter(t => !t.week_assigned && !t.due_date && !t.completed && visListIds.has(t.list_id));
+  if (unassigned.length === 0) {
+    chips.innerHTML = '<span style="font-family:Helvetica Neue,sans-serif;font-size:12px;color:var(--ink-faint)">All tasks assigned ✓</span>';
+    return;
+  }
+  unassigned.forEach(t => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const lst = lists.find(l => l.id === t.list_id);
+    chip.innerHTML = `<span>${t.title}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
+    chip.draggable = true;
+    setupChipDrag(chip, t.id);
+    chips.appendChild(chip);
+  });
+}
+
 function renderAgenda() {
   const agenda = document.getElementById('dayAgenda');
   if (!agenda) return;
   agenda.innerHTML = '';
   const addBtn = document.getElementById('dayAddEventBtn');
   if (addBtn) addBtn.style.display = (googleTokens || outlookTokens || outlookEmail) ? '' : 'none';
+  renderDayPendingChips();
   const base = new Date(selectedDay + 'T00:00:00');
   for (let i = 0; i < 3; i++) {
     const d = new Date(base); d.setDate(base.getDate() + i);
@@ -5445,7 +5658,12 @@ function renderAgenda() {
       div.style.cssText = 'border-top:1px solid var(--cream-dark);margin:20px 0 16px';
       agenda.appendChild(div);
     }
-    renderAgendaDay(agenda, key);
+    const dayWrap = document.createElement('div');
+    dayWrap.className = 'agenda-day-dropzone';
+    dayWrap.dataset.daykey = key;
+    setupDropZone(dayWrap, key);
+    agenda.appendChild(dayWrap);
+    renderAgendaDay(dayWrap, key);
   }
 }
 
@@ -5862,6 +6080,7 @@ function showToast(msg) {
 
 document.getElementById('appVersionText').textContent = 'Taskwell · v ' + APP_VERSION;
 applyPalettes();
+applyCalendarViewMode();
 boot();
 </script>
 </body>
