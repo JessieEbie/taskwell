@@ -40,6 +40,11 @@
     .rail { width: var(--tab-w); background: var(--rail-bg); display: flex; flex-direction: column;
             align-items: center; padding: 12px 0 24px; gap: 2px; flex-shrink: 0; z-index: 10;
             transition: background .3s; overflow-y: auto; overflow-x: hidden; }
+    /* Wraps the app-mark + Work/Home switcher + divider so they can be hidden as one
+       unit when Settings -> Configuration turns off the rail's Work/Home toggle
+       (redundant once the same filter exists in the unified Hub/Calendar dropdowns). */
+    #railContextCluster { display: flex; flex-direction: column; align-items: center; width: 100%; gap: 2px; }
+    .rail.hide-context-toggle #railContextCluster { display: none; }
     .app-mark { width: 34px; height: 34px; background: var(--cream); border-radius: 8px;
                 display: flex; align-items: center; justify-content: center; margin-bottom: 6px;
                 font-size: 16px; color: var(--accent); font-weight: bold; cursor: pointer;
@@ -539,6 +544,7 @@
               padding-bottom: max(6px, env(safe-area-inset-bottom)); order: 2; overflow-x: auto;
               overflow-y: hidden; justify-content: flex-start; gap: 0; flex-wrap: nowrap; }
       .ctx-switcher { flex-direction: row; width: auto; margin-bottom: 0; }
+      #railContextCluster { flex-direction: row; width: auto; }
       .rail-divider { width: 1px; height: 28px; background: rgba(255,255,255,0.25); margin: 0 4px; }
       .app-mark { margin-bottom: 0; margin-right: 4px; }
       .main { order: 1; overflow: hidden; }
@@ -791,18 +797,20 @@
 
 <!-- Rail -->
 <nav class="rail">
-  <button class="app-mark" id="appMark" title="Show all" onclick="setContext('all')">✓</button>
-  <div class="ctx-switcher">
-    <button class="ctx-btn active" id="ctxWork" title="Work" onclick="setContext('work')">
-      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
-      <span>Work</span>
-    </button>
-    <button class="ctx-btn" id="ctxHome" title="Home" onclick="setContext('home')">
-      <svg viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>
-      <span>Home</span>
-    </button>
+  <div id="railContextCluster">
+    <button class="app-mark" id="appMark" title="Show all" onclick="setContext('all')">✓</button>
+    <div class="ctx-switcher">
+      <button class="ctx-btn active" id="ctxWork" title="Work" onclick="setContext('work')">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+        <span>Work</span>
+      </button>
+      <button class="ctx-btn" id="ctxHome" title="Home" onclick="setContext('home')">
+        <svg viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>
+        <span>Home</span>
+      </button>
+    </div>
+    <div class="rail-divider"></div>
   </div>
-  <div class="rail-divider"></div>
   <button class="tab-btn" data-tab="hub" onclick="switchTab('hub')">
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
@@ -1106,6 +1114,21 @@
           </div>
           <div class="sb-help">
             <p class="stab-hint">The unified layout replaces the Day/Week/Month rail tabs with a single Calendar tab, with Agenda/Week/Month as a switcher at the top of the page instead. Takes effect immediately — no reload needed.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block has-help">
+        <div class="sb-row">
+          <div class="sb-main">
+            <div class="settings-block-title">Sidebar Work/Home toggle</div>
+            <select class="modal-select" id="hideContextToggleSelect" onchange="saveHideContextToggle(this.value)">
+              <option value="show">Show in sidebar</option>
+              <option value="hide">Hide — use the Hub/Calendar filters instead</option>
+            </select>
+          </div>
+          <div class="sb-help">
+            <p class="stab-hint">The unified Hub and calendar views already have their own All/Home/Work filter dropdowns, so the sidebar's Work/Home buttons are optional. Hiding them here locks the sidebar to showing everything (All), and you switch between Work/Home from those dropdowns instead.</p>
           </div>
         </div>
       </div>
@@ -1435,8 +1458,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-07-23b';
-const WHATS_NEW = "Agenda and Month views now have the same list filters and \"drag onto a day\" tray as Week. Every calendar view's toolbar is tidier (Event/Task merged into one + Add menu). Settings → Configuration (renamed from Colors) now also holds the Calendar layout option. Hub gets a general \"+ Add Task\" button, your Hub/Week/Agenda filter choices are remembered across sessions, and Inbox has been removed.";
+const APP_VERSION = '2026-08-03';
+const WHATS_NEW = "New: Settings → Configuration → \"Sidebar Work/Home toggle\" lets you hide the rail's Work/Home buttons entirely, since the same filtering already exists in the unified Hub and calendar views' own dropdowns.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1551,7 +1574,8 @@ create table if not exists public.user_settings (
   cal_source_visibility jsonb,
   cal_source_styles jsonb,
   unified_calendar_view boolean default false,
-  view_prefs jsonb
+  view_prefs jsonb,
+  hide_context_toggle boolean default false
 );
 
 -- Controls who is allowed to sign in at all (add rows for yourself and anyone
@@ -1637,6 +1661,10 @@ let calSourceStyles = JSON.parse(localStorage.getItem('tw_cal_source_styles') ||
 // preference; both modes render the same underlying #day/#week/#month sections.
 let unifiedCalendarView = localStorage.getItem('tw_unified_calendar_view') === '1';
 let calendarSubView = localStorage.getItem('tw_calendar_subview') || 'week'; // 'agenda' | 'week' | 'month'
+// Hides the rail's Work/Home toggle — the same filtering already exists via the
+// unified Hub's dropdown and the calendar views' All/Home/Work scope dropdown, so
+// this is purely about decluttering the rail, not losing the ability to filter.
+let hideContextToggle = localStorage.getItem('tw_hide_context_toggle') === '1';
 let calEvents = {};
 let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
 let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
@@ -2216,6 +2244,7 @@ const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw
   'tw_palettes', 'tw_timezone', 'tw_last_seen_version',
   'tw_second_cal_id', 'tw_second_cal_context', 'tw_auto_clear_completed', 'tw_hide_birthdays',
   'tw_cal_source_visibility', 'tw_cal_source_styles', 'tw_unified_calendar_view', 'tw_view_prefs',
+  'tw_hide_context_toggle',
   'gcal_verifier', 'pkce_verifier', 'outlook_verifier'];
 
 // Clears every piece of per-user cached data from this browser (tokens, feeds,
@@ -2235,6 +2264,7 @@ function wipeLocalUserCache() {
   calSourceVisibility = {};
   calSourceStyles = {};
   unifiedCalendarView = false;
+  hideContextToggle = false;
   viewPrefs = {}; hubContextFilter = 'all'; weekBroadFilter = 'all'; weekListFilter = null; hideUnassigned = false;
   WORK_SECTIONS = []; HOME_SECTIONS = [];
   sectionCollapsed = {}; listCollapsed = {};
@@ -2466,6 +2496,16 @@ async function loadCalFeeds() {
       try { localStorage.setItem('tw_view_prefs', JSON.stringify(viewPrefs)); } catch(e) {}
     }
   } catch(e) { /* view_prefs column may not exist yet — keep localStorage value */ }
+
+  // Rail Work/Home toggle visibility preference (separate fetch; column may not exist yet).
+  try {
+    const hctRows = await api('GET', `user_settings?user_id=eq.${authSession.user_id}&select=hide_context_toggle`);
+    if (typeof hctRows?.[0]?.hide_context_toggle === 'boolean') {
+      hideContextToggle = hctRows[0].hide_context_toggle;
+      try { localStorage.setItem('tw_hide_context_toggle', hideContextToggle ? '1' : '0'); } catch(e) {}
+    }
+  } catch(e) { /* hide_context_toggle column may not exist yet — keep localStorage value */ }
+  applyContextToggleMode();
 
   // Account-wide "what's new" last-seen version (separate fetch; column may not
   // exist yet). Makes the banner show at most once per person across devices.
@@ -4104,6 +4144,8 @@ function switchSettingsTab(tab) {
     renderPalettePicker();
     const ucvSel = document.getElementById('unifiedCalendarSelect');
     if (ucvSel) ucvSel.value = unifiedCalendarView ? 'unified' : 'classic';
+    const hctSel = document.getElementById('hideContextToggleSelect');
+    if (hctSel) hctSel.value = hideContextToggle ? 'hide' : 'show';
   }
   if (tab === 'calendar') {
     renderCalFeedsList(); renderOutlookEmailSection();
@@ -4226,6 +4268,28 @@ function applyCalendarViewMode() {
   } else {
     renderCalendarSubNav();
   }
+}
+
+// Applies the rail Work/Home toggle visibility preference — called on boot and
+// immediately whenever the Settings toggle changes, no reload needed. When
+// hidden, currentContext is forced (and locked) to 'all' since there's no
+// longer a rail control to switch it — the unified Hub/Calendar dropdowns
+// cover the same filtering from there.
+function applyContextToggleMode() {
+  const rail = document.querySelector('.rail');
+  if (rail) rail.classList.toggle('hide-context-toggle', hideContextToggle);
+  if (hideContextToggle && currentContext !== 'all') setContext('all');
+}
+
+async function saveHideContextToggle(val) {
+  hideContextToggle = val === 'hide';
+  try { localStorage.setItem('tw_hide_context_toggle', hideContextToggle ? '1' : '0'); } catch(e) {}
+  applyContextToggleMode();
+  try {
+    await api('POST', 'user_settings', { user_id: authSession.user_id, hide_context_toggle: hideContextToggle },
+      { 'Prefer': 'resolution=merge-duplicates' });
+    showToast('Preference saved');
+  } catch(e) { showToast('Error: ' + e.message, true); }
 }
 
 // ══════════════════════════════
@@ -5986,6 +6050,7 @@ function showToast(msg) {
 document.getElementById('appVersionText').textContent = 'Taskwell · v ' + APP_VERSION;
 applyPalettes();
 applyCalendarViewMode();
+applyContextToggleMode();
 boot();
 </script>
 </body>
