@@ -202,8 +202,10 @@
     #week .week-controls > * { display: flex; align-items: center; width: 100%; margin-bottom: 6px; }
     .week-nav-row { display: flex; align-items: center; gap: 4px; width: 100%; flex-wrap: wrap; }
     /* Week gets its padding from #week .week-controls; Day/Month use .week-nav-row
-       directly as a page-header sibling, so they need their own top/side padding. */
+       (and its .toolbar-actions-row sibling) directly as page-header siblings, so
+       they need their own top/side padding. */
     #day > .week-nav-row, #month > .week-nav-row { padding: 10px 20px 0; flex-shrink: 0; }
+    #day > .toolbar-actions-row, #month > .toolbar-actions-row { padding: 0 20px; flex-shrink: 0; }
     .week-lists-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
     /* Filter dropdowns nested inline within a toolbar row (not a standalone row) —
        same buttons as .week-lists-row, just without forcing a line break. */
@@ -211,8 +213,15 @@
     .toolbar-spacer { flex: 1 1 auto; min-width: 8px; }
     .week-filter-btn { font-size: 13px; font-family: inherit; color: var(--ink);
       background: var(--cream); border: 1.5px solid var(--cream-dark); border-radius: 8px;
-      padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+      padding: 5px 10px; cursor: pointer; white-space: nowrap;
+      max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
     .week-filter-btn:hover { background: var(--cream-dark); }
+    /* Actions always live on their own row, directly under nav/filters — so
+       Sync/Calendars/+Add never shift position based on how wide a selected
+       list or section name happens to be (unlike a single wrap+spacer row,
+       where a long label could push them onto a different line unpredictably). */
+    .toolbar-actions-row { display: flex; align-items: center; gap: 4px; width: 100%;
+      flex-wrap: wrap; margin-top: 6px; }
     .week-filter-menu { position: fixed; z-index: 2100; background: var(--paper);
       border-radius: 12px; box-shadow: 0 6px 28px rgba(46,33,24,.22);
       padding: 6px; min-width: 150px; max-height: 60vh; overflow-y: auto;
@@ -582,11 +591,13 @@
       .section-body { grid-template-columns: 1fr; gap: 8px; }
       #week .week-controls { padding: 8px 12px 0; }
       #day > .week-nav-row, #month > .week-nav-row { padding: 8px 12px 0; }
+      #day > .toolbar-actions-row, #month > .toolbar-actions-row { padding: 0 12px; }
       .week-nav-row { flex-wrap: wrap; gap: 4px; }
       .week-lists-row, .week-filter-zone { gap: 4px; }
-      /* Once wrapped onto their own line, right-aligning the secondary/primary
-         actions just leaves an odd empty gap — let them sit left-aligned instead. */
+      /* Hub's actions row still uses a spacer — once wrapped onto its own line,
+         right-aligning them just leaves an odd empty gap, so left-align instead. */
       .toolbar-spacer { display: none; }
+      .week-filter-btn { max-width: 104px; }
       .week-scroll { padding: 8px 12px 12px; }
       .week-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
       #week .pending-area { margin: 8px 12px 0; }
@@ -915,7 +926,8 @@
     <div class="week-nav-row">
       <button class="btn btn-sm btn-accent" onclick="monthGoToday()">Today</button>
       <div class="week-filter-zone" id="monthFilterRow"></div>
-      <div class="toolbar-spacer"></div>
+    </div>
+    <div class="toolbar-actions-row">
       <button class="btn btn-sm btn-ghost" onclick="syncCalendars()">Sync</button>
       <button class="btn btn-sm btn-ghost" onclick="openCalSourceMenu(event)">Calendars ▾</button>
       <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
@@ -960,7 +972,8 @@
     </div>
     <div class="week-nav-row">
       <div class="week-filter-zone" id="dayFilterRow"></div>
-      <div class="toolbar-spacer"></div>
+    </div>
+    <div class="toolbar-actions-row">
       <button class="btn btn-sm btn-ghost" onclick="syncCalendars()">Sync</button>
       <button class="btn btn-sm btn-ghost" onclick="openCalSourceMenu(event)">Calendars ▾</button>
       <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
@@ -1482,8 +1495,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-03e';
-const WHATS_NEW = "The \"+ Add Task\" list picker (Hub and every calendar view) now groups lists under Work/Home and their sections instead of one long flat list. Rail tab buttons are also larger and consistently sized so labels like \"Calendar\" fit their highlight.";
+const APP_VERSION = '2026-08-03f';
+const WHATS_NEW = "Fixed the calendar toolbars (Agenda/Week/Month) so Sync/Calendars/+Add always sit in the same place — they used to shift around depending on how long a selected list or section name was. Filter labels are also truncated instead of stretching the row.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5356,9 +5369,10 @@ function renderWeek() {
   const ctrl = document.getElementById('weekControls');
   ctrl.innerHTML = '';
 
-  // Single toolbar row, left to right: date navigation, then filters, then a
-  // spacer pushing secondary (ghosted) and primary actions to the right — so the
-  // row reads as "navigate → filter → act" instead of a wall of same-weight buttons.
+  // Two fixed rows, in the same place every time regardless of content width:
+  // row 1 is navigate → filter, row 2 is always the actions (Sync/Calendars/+Add),
+  // directly beneath it — never sharing a wrap+spacer row where a long list/section
+  // name could unpredictably bump the actions onto a different line.
   const navRow = document.createElement('div');
   navRow.className = 'week-nav-row';
   navRow.innerHTML = `
@@ -5367,12 +5381,15 @@ function renderWeek() {
       <button class="btn btn-sm" onclick="weekNav(1)">Next ›</button>
       <button class="btn btn-sm${weekOffset !== 0 ? ' btn-accent' : ''}" onclick="weekNav(0)">Today</button>
     </div>
-    <div class="week-filter-zone" id="weekFilterZone"></div>
-    <div class="toolbar-spacer"></div>
+    <div class="week-filter-zone" id="weekFilterZone"></div>`;
+  ctrl.appendChild(navRow);
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'toolbar-actions-row';
+  actionsRow.innerHTML = `
     <button class="btn btn-sm btn-ghost" onclick="syncCalendars()">Sync</button>
     <button class="btn btn-sm btn-ghost" onclick="openCalSourceMenu(event)">Calendars ▾</button>
     <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>`;
-  ctrl.appendChild(navRow);
+  ctrl.appendChild(actionsRow);
   // Scope dropdown (All/Home/Work + Hide Unassigned) and list drill-down dropdown,
   // shared with Agenda/Month view via renderUnassignedFilterRow() so all stay in sync.
   renderUnassignedFilterRow(navRow.querySelector('#weekFilterZone'));
