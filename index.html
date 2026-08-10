@@ -305,6 +305,19 @@
     .time-now-line::before { content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
                               border-radius: 50%; background: var(--rust); }
 
+    /* Compact single-day agenda list (Agenda view) — timed items stack back to
+       back in order with no reserved space for idle hours, unlike Week's full
+       24h grid, since a whole day of empty rows for a few events is mostly
+       wasted space. */
+    .agenda-list { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 24px; }
+    .agenda-block { border-radius: 6px; padding: 5px 10px; display: flex; align-items: flex-start;
+                     gap: 6px; cursor: pointer; overflow: hidden; color: #fff; }
+    .agenda-block.is-task .task-check { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px;
+                                          border-color: rgba(255,255,255,.8); }
+    .agenda-block.is-task .task-check.done { background: #fff; }
+    .agenda-block-time { font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; opacity: .9; }
+    .agenda-block-title { font-size: 13px; font-weight: 600; line-height: 1.3; }
+
     /* ── DAY VIEW ── */
     #day .day-view-inner { flex: 1; overflow: hidden; display: flex; }
     .day-agenda { flex: 1; overflow-y: auto; padding: 16px 20px 24px; -webkit-overflow-scrolling: touch; }
@@ -1521,8 +1534,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-10e';
-const WHATS_NEW = "Week and Agenda are now real time-grid calendars, like Google Calendar — events and tasks show up as time blocks sized by duration, with untimed tasks and all-day events in a small strip up top instead of a big list. Tasks can now get a start/end time (in the task modal, or by dragging a task onto a spot on the grid) so they block off the calendar too. Agenda now navigates one day at a time with Prev/Next, instead of scrolling through many days.";
+const APP_VERSION = '2026-08-10f';
+const WHATS_NEW = "Agenda no longer shows a full empty 24-hour grid — it's now a compact list of just your actual events and tasks for the day, stacked back to back. Also fixed scrolling to the next/previous day in Agenda (it only worked in Week before).";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5379,11 +5392,12 @@ function weekNav(delta) {
   renderWeek();
 }
 
-// Lets scrolling past the top/bottom edge of the week grid page to the
-// previous/next week, same as the Prev/Next buttons — #weekScroll is static
-// HTML (not rebuilt by renderWeek), so this only needs to run once.
-function initWeekScrollNav() {
-  const el = document.getElementById('weekScroll');
+// Lets scrolling past the top/bottom edge of a scroll container page to the
+// previous/next day/week, same as the Prev/Next buttons — the container is
+// static HTML (not rebuilt by render), so this only needs to run once per
+// element. Shared by Week (#weekScroll + weekNav) and Agenda (#dayAgenda + dayNav).
+function initEdgeScrollNav(elId, navFn) {
+  const el = document.getElementById(elId);
   if (!el) return;
   const COOLDOWN_MS = 500;
   const WHEEL_THRESHOLD = 60;
@@ -5395,7 +5409,7 @@ function initWeekScrollNav() {
     const now = Date.now();
     if (now - lastNav < COOLDOWN_MS) return;
     lastNav = now;
-    weekNav(delta);
+    navFn(delta);
     requestAnimationFrame(() => { el.scrollTop = 0; });
   }
 
@@ -5646,6 +5660,12 @@ function minutesToClockLabel(mins) {
   const h12 = h % 12 || 12;
   return `${h12} ${ap}`;
 }
+function minutesToClockTime(mins) {
+  const h = Math.floor(mins / 60), m = String(mins % 60).padStart(2, '0');
+  const ap = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ap}`;
+}
 
 // Clusters transitively-overlapping timed items and assigns each a column index
 // + the cluster's total column count, so overlapping items render side-by-side
@@ -5868,6 +5888,98 @@ function buildDayTimeGrid(container, dayKeys) {
   requestAnimationFrame(() => {
     scrollParent.scrollTop = Math.max(0, (anchorMin / 60) * HOUR_PX - HOUR_PX * 1.5);
   });
+}
+
+// Compact single-day agenda list — used instead of buildDayTimeGrid's full 24h
+// grid for Agenda, since a whole day of empty hour rows for a handful of
+// events is mostly wasted space. Timed items stack chronologically with no
+// gaps for idle hours, each sized (loosely) by its own duration; untimed
+// tasks/all-day events sit in a small strip above, same as the time-grid.
+const AGENDA_PX_PER_MIN = 0.9;
+const AGENDA_BLOCK_MIN_PX = 40;
+const AGENDA_BLOCK_MAX_PX = 160;
+
+function buildAgendaList(container, key) {
+  container.innerHTML = '';
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
+  const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
+
+  const dayTasks = tasks.filter(t => visListIds.has(t.list_id) && !t.completed &&
+    (t.week_assigned === key || (!t.week_assigned && t.due_date === key)));
+  const dayEvs = visibleCalEvents(key);
+
+  const untimedItems = [];
+  const timedItems = [];
+
+  dayTasks.forEach(t => {
+    const lst = lists.find(l => l.id === t.list_id);
+    const color = (lst?.context || 'work') === 'home' ? homeColor : workColor;
+    const startMin = taskTimeToMinutes(t.start_time);
+    if (startMin < 0) { untimedItems.push({ kind: 'task', task: t }); return; }
+    let endMin = taskTimeToMinutes(t.end_time);
+    if (endMin < 0 || endMin <= startMin) endMin = startMin + DEFAULT_TASK_DURATION_MIN;
+    timedItems.push({ kind: 'task', task: t, startMin, endMin, color });
+  });
+  dayEvs.forEach(ev => {
+    if (ev.allDay) { untimedItems.push({ kind: 'event', ev }); return; }
+    const startMin = timeToMinutes(ev.time);
+    if (startMin < 0) { untimedItems.push({ kind: 'event', ev }); return; }
+    const endMin = startMin + (ev.durationMin > 0 ? ev.durationMin : 60);
+    timedItems.push({ kind: 'event', ev, startMin, endMin, color: ev.color });
+  });
+  timedItems.sort((a, b) => a.startMin - b.startMin);
+
+  const untimedRow = document.createElement('div');
+  untimedRow.className = 'time-grid-untimed-row';
+  const untimedDay = document.createElement('div');
+  untimedDay.className = 'time-grid-untimed-day';
+  untimedDay.dataset.daykey = key;
+  setupDropZone(untimedDay, key);
+  if (untimedItems.length === 0 && timedItems.length === 0) {
+    untimedDay.appendChild(Object.assign(document.createElement('div'), { className: 'day-empty', textContent: 'Nothing scheduled — drop a task here' }));
+  } else {
+    untimedItems.forEach(item => untimedDay.appendChild(buildUntimedChip(item, key)));
+  }
+  untimedRow.appendChild(untimedDay);
+  container.appendChild(untimedRow);
+
+  const list = document.createElement('div');
+  list.className = 'agenda-list';
+  list.dataset.daykey = key;
+  // The compact list no longer represents absolute time position, so a drop
+  // here (unlike Week's real time-grid) just assigns the day, same as the
+  // untimed strip — set a specific time via the task modal instead.
+  setupDropZone(list, key);
+  timedItems.forEach(item => {
+    const block = document.createElement('div');
+    block.className = 'agenda-block';
+    block.style.background = item.color;
+    const height = Math.max(AGENDA_BLOCK_MIN_PX, Math.min(AGENDA_BLOCK_MAX_PX, (item.endMin - item.startMin) * AGENDA_PX_PER_MIN));
+    block.style.height = height + 'px';
+    const timeLbl = `${minutesToClockTime(item.startMin)} – ${minutesToClockTime(item.endMin)}`;
+
+    if (item.kind === 'task') {
+      const t = item.task;
+      block.classList.add('is-task');
+      const check = document.createElement('div');
+      check.className = 'task-check';
+      check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
+      block.appendChild(check);
+      const info = document.createElement('div');
+      info.innerHTML = `<div class="agenda-block-time">${timeLbl}</div><div class="agenda-block-title">${t.title}</div>`;
+      block.appendChild(info);
+      block.onclick = () => openTaskDetail(t.id);
+      setupChipDrag(block, t.id);
+    } else {
+      const ev = item.ev;
+      block.classList.add('is-event');
+      block.innerHTML = `<div class="agenda-block-time">${timeLbl}</div><div class="agenda-block-title">${ev.title}</div>`;
+      block.onclick = () => { ev._dk = key; showCalEvPopup(ev, block); };
+    }
+    list.appendChild(block);
+  });
+  container.appendChild(list);
 }
 
 // Dropping an untimed task chip onto the hour grid (rather than the untimed
@@ -6120,7 +6232,7 @@ function renderAgenda() {
   if (!agenda) return;
   renderUnassignedFilterRow(document.getElementById('dayFilterRow'));
   renderPendingChipsInto('dayPendingChips');
-  buildDayTimeGrid(agenda, [selectedDay]);
+  buildAgendaList(agenda, selectedDay);
 }
 
 // ══════════════════════════════
@@ -6474,7 +6586,8 @@ document.getElementById('appVersionText').textContent = 'Taskwell · v ' + APP_V
 applyPalettes();
 applyCalendarViewMode();
 applyContextToggleMode();
-initWeekScrollNav();
+initEdgeScrollNav('weekScroll', weekNav);
+initEdgeScrollNav('dayAgenda', dayNav);
 boot();
 </script>
 </body>
