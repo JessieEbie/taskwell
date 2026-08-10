@@ -1498,8 +1498,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-10';
-const WHATS_NEW = "In Week view, you can now scroll (or swipe on touch) past the top or bottom edge of the grid to move to the previous/next week, in addition to the Prev/Next buttons.";
+const APP_VERSION = '2026-08-10b';
+const WHATS_NEW = "Fixed a bug where rescheduling or cancelling a single occurrence of a recurring ICS calendar event (e.g. moving one meeting to a new time) could show it twice — once at the old time and once at the new one.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3376,6 +3376,7 @@ function parseICS(text, feedColor) {
   text = text.replace(/\r?\n[ \t]/g, ''); // unfold
   const lines = text.split(/\r?\n/);
   const vevents = [];
+  const cancelledOrModifiedIds = []; // {uid, recurrenceId} — occurrences overridden by a separate VEVENT
   let ev = null;
   for (const raw of lines) {
     const ci = raw.indexOf(':');
@@ -3386,13 +3387,26 @@ function parseICS(text, feedColor) {
     if (propName === 'BEGIN' && val === 'VEVENT') { ev = {}; continue; }
     // A cancelled event stays in the feed marked STATUS:CANCELLED rather than being
     // removed outright — same pattern as Outlook's isCancelled and Google's status.
-    if (propName === 'END' && val === 'VEVENT') { if (ev && ev.summary && ev.dtstart && ev.status !== 'CANCELLED') vevents.push(ev); ev = null; continue; }
+    // A cancelled *override* (RECURRENCE-ID set) still needs to suppress the base
+    // series' occurrence at that original time, even though the override itself
+    // isn't rendered — otherwise a deleted single occurrence reappears as a ghost.
+    if (propName === 'END' && val === 'VEVENT') {
+      if (ev && ev.recurrenceId) cancelledOrModifiedIds.push({ uid: ev.uid, recurrenceId: ev.recurrenceId });
+      if (ev && ev.summary && ev.dtstart && ev.status !== 'CANCELLED') vevents.push(ev);
+      ev = null; continue;
+    }
     if (!ev) continue;
     if (propName === 'SUMMARY') ev.summary = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, ' ').trim();
     if (propName === 'DTSTART') { ev.dtstart = val; ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
     if (propName === 'DTEND') ev.dtend = val;
     if (propName === 'RRULE') ev.rrule = val;
     if (propName === 'UID') ev.uid = val;
+    // A modified single occurrence of a recurring event keeps the same UID but adds
+    // RECURRENCE-ID (the *original* occurrence time it replaces) — without tracking
+    // this, the RRULE expansion below would still generate the old-time occurrence
+    // alongside this override, showing the same meeting twice after a time change.
+    if (propName === 'RECURRENCE-ID') ev.recurrenceId = val;
+    if (propName === 'EXDATE') (ev.exdates = ev.exdates || []).push(...val.split(','));
     if (propName === 'STATUS') ev.status = val.trim().toUpperCase();
     if (propName === 'DESCRIPTION') ev.description = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, '\n').trim();
     if (propName === 'URL') ev.url = val.trim();
@@ -3403,9 +3417,26 @@ function parseICS(text, feedColor) {
   const minD = new Date(today); minD.setDate(minD.getDate() - 365);
   const maxD = new Date(today); maxD.setDate(maxD.getDate() + 1095);
 
+  // Per-UID set of original occurrence dates that a separate override VEVENT
+  // (RECURRENCE-ID) already accounts for — the base series' expansion must skip
+  // these dates so a rescheduled or deleted occurrence doesn't also show at its
+  // old time.
+  const excludedByUid = {};
+  const addExclusion = ({ uid, recurrenceId }) => {
+    if (!uid || !recurrenceId) return;
+    const parsed = parseDTVal(recurrenceId);
+    if (!parsed) return;
+    (excludedByUid[uid] = excludedByUid[uid] || new Set()).add(dateKey(parsed.date));
+  };
+  vevents.filter(ev => ev.recurrenceId).forEach(addExclusion);
+  cancelledOrModifiedIds.forEach(addExclusion);
+
   const result = {};
   vevents.forEach(ev => {
-    expandEvent(ev, minD, maxD).forEach(({ dk, time, allDay }) => {
+    const exclude = ev.rrule && !ev.recurrenceId ? excludedByUid[ev.uid] : null;
+    expandEvent(ev, minD, maxD)
+      .filter(({ dk }) => !exclude || !exclude.has(dk))
+      .forEach(({ dk, time, allDay }) => {
       if (!result[dk]) result[dk] = [];
       result[dk].push({ title: ev.summary, time, allDay, color: feedColor, uid: ev.uid, endTime: ev.dtend,
         location: ev.location || null, description: ev.description || null, webLink: ev.url || null });
