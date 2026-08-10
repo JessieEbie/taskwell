@@ -909,7 +909,7 @@
       <div class="pending-label">Unassigned — drag onto a day</div>
       <div class="pending-chips" id="pendingChips"></div>
     </div>
-    <div class="week-scroll">
+    <div class="week-scroll" id="weekScroll">
       <div class="week-grid" id="weekGrid"></div>
     </div>
   </section>
@@ -1498,8 +1498,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-05b';
-const WHATS_NEW = "Fixed the Agenda view's Today button — it now actually scrolls you back to today instead of just updating data off-screen.";
+const APP_VERSION = '2026-08-10';
+const WHATS_NEW = "In Week view, you can now scroll (or swipe on touch) past the top or bottom edge of the grid to move to the previous/next week, in addition to the Prev/Next buttons.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5284,6 +5284,53 @@ function weekNav(delta) {
   renderWeek();
 }
 
+// Lets scrolling past the top/bottom edge of the week grid page to the
+// previous/next week, same as the Prev/Next buttons — #weekScroll is static
+// HTML (not rebuilt by renderWeek), so this only needs to run once.
+function initWeekScrollNav() {
+  const el = document.getElementById('weekScroll');
+  if (!el) return;
+  const COOLDOWN_MS = 500;
+  const WHEEL_THRESHOLD = 60;
+  let lastNav = 0, wheelAccum = 0;
+
+  function atTop() { return el.scrollTop <= 1; }
+  function atBottom() { return el.scrollTop + el.clientHeight >= el.scrollHeight - 1; }
+  function tryNav(delta) {
+    const now = Date.now();
+    if (now - lastNav < COOLDOWN_MS) return;
+    lastNav = now;
+    weekNav(delta);
+    requestAnimationFrame(() => { el.scrollTop = 0; });
+  }
+
+  el.addEventListener('wheel', e => {
+    if (e.deltaY > 0 && atBottom()) {
+      wheelAccum += e.deltaY;
+      if (wheelAccum > WHEEL_THRESHOLD) { wheelAccum = 0; tryNav(1); }
+    } else if (e.deltaY < 0 && atTop()) {
+      wheelAccum += e.deltaY;
+      if (wheelAccum < -WHEEL_THRESHOLD) { wheelAccum = 0; tryNav(-1); }
+    } else {
+      wheelAccum = 0;
+    }
+  }, { passive: true });
+
+  let touchStartY = null, touchStartAtTop = false, touchStartAtBottom = false;
+  el.addEventListener('touchstart', e => {
+    touchStartY = e.touches[0].clientY;
+    touchStartAtTop = atTop();
+    touchStartAtBottom = atBottom();
+  }, { passive: true });
+  el.addEventListener('touchend', e => {
+    if (touchStartY === null) return;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    touchStartY = null;
+    if (dy < -50 && touchStartAtBottom) tryNav(1);
+    else if (dy > 50 && touchStartAtTop) tryNav(-1);
+  }, { passive: true });
+}
+
 async function dropTaskOnDay(taskId, key) {
   const t = tasks.find(t => t.id === taskId);
   if (t) { t.week_assigned = key; t.due_date = key; }
@@ -6289,6 +6336,7 @@ document.getElementById('appVersionText').textContent = 'Taskwell · v ' + APP_V
 applyPalettes();
 applyCalendarViewMode();
 applyContextToggleMode();
+initWeekScrollNav();
 boot();
 </script>
 </body>
