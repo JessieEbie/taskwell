@@ -327,7 +327,10 @@
     .cal-feed-color { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
     .cal-feed-name { font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cal-feed-url { font-size: 10px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .cal-feeds-list { max-height: 200px; overflow-y: auto; margin: 8px 0 10px; }
+    /* No internal scroll cap — a short hidden-scroll box made it easy to miss
+       feeds sitting below the fold. The list now just grows with its content,
+       and the Settings panel itself scrolls if it runs long. */
+    .cal-feeds-list { margin: 8px 0 10px; }
     .modal.modal-wide { max-width: 440px; width: 90vw; }
 
     /* ── MONTH VIEW ── */
@@ -1049,7 +1052,7 @@
             </div>
             <p class="stab-hint" style="margin-top:4px">Leave username/password blank for public or secret-URL feeds.</p>
             <div class="modal-row" style="margin-top:10px">
-              <button class="btn btn-primary" onclick="addCalFeed()">Add Feed</button>
+              <button class="btn btn-primary" id="calFeedAddBtn" onclick="addCalFeed()">Add Feed</button>
             </div>
           </div>
           <div class="sb-help">
@@ -1498,8 +1501,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-10b';
-const WHATS_NEW = "Fixed a bug where rescheduling or cancelling a single occurrence of a recurring ICS calendar event (e.g. moving one meeting to a new time) could show it twice — once at the old time and once at the new one.";
+const APP_VERSION = '2026-08-10d';
+const WHATS_NEW = "Fixed ICS calendar feeds getting permanently stuck on \"Loading…\" after a failed add — a bad link is now rejected up front instead of leaving a dead entry behind. Also removed the hidden scroll cap on the ICS Feeds list in Settings, which could hide feeds below the fold without any visible scrollbar.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3445,8 +3448,16 @@ function parseICS(text, feedColor) {
   return result;
 }
 
-async function fetchFeed(feed) {
+// Takes the *actual* feed object (never a spread copy) so that name updates
+// below — "Loading…" → "⚠ Trying…" → resolved name or "⚠ Could not load" —
+// land on the real record in calFeeds and actually persist, instead of
+// mutating a throwaway copy and leaving the saved entry stuck on its old
+// name forever. colorOverride lets callers pass the feed's *effective*
+// display color (which can differ from feed.color once Work/Home/Other
+// context is applied) without needing to fork the object to do it.
+async function fetchFeed(feed, colorOverride) {
   const url = feed.url.replace(/^webcal:\/\//i, 'https://');
+  const effectiveColor = colorOverride || feed.color;
   let lastErr = null;
   for (const [proxy, encode] of CORS_PROXIES) {
     try {
@@ -3468,15 +3479,17 @@ async function fetchFeed(feed) {
       if (!feed.name || feed.name === 'Loading…' || feed.name === '⚠ Could not load') {
         const m = text.match(/X-WR-CALNAME:(.+)/);
         feed.name = m ? m[1].trim() : 'Calendar';
-        await saveCalFeeds();
+        if (calFeeds.includes(feed)) await saveCalFeeds();
       }
-      return parseICS(text, feed.color);
+      return parseICS(text, effectiveColor);
     } catch(e) {
       lastErr = e;
       feed.name = '⚠ Trying…'; renderCalFeedsList();
     }
   }
-  feed.name = '⚠ Could not load'; await saveCalFeeds(); renderCalFeedsList();
+  feed.name = '⚠ Could not load';
+  if (calFeeds.includes(feed)) await saveCalFeeds();
+  renderCalFeedsList();
   console.error('Cal feed error:', feed.url, lastErr);
   showToast('Could not load: ' + (lastErr?.message || 'unknown error'));
   return {};
@@ -3572,7 +3585,7 @@ async function fetchAllFeeds() {
       // Was hardcoded to the Work theme color regardless of the feed's own assigned
       // color or Work/Home/Other setting — this pulls the actual effective color.
       const color = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
-      const evs = await fetchFeed({ ...feed, color });
+      const evs = await fetchFeed(feed, color);
       Object.entries(evs).forEach(([dk, arr]) => {
         if (!calEvents[dk]) calEvents[dk] = [];
         calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
@@ -3795,6 +3808,16 @@ async function addCalFeed() {
   const color = CAL_COLORS[calFeeds.length % CAL_COLORS.length];
   const feed = { id: Date.now().toString(), url, name: 'Loading…', color,
     ...(username ? { username, password } : {}) };
+
+  // Validate before adding to the list — fetchFeed() sets feed.name to
+  // "⚠ Could not load" on failure, so a bad link never gets saved as a
+  // permanent, stuck-looking entry in the calendar dropdown.
+  const addBtn = document.getElementById('calFeedAddBtn');
+  if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Checking…'; }
+  const evs = await fetchFeed(feed, color);
+  if (addBtn) { addBtn.disabled = false; addBtn.textContent = 'Add Feed'; }
+  if (feed.name === '⚠ Could not load') return;
+
   calFeeds.push(feed);
   try {
     await saveCalFeeds();
@@ -3804,13 +3827,10 @@ async function addCalFeed() {
   document.getElementById('calFeedPass').value = '';
   renderCalFeedsList();
   const sourceKey = 'ics:' + feed.id;
-  const effectiveColor = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
-  const evs = await fetchFeed({ ...feed, color: effectiveColor });
   Object.entries(evs).forEach(([dk, arr]) => {
     if (!calEvents[dk]) calEvents[dk] = [];
     calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
   });
-  renderCalFeedsList();
   renderWeek(); renderAgenda();
 }
 
