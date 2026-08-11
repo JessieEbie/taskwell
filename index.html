@@ -241,35 +241,32 @@
             user-select: none; transition: all .15s; touch-action: auto; }
     .chip:hover { background: var(--accent-pale); }
     .chip.dragging { opacity: .5; }
-    /* Week scrolls vertically through the time-grid's 24h; on narrow screens it
-       also scrolls horizontally through the 7 day columns (a real time-grid
-       can't wrap days onto multiple rows the way the old stacked-list design
-       could — every day has to share the same hour scale). */
+    /* Week reflows: days wrap onto multiple rows to fit the screen, so the only
+       scrolling needed is vertical (works with mouse and touch everywhere). */
     .week-scroll { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 10px 20px 16px; -webkit-overflow-scrolling: touch; touch-action: pan-y;
                    scrollbar-width: thin; scrollbar-color: var(--accent) var(--cream); }
     .week-scroll::-webkit-scrollbar { height: 12px; width: 12px; }
     .week-scroll::-webkit-scrollbar-track { background: var(--cream); border-radius: 6px; }
     .week-scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 6px; border: 3px solid var(--cream); }
     .week-scroll::-webkit-scrollbar-thumb:hover { background: var(--accent-dark); }
+    .week-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(134px, 1fr)); gap: 8px; align-items: stretch; }
+    .day-col { min-width: 0; border-radius: 10px; overflow: visible; display: flex; flex-direction: column; touch-action: pan-x pan-y; }
+    .day-col.today { border: 2px solid var(--accent); }
+    .day-hdr { padding: 6px 8px; display: flex; justify-content: space-between; align-items: center;
+               background: var(--cream-dark); flex-shrink: 0; border-radius: 8px 8px 0 0; }
+    .day-col.today .day-hdr { background: var(--accent-pale); }
+    .day-hdr-name { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 700;
+                    color: var(--ink); text-transform: uppercase; letter-spacing: .05em; }
+    .day-hdr-date { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft); }
+    .day-body { background: var(--cream); padding: 6px; flex: 1; border-radius: 0 0 8px 8px; }
     .day-empty { font-family: Georgia, serif; font-size: 11px; font-style: italic; color: var(--ink-faint); padding: 6px 0; }
 
-    /* ── TIME GRID (Week + Agenda) ── */
-    /* Sticky at the top of its scroll container (not sticky horizontally) so the
-       day headers + untimed strip stay visible while the hour grid scrolls
-       vertically underneath, but still move left/right in sync when the
-       container scrolls horizontally on mobile — same scroll container for
-       both axes, so no manual scroll-syncing needed. */
-    .time-grid-sticky-top { position: sticky; top: 0; z-index: 2; background: var(--paper); min-width: max-content; }
-    .time-grid-header-row { display: flex; gap: 4px; }
-    .time-grid-gutter-spacer { width: 44px; flex-shrink: 0; }
-    .time-grid-header-day { flex: 1; min-width: 134px; display: flex; align-items: baseline; gap: 5px;
-                             padding: 2px 4px 4px; font-family: 'Helvetica Neue', sans-serif; }
-    .time-grid-header-name { font-size: 11px; font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: .05em; }
-    .time-grid-header-date { font-size: 11px; color: var(--ink-soft); }
-    .time-grid-header-day.today .time-grid-header-name,
-    .time-grid-header-day.today .time-grid-header-date { color: var(--accent-dark); }
+    /* ── DAY BLOCK COLUMN (Week + Agenda) ── */
+    /* Untimed tasks/all-day events — a small always-visible chip strip above
+       the timed block list. */
     .time-grid-untimed-row { display: flex; gap: 4px; padding-bottom: 6px; }
-    .time-grid-untimed-day { flex: 1; min-width: 134px; display: flex; flex-direction: column; gap: 3px; }
+    .time-grid-untimed-day { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; border-radius: 6px; transition: background .15s; }
+    .time-grid-untimed-day.drag-over, .agenda-list.drag-over { background: var(--accent-pale); }
     .time-grid-chip { display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
                        background: var(--cream); font-family: 'Helvetica Neue', sans-serif; font-size: 11.5px;
                        color: var(--ink); cursor: pointer; min-height: 22px; touch-action: pan-x pan-y; }
@@ -279,36 +276,11 @@
     .time-grid-chip.done .time-grid-chip-title { text-decoration: line-through; color: var(--ink-faint); }
     .time-grid-chip.dragging { opacity: .5; }
 
-    .time-grid-hours-row { display: flex; gap: 4px; min-width: max-content; position: relative; }
-    .time-grid-gutter { width: 44px; flex-shrink: 0; position: sticky; left: 0; z-index: 1; background: var(--paper); }
-    .time-grid-hour-label { height: 56px; font-family: 'Helvetica Neue', sans-serif; font-size: 10px;
-                             color: var(--ink-faint); text-align: right; padding-right: 6px;
-                             transform: translateY(-6px); box-sizing: border-box; }
-    .time-grid-day-col { flex: 1; min-width: 134px; position: relative; border-left: 1px solid var(--cream-dark);
-                          touch-action: pan-y; }
-    .time-grid-day-col.today { background: var(--accent-pale); }
-    .time-grid-day-col.drag-over { background: var(--cream-dark); }
-    .time-grid-hour-cell { height: 56px; border-top: 1px solid var(--cream-dark); box-sizing: border-box; }
-    .time-block { position: absolute; border-radius: 5px; padding: 2px 5px; overflow: hidden; cursor: pointer;
-                   background: var(--cream); box-shadow: 0 0 0 1px rgba(46,33,24,.08); touch-action: pan-x pan-y; }
-    .time-block.is-task { display: flex; align-items: flex-start; gap: 4px; }
-    .time-block.is-task .task-check { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
-    .time-block.dragging { opacity: .5; }
-    .time-block-title { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; line-height: 1.3;
-                         color: var(--ink); overflow: hidden; text-overflow: ellipsis;
-                         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-    .time-block.done .time-block-title { text-decoration: line-through; color: var(--ink-faint); }
-    .time-now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--rust);
-                      z-index: 1; pointer-events: none; }
-    .time-now-line::before { content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
-                              border-radius: 50%; background: var(--rust); }
-
     .agenda-date-heading { font-size: 22px; font-weight: normal; color: var(--ink); margin-bottom: 10px; }
 
-    /* Compact single-day agenda list (Agenda view) — timed items stack back to
-       back in order with no reserved space for idle hours, unlike Week's full
-       24h grid, since a whole day of empty rows for a few events is mostly
-       wasted space. */
+    /* Timed tasks/events, stacked chronologically with no reserved space for
+       idle hours — no shared hour axis, so nothing needs to stay pixel-aligned
+       across columns while scrolling. */
     .agenda-list { display: flex; flex-direction: column; gap: 3px; padding: 4px 0 24px; }
     .agenda-block { border-radius: 6px; padding: 5px 10px; display: flex; align-items: flex-start;
                      gap: 6px; cursor: pointer; overflow: hidden; color: #fff; }
@@ -622,8 +594,8 @@
          right-aligning them just leaves an odd empty gap, so left-align instead. */
       .toolbar-spacer { display: none; }
       .week-filter-btn { max-width: 104px; }
-      .week-scroll { padding: 8px 12px 12px; overflow-x: auto; }
-      .time-grid-untimed-day, .time-grid-day-col { min-width: 110px; }
+      .week-scroll { padding: 8px 12px 12px; }
+      .week-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
       #week .pending-area { margin: 8px 12px 0; }
       .day-agenda { padding: 10px 12px; }
       .hub-scroll { padding: 10px 12px; }
@@ -1546,8 +1518,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-10h';
-const WHATS_NEW = "Added a Settings option to show or hide declined meeting invitations across Week, Agenda, and Month (Settings → Calendar → Declined invitations). Also fixed a bug where timed Google Calendar events could fail to load entirely.";
+const APP_VERSION = '2026-08-10i';
+const WHATS_NEW = "Week is back to a day-column grid (wraps to fit your screen instead of scrolling sideways), using the same colored time-block style as Agenda. This also fixes the hour labels drifting out of alignment while scrolling.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5677,11 +5649,8 @@ function timeToMinutes(t) {
   return h * 60 + min;
 }
 
-// ── Time-grid (Week + Agenda) ──
-const HOUR_PX = 56; // 24*56 = 1344px scrollable height, ~8h visible in a normal viewport
+// ── Task scheduling (Week + Agenda) ──
 const DEFAULT_TASK_DURATION_MIN = 30;
-const TIME_SNAP_MIN = 15;
-const MIN_BLOCK_PX = 20;
 
 // Tasks store start_time/end_time as native <input type="time"> values ("HH:MM", 24h).
 function taskTimeToMinutes(t) {
@@ -5695,50 +5664,11 @@ function minutesToTaskTime(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
-function minutesToClockLabel(mins) {
-  const h = Math.floor(mins / 60);
-  const ap = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return `${h12} ${ap}`;
-}
 function minutesToClockTime(mins) {
   const h = Math.floor(mins / 60), m = String(mins % 60).padStart(2, '0');
   const ap = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${m} ${ap}`;
-}
-
-// Clusters transitively-overlapping timed items and assigns each a column index
-// + the cluster's total column count, so overlapping items render side-by-side
-// (width 100/colCount%, left col*100/colCount%) instead of stacking on top of
-// each other or hiding behind a "+N more".
-function layoutTimeItems(items) {
-  const sorted = items.slice().sort((a, b) => a.startMin - b.startMin);
-  const clusters = [];
-  let current = [], clusterEnd = -1;
-  sorted.forEach(it => {
-    if (current.length && it.startMin >= clusterEnd) {
-      clusters.push(current);
-      current = [];
-      clusterEnd = -1;
-    }
-    current.push(it);
-    clusterEnd = Math.max(clusterEnd, it.endMin);
-  });
-  if (current.length) clusters.push(current);
-
-  clusters.forEach(cluster => {
-    const colEnds = []; // last endMin placed in each column
-    cluster.forEach(it => {
-      let col = colEnds.findIndex(end => end <= it.startMin);
-      if (col === -1) { col = colEnds.length; colEnds.push(it.endMin); }
-      else colEnds[col] = it.endMin;
-      it._col = col;
-    });
-    const colCount = colEnds.length;
-    cluster.forEach(it => { it.col = it._col; it.colCount = colCount; delete it._col; });
-  });
-  return sorted;
 }
 
 // Small compact chip for an untimed task or all-day event, shown in the strip
@@ -5774,168 +5704,6 @@ function buildUntimedChip(item, key) {
   return chip;
 }
 
-// A timed task or event block, absolutely positioned by layoutTimeItems' col/colCount.
-function buildTimeBlock(item, key) {
-  const block = document.createElement('div');
-  block.className = 'time-block';
-  const top = (item.startMin / 60) * HOUR_PX;
-  const height = Math.max(MIN_BLOCK_PX, ((item.endMin - item.startMin) / 60) * HOUR_PX);
-  block.style.top = top + 'px';
-  block.style.height = height + 'px';
-  block.style.width = `calc(${100 / item.colCount}% - 3px)`;
-  block.style.left = `calc(${(item.col * 100) / item.colCount}% + 2px)`;
-
-  if (item.kind === 'task') {
-    const t = item.task;
-    block.classList.add('is-task');
-    if (t.completed) block.classList.add('done');
-    const check = document.createElement('div');
-    check.className = 'task-check' + (t.completed ? ' done' : '');
-    check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
-    const title = document.createElement('div');
-    title.className = 'time-block-title';
-    title.textContent = t.title;
-    block.appendChild(check);
-    block.appendChild(title);
-    block.onclick = () => openTaskDetail(t.id);
-    setupChipDrag(block, t.id);
-  } else {
-    const ev = item.ev;
-    block.classList.add('is-event');
-    block.style.background = ev.color;
-    const title = document.createElement('div');
-    title.className = 'time-block-title';
-    title.textContent = (ev.time ? ev.time + ' ' : '') + ev.title;
-    block.appendChild(title);
-    block.onclick = (e) => { e.stopPropagation(); ev._dk = key; showCalEvPopup(ev, block); };
-  }
-  return block;
-}
-
-// Shared time-grid renderer for Week (7 dayKeys) and Agenda (1 dayKey). Splits
-// each day's tasks/events into an always-visible untimed strip (no time set —
-// all-day events, tasks without a start_time) and a scrollable 24h hour grid
-// where timed tasks/events render as blocks positioned by their actual time,
-// side-by-side when they overlap (via layoutTimeItems).
-function buildDayTimeGrid(container, dayKeys) {
-  container.innerHTML = '';
-  const todayKey = dateKey(new Date());
-  const visListIds = new Set(getVisibleLists().map(l => l.id));
-  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
-  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-
-  // Day-name/date header row — only needed when showing multiple days (Week);
-  // Agenda's single day already has its full date in the page header above.
-  let headerRow = null;
-  if (dayKeys.length > 1) {
-    headerRow = document.createElement('div');
-    headerRow.className = 'time-grid-header-row';
-    headerRow.appendChild(Object.assign(document.createElement('div'), { className: 'time-grid-gutter-spacer' }));
-  }
-
-  const untimedRow = document.createElement('div');
-  untimedRow.className = 'time-grid-untimed-row';
-  const untimedGutterSpacer = document.createElement('div');
-  untimedGutterSpacer.className = 'time-grid-gutter-spacer';
-  untimedRow.appendChild(untimedGutterSpacer);
-
-  const hoursRow = document.createElement('div');
-  hoursRow.className = 'time-grid-hours-row';
-  const gutter = document.createElement('div');
-  gutter.className = 'time-grid-gutter';
-  for (let h = 0; h < 24; h++) {
-    const lbl = document.createElement('div');
-    lbl.className = 'time-grid-hour-label';
-    lbl.textContent = minutesToClockLabel(h * 60);
-    gutter.appendChild(lbl);
-  }
-  hoursRow.appendChild(gutter);
-
-  dayKeys.forEach(key => {
-    const isToday = key === todayKey;
-
-    if (headerRow) {
-      const d = new Date(key + 'T00:00:00');
-      const hdrCell = document.createElement('div');
-      hdrCell.className = 'time-grid-header-day' + (isToday ? ' today' : '');
-      hdrCell.innerHTML = `<span class="time-grid-header-name">${dayNames[d.getDay()]}</span><span class="time-grid-header-date">${d.getDate()}</span>`;
-      headerRow.appendChild(hdrCell);
-    }
-
-    const dayTasks = tasks.filter(t => visListIds.has(t.list_id) && !t.completed &&
-      (t.week_assigned === key || (!t.week_assigned && t.due_date === key)));
-    const dayEvs = visibleCalEvents(key);
-
-    const untimedItems = [];
-    const timedItems = [];
-
-    dayTasks.forEach(t => {
-      const startMin = taskTimeToMinutes(t.start_time);
-      if (startMin < 0) { untimedItems.push({ kind: 'task', task: t }); return; }
-      let endMin = taskTimeToMinutes(t.end_time);
-      if (endMin < 0 || endMin <= startMin) endMin = startMin + DEFAULT_TASK_DURATION_MIN;
-      timedItems.push({ kind: 'task', task: t, startMin, endMin });
-    });
-    dayEvs.forEach(ev => {
-      if (ev.allDay) { untimedItems.push({ kind: 'event', ev }); return; }
-      const startMin = timeToMinutes(ev.time);
-      if (startMin < 0) { untimedItems.push({ kind: 'event', ev }); return; }
-      const endMin = startMin + (ev.durationMin > 0 ? ev.durationMin : 60);
-      timedItems.push({ kind: 'event', ev, startMin, endMin });
-    });
-
-    // Untimed day column
-    const untimedDay = document.createElement('div');
-    untimedDay.className = 'time-grid-untimed-day';
-    untimedDay.dataset.daykey = key;
-    setupDropZone(untimedDay, key);
-    if (untimedItems.length === 0) {
-      untimedDay.appendChild(Object.assign(document.createElement('div'), { className: 'day-empty', textContent: 'Drop here' }));
-    } else {
-      untimedItems.forEach(item => untimedDay.appendChild(buildUntimedChip(item, key)));
-    }
-    untimedRow.appendChild(untimedDay);
-
-    // Hour day column
-    const dayCol = document.createElement('div');
-    dayCol.className = 'time-grid-day-col' + (isToday ? ' today' : '');
-    dayCol.dataset.daykey = key;
-    for (let h = 0; h < 24; h++) {
-      dayCol.appendChild(Object.assign(document.createElement('div'), { className: 'time-grid-hour-cell' }));
-    }
-    setupTimeGridDropZone(dayCol, key);
-    layoutTimeItems(timedItems).forEach(item => dayCol.appendChild(buildTimeBlock(item, key)));
-    if (isToday) {
-      const line = document.createElement('div');
-      line.className = 'time-now-line';
-      line.style.top = (nowMin / 60) * HOUR_PX + 'px';
-      dayCol.appendChild(line);
-    }
-    hoursRow.appendChild(dayCol);
-  });
-
-  const stickyTop = document.createElement('div');
-  stickyTop.className = 'time-grid-sticky-top';
-  if (headerRow) stickyTop.appendChild(headerRow);
-  stickyTop.appendChild(untimedRow);
-  container.appendChild(stickyTop);
-  container.appendChild(hoursRow);
-
-  // Scroll so ~8h are visible, centered on "now" if today's in view, else a
-  // sensible default start (7 AM) — same idea as Google Calendar opening
-  // scrolled to roughly the current time instead of midnight.
-  const scrollParent = container.closest('.week-scroll, .day-agenda') || container;
-  const anchorMin = dayKeys.includes(todayKey) ? nowMin : 7 * 60;
-  requestAnimationFrame(() => {
-    scrollParent.scrollTop = Math.max(0, (anchorMin / 60) * HOUR_PX - HOUR_PX * 1.5);
-  });
-}
-
-// Compact single-day agenda list — used instead of buildDayTimeGrid's full 24h
-// grid for Agenda, since a whole day of empty hour rows for a handful of
-// events is mostly wasted space. Timed items stack chronologically with no
-// gaps for idle hours, each sized (loosely) by its own duration; untimed
-// tasks/all-day events sit in a small strip above, same as the time-grid.
 const AGENDA_PX_PER_MIN = 0.9;
 const AGENDA_BLOCK_MIN_PX = 40;
 const AGENDA_BLOCK_MAX_PX = 160;
@@ -5955,6 +5723,17 @@ function buildAgendaList(container, key) {
     : sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
   container.appendChild(heading);
 
+  buildDayBlockColumn(container, key);
+}
+
+// One day's worth of content as a compact block list — an always-visible strip
+// of untimed tasks/all-day events, then timed tasks/events stacked
+// chronologically as colored blocks (time range + title, height loosely by
+// duration). No absolute time-of-day positioning or shared hour axis, so
+// there's nothing that needs to stay pixel-aligned across columns while
+// scrolling — used standalone by Agenda (one column) and per-column by Week
+// (seven).
+function buildDayBlockColumn(container, key) {
   const visListIds = new Set(getVisibleLists().map(l => l.id));
   const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
@@ -6001,9 +5780,9 @@ function buildAgendaList(container, key) {
   const list = document.createElement('div');
   list.className = 'agenda-list';
   list.dataset.daykey = key;
-  // The compact list no longer represents absolute time position, so a drop
-  // here (unlike Week's real time-grid) just assigns the day, same as the
-  // untimed strip — set a specific time via the task modal instead.
+  // Blocks aren't positioned by absolute time, so a drop here just assigns
+  // the day, same as the untimed strip — set a specific time via the task
+  // modal instead.
   setupDropZone(list, key);
   timedItems.forEach(item => {
     const block = document.createElement('div');
@@ -6034,35 +5813,6 @@ function buildAgendaList(container, key) {
     list.appendChild(block);
   });
   container.appendChild(list);
-}
-
-// Dropping an untimed task chip onto the hour grid (rather than the untimed
-// strip) also sets a start/end time based on where it lands, snapped to
-// TIME_SNAP_MIN, so tasks can block off the calendar like a real event.
-function setupTimeGridDropZone(dayCol, key) {
-  dayCol.addEventListener('dragover', e => { e.preventDefault(); dayCol.classList.add('drag-over'); });
-  dayCol.addEventListener('dragleave', () => dayCol.classList.remove('drag-over'));
-  dayCol.addEventListener('drop', async e => {
-    e.preventDefault(); dayCol.classList.remove('drag-over');
-    if (!dragTaskId) return;
-    const rect = dayCol.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    await scheduleTaskAt(dragTaskId, key, y);
-    dragTaskId = null;
-  });
-}
-
-async function scheduleTaskAt(taskId, key, y) {
-  const rawMin = (y / HOUR_PX) * 60;
-  const startMin = Math.max(0, Math.min(24 * 60 - TIME_SNAP_MIN, Math.round(rawMin / TIME_SNAP_MIN) * TIME_SNAP_MIN));
-  const endMin = Math.min(24 * 60, startMin + DEFAULT_TASK_DURATION_MIN);
-  const start_time = minutesToTaskTime(startMin);
-  const end_time = minutesToTaskTime(endMin);
-  const t = tasks.find(t => t.id === taskId);
-  if (t) { t.week_assigned = key; t.due_date = key; t.start_time = start_time; t.end_time = end_time; }
-  renderWeek(); renderAgenda(); renderHub(); renderMiniCal();
-  await api('PATCH', `tasks?id=eq.${taskId}`, { week_assigned: key, due_date: key, start_time, end_time });
-  showToast('Task scheduled');
 }
 
 function renderWeek() {
@@ -6101,9 +5851,27 @@ function renderWeek() {
   // Pending chips
   renderPendingChipsInto('pendingChips');
 
-  // Time-grid: day headers + untimed strip + scrollable 24h hour grid, one
-  // column per day, shared with Agenda (single day) via buildDayTimeGrid().
-  buildDayTimeGrid(document.getElementById('weekGrid'), days.map(dateKey));
+  // Day columns — one per day, each its own compact block list (same
+  // renderer as Agenda, via buildDayBlockColumn), wrapping onto multiple
+  // rows on narrow screens instead of scrolling sideways.
+  const grid = document.getElementById('weekGrid');
+  grid.innerHTML = '';
+  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const todayKey = dateKey(new Date());
+  days.forEach((day, i) => {
+    const key = dateKey(day);
+    const col = document.createElement('div');
+    col.className = 'day-col' + (key === todayKey ? ' today' : '');
+    const hdr = document.createElement('div');
+    hdr.className = 'day-hdr';
+    hdr.innerHTML = `<span class="day-hdr-name">${dayNames[i]}</span><span class="day-hdr-date">${day.getDate()}</span>`;
+    col.appendChild(hdr);
+    const body = document.createElement('div');
+    body.className = 'day-body';
+    col.appendChild(body);
+    buildDayBlockColumn(body, key);
+    grid.appendChild(col);
+  });
 }
 
 function setupChipDrag(chip, taskId) {
@@ -6153,14 +5921,7 @@ function touchEndHandler(e) {
   const touch = e.changedTouches[0];
   const el = document.elementFromPoint(touch.clientX, touch.clientY);
   const body = el && el.closest('[data-daykey]');
-  if (body && dragTaskId) {
-    if (body.classList.contains('time-grid-day-col')) {
-      const rect = body.getBoundingClientRect();
-      scheduleTaskAt(dragTaskId, body.dataset.daykey, touch.clientY - rect.top);
-    } else {
-      dropTaskOnDay(dragTaskId, body.dataset.daykey);
-    }
-  }
+  if (body && dragTaskId) dropTaskOnDay(dragTaskId, body.dataset.daykey);
   dragTaskId = null;
 }
 
@@ -6240,9 +6001,6 @@ function dayNav(delta) {
 
 function agendaGoToday() {
   miniMonthDate = new Date();
-  // buildDayTimeGrid()'s own auto-scroll (inside renderAgenda, via selectDay)
-  // already scrolls to the current time, which is the right place to land on
-  // "Today" — no extra scroll handling needed here.
   selectDay(dateKey(new Date()));
 }
 
