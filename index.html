@@ -235,8 +235,6 @@
     .week-filter-menu button.active { font-weight: 600; }
     .week-filter-check { width: 14px; flex-shrink: 0; }
     #week .pending-area { background: var(--cream); margin: 10px 20px 0; padding: 10px; border-radius: 8px; flex-shrink: 0; }
-    .pending-label { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; text-transform: uppercase;
-                     letter-spacing: .06em; color: var(--ink-faint); margin-bottom: 8px; }
     .pending-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; max-height: 80px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     .chip { padding: 4px 10px; border-radius: 20px; background: var(--cream-dark); border: 1px solid var(--accent);
             font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink); cursor: grab;
@@ -304,6 +302,8 @@
                       z-index: 1; pointer-events: none; }
     .time-now-line::before { content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
                               border-radius: 50%; background: var(--rust); }
+
+    .agenda-date-heading { font-size: 22px; font-weight: normal; color: var(--ink); margin-bottom: 10px; }
 
     /* Compact single-day agenda list (Agenda view) — timed items stack back to
        back in order with no reserved space for idle hours, unlike Week's full
@@ -928,7 +928,6 @@
     </div>
     <div class="week-controls" id="weekControls"></div>
     <div class="pending-area">
-      <div class="pending-label">Unassigned — drag onto a day</div>
       <div class="pending-chips" id="pendingChips"></div>
     </div>
     <div class="week-scroll" id="weekScroll">
@@ -957,7 +956,6 @@
       <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
     </div>
     <div class="pending-area">
-      <div class="pending-label">Unassigned — drag onto a day</div>
       <div class="pending-chips" id="monthPendingChips"></div>
     </div>
     <div class="month-jump-row">
@@ -1008,7 +1006,6 @@
       <button class="btn btn-sm btn-primary" onclick="openAddMenu(event)">+ Add ▾</button>
     </div>
     <div class="pending-area">
-      <div class="pending-label">Unassigned — drag onto a day</div>
       <div class="pending-chips" id="dayPendingChips"></div>
     </div>
     <div class="day-view-inner">
@@ -1534,8 +1531,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-10f';
-const WHATS_NEW = "Agenda no longer shows a full empty 24-hour grid — it's now a compact list of just your actual events and tasks for the day, stacked back to back. Also fixed scrolling to the next/previous day in Agenda (it only worked in Week before).";
+const APP_VERSION = '2026-08-10g';
+const WHATS_NEW = "Month view now shows event/task times. Removed the \"Unassigned — drag onto a day\" label text. Agenda's date now shows right above the day's events instead of only at the top of the page, where it was easy to miss.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5901,6 +5898,19 @@ const AGENDA_BLOCK_MAX_PX = 160;
 
 function buildAgendaList(container, key) {
   container.innerHTML = '';
+
+  // Full date heading, right above the actual agenda content — the page-header's
+  // date (way up by the title/nav buttons) was too easy to miss while scanning
+  // the list below it.
+  const todayKey = dateKey(new Date());
+  const sd = new Date(key + 'T00:00:00');
+  const heading = document.createElement('div');
+  heading.className = 'agenda-date-heading';
+  heading.textContent = key === todayKey
+    ? 'Today — ' + sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' })
+    : sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  container.appendChild(heading);
+
   const visListIds = new Set(getVisibleLists().map(l => l.id));
   const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
@@ -6156,13 +6166,6 @@ function renderMiniCal() {
     grid.appendChild(el);
   }
 
-  // Update subtitle
-  const sub = document.getElementById('daySub');
-  if (sub) {
-    const sd = new Date(selectedDay + 'T00:00:00');
-    sub.textContent = sd.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
-  }
-
   const todayBtn = document.getElementById('dayTodayBtn');
   if (todayBtn) todayBtn.classList.toggle('btn-accent', selectedDay !== todayKey);
 
@@ -6265,11 +6268,12 @@ function dayItemsFor(key) {
   const workColor = (PALETTES.find(p => p.id === userPalettes.work) || PALETTES[0]).rail;
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
   return [
-    ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color, ev })),
+    ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color, ev, time: ev.allDay ? null : ev.time })),
     ...dayTasks.map(t => {
       const lst = lists.find(l => l.id === t.list_id);
       const color = (lst?.context || 'work') === 'home' ? homeColor : workColor;
-      return { type: 'task', title: t.title, task: t, color };
+      const startMin = taskTimeToMinutes(t.start_time);
+      return { type: 'task', title: t.title, task: t, color, time: startMin >= 0 ? minutesToClockTime(startMin) : null };
     })
   ];
 }
@@ -6286,7 +6290,7 @@ function fillMonthDayItems(wrap, key) {
       el.style.borderColor = it.color;
       el.style.background = `color-mix(in srgb, ${it.color} 22%, var(--paper))`;
     }
-    el.textContent = it.title;
+    el.textContent = it.time ? `${it.time} ${it.title}` : it.title;
     if (it.type === 'event') {
       el.onclick = (e) => { e.stopPropagation(); it.ev._dk = key; showCalEvPopup(it.ev, el); };
     } else {
