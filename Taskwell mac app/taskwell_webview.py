@@ -110,11 +110,20 @@ def main():
     storage = os.path.expanduser('~/Library/Application Support/Taskwell')
     os.makedirs(storage, exist_ok=True)
 
+    # pywebview's default macOS menu bar includes a standard Edit menu with
+    # Undo/Redo bound to Cmd+Z/Cmd+Shift+Z. As a native menu key-equivalent it
+    # intercepts the keystroke before it ever reaches the page, so Taskwell's
+    # own Cmd+Z undo (completing/deleting a task, etc.) never fires. Passing
+    # an empty menu list suppresses that default Edit menu so Cmd+Z falls
+    # through to the web app instead. Standard text editing (Cmd+C/V/X,
+    # right-click Cut/Copy/Paste) is handled by WKWebView itself and isn't
+    # affected by the app-level menu.
     webview.start(
         debug=False,
         private_mode=False,
         storage_path=storage,
         user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+        menu=[],
     )
 
 
