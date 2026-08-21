@@ -70,10 +70,17 @@ class CallbackHandler(BaseHTTPRequestHandler):
         if code and _window:
             safe_code = code.replace("'", "\\'")
             safe_state = state.replace("'", "\\'")
-            _window.evaluate_js(f"processGcalCallback('{safe_code}', '{safe_state}')")
+            # Both Google and Outlook connect flows share this one local
+            # callback port (see connectGoogleCalendar/connectOutlookCalendar
+            # in taskwell.html) — state tells us which one just completed.
+            handler = 'processOutlookCallback' if state == 'outlook_auth' else 'processGcalCallback'
+            _window.evaluate_js(f"{handler}('{safe_code}', '{safe_state}')")
 
 
 class MacAPI:
+    # Name is Google-specific from when this was written, but it's a generic
+    # "open this URL in the system browser" bridge — reused by Outlook's
+    # connect flow too (see connectOutlookCalendar in taskwell.html).
     def open_google_auth(self, url):
         webbrowser.open(url)
         return True
