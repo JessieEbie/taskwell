@@ -26,7 +26,26 @@ serve(async (req) => {
     return new Response("Forbidden", { status: 403, headers: CORS });
   }
 
-  const { action, code, code_verifier, redirect_uri, refresh_token } = await req.json();
+  const { action, code, code_verifier, redirect_uri, refresh_token, access_token, method, path, graph_body } = await req.json();
+
+  // Microsoft Graph doesn't enable CORS for this app's registration (it's a
+  // confidential/Web client, not a Single-page application), so the browser
+  // can't call graph.microsoft.com directly — every such call is blocked at
+  // the network level before any response even comes back ("Failed to
+  // fetch"). Proxying it through this edge function sidesteps that entirely:
+  // server-to-server calls aren't subject to browser CORS at all.
+  if (action === "proxy") {
+    if (!access_token || !path) return new Response("Missing access_token or path", { status: 400, headers: CORS });
+    const r = await fetch(`https://graph.microsoft.com/v1.0/${path}`, {
+      method: method || "GET",
+      headers: { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" },
+      body: graph_body ? JSON.stringify(graph_body) : undefined,
+    });
+    const text = await r.text();
+    // A 204/304 (or any empty body) Response must have a null body, not "" —
+    // Deno throws constructing one otherwise.
+    return new Response(text || null, { status: r.status, headers: { ...CORS, "Content-Type": r.headers.get("Content-Type") || "application/json" } });
+  }
 
   let body: Record<string, string>;
   if (action === "exchange") {
