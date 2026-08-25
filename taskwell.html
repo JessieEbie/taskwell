@@ -198,13 +198,19 @@
     .task-del { background: none; border: none; color: var(--ink-faint); font-size: 16px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .task-del:hover { color: var(--rust); }
     /* In-progress toggle — a separate control from the completion checkbox so
-       marking something "started" doesn't fight with marking it "done". */
-    .task-inprogress-dot { width: 14px; height: 14px; border: 1.5px solid var(--khaki); border-radius: 50%;
-                            cursor: pointer; flex-shrink: 0; background: none; padding: 0; }
-    .task-inprogress-dot.active { background: var(--khaki); }
+       marking something "started" doesn't fight with marking it "done". A small
+       play-triangle icon on the right side of the row, well away from the
+       checkbox, so the two aren't mistaken for each other. */
+    .task-inprogress-btn { background: none; border: none; color: var(--ink-faint); font-size: 13px;
+                            cursor: pointer; padding: 0 2px; flex-shrink: 0; line-height: 1; }
+    .task-inprogress-btn:hover { color: var(--rust); }
+    /* Bold + a strongly contrasting color (not the muted khaki row accent below,
+       which reads too close to the unstarted gray to tell apart at a glance). */
+    .task-inprogress-btn.active { color: var(--rust); font-weight: bold; }
     .task-row.in-progress { border-left: 3px solid var(--khaki); padding-left: 5px; margin-left: -8px; }
     .time-grid-chip.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
     .agenda-block.is-task.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
+    .agenda-block-info { flex: 1; min-width: 0; }
     .today-picker-list { max-height: 60vh; overflow-y: auto; margin: 6px 0 10px; }
     .today-picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer;
                           border-bottom: 1px solid var(--cream-dark); }
@@ -296,7 +302,7 @@
                        color: var(--ink); cursor: pointer; min-height: 22px; touch-action: pan-x pan-y; }
     .time-grid-chip.is-event { color: var(--ink); }
     .time-grid-chip .task-check { width: 12px; height: 12px; flex-shrink: 0; }
-    .time-grid-chip .task-inprogress-dot { width: 9px; height: 9px; flex-shrink: 0; }
+    .time-grid-chip .task-inprogress-btn { font-size: 10px; }
     .time-grid-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
     .time-grid-chip.done .time-grid-chip-title { text-decoration: line-through; color: var(--ink-faint); }
     .time-grid-chip.dragging { opacity: .5; }
@@ -312,9 +318,8 @@
     .agenda-block.is-task .task-check { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px;
                                           border-color: rgba(255,255,255,.8); }
     .agenda-block.is-task .task-check.done { background: #fff; }
-    .agenda-block.is-task .task-inprogress-dot { width: 10px; height: 10px; flex-shrink: 0; margin-top: 4px;
-                                                   border-color: rgba(255,255,255,.8); }
-    .agenda-block.is-task .task-inprogress-dot.active { background: #fff; }
+    .agenda-block.is-task .task-inprogress-btn { color: rgba(255,255,255,.75); font-size: 11px; }
+    .agenda-block.is-task .task-inprogress-btn.active { color: #fff; }
     .agenda-block-time { font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; opacity: .9; }
     .agenda-block-title { font-size: 13px; font-weight: 600; line-height: 1.3; }
 
@@ -584,7 +589,11 @@
     /* ── Touch sizes ── */
     .tab-btn { min-height: 52px; }
     .ctx-btn { min-height: 38px; }
-    .task-check { width: 24px; height: 24px; flex-shrink: 0; }
+    /* Bigger tap target only on actual touchscreens (iPad/iPhone) — this used to
+       apply unconditionally, making the checkbox oversized on desktop/trackpad too. */
+    @media (pointer: coarse) {
+      .task-check { width: 24px; height: 24px; flex-shrink: 0; }
+    }
     .btn { min-height: 36px; }
     .btn-sm { min-height: 32px; }
     .chip { min-height: 36px; display: flex; align-items: center; }
@@ -1300,6 +1309,10 @@
           <div><b>Hub</b> — your lists, grouped into sections. This is where you add lists and tasks, and rename or delete sections.</div>
         </div>
         <div class="guide-item">
+          <span class="guide-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span>
+          <div><b>Today</b> — just today's tasks, no calendar clutter. "+ Add from Lists" pulls in an existing task from anywhere without opening the Hub.</div>
+        </div>
+        <div class="guide-item">
           <span class="guide-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>
           <div><b>Week</b> — a 7-day board. Drag a task onto a day to plan out your week.</div>
         </div>
@@ -1315,6 +1328,7 @@
 
       <div class="settings-block">
         <div class="settings-block-title">A few handy extras</div>
+        <div class="guide-item"><span class="guide-ico">▶</span><div>The <b>▶</b> next to a task marks it <b>in progress</b> — separate from the checkbox, which marks it done. It's faint gray until you click it, then turns orange; it clears automatically once you complete the task.</div></div>
         <div class="guide-item"><span class="guide-ico">🎨</span><div>Give Work and Home their own colors under <b>Settings → Colors</b>.</div></div>
         <div class="guide-item"><span class="guide-ico">↩︎</span><div>Undo your last change (like a deleted task or list) with <b>Cmd/Ctrl + Z</b>.</div></div>
         <div class="guide-item"><span class="guide-ico">📅</span><div>Connect Google Calendar or add view-only calendar feeds under <b>Settings → Calendar</b>.</div></div>
@@ -1579,8 +1593,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-25';
-const WHATS_NEW = "Added an in-progress indicator you can click on any task, and a new Today's Tasks tab in the rail — a calendar-free view of just what's due or scheduled today, with a way to pull in tasks from any list.";
+const APP_VERSION = '2026-08-25c';
+const WHATS_NEW = "Made the in-progress icon (▶) actually stand out — it now turns orange when active instead of a shade of tan barely different from unstarted. Also added Today's Tasks and the in-progress icon to the in-app guide (Settings → About).";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -5163,12 +5177,6 @@ function makeTaskRow(task, opts) {
   handle.textContent = '⠿';
   row.appendChild(handle);
 
-  const inProg = document.createElement('button');
-  inProg.className = 'task-inprogress-dot' + (task.in_progress ? ' active' : '');
-  inProg.title = task.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
-  inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(task.id); };
-  row.appendChild(inProg);
-
   const check = document.createElement('div');
   check.className = 'task-check' + (done ? ' done' : '');
   check.onclick = () => toggleTask(task.id);
@@ -5218,6 +5226,15 @@ function makeTaskRow(task, opts) {
       tag.textContent = lst.name;
       row.appendChild(tag);
     }
+  }
+
+  if (!done) {
+    const inProg = document.createElement('button');
+    inProg.className = 'task-inprogress-btn' + (task.in_progress ? ' active' : '');
+    inProg.title = task.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+    inProg.textContent = '▶';
+    inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(task.id); };
+    row.appendChild(inProg);
   }
 
   const editBtn = document.createElement('button');
@@ -6078,19 +6095,22 @@ function buildUntimedChip(item, key) {
     chip.classList.add('is-task');
     if (t.completed) chip.classList.add('done');
     if (t.in_progress) chip.classList.add('in-progress');
-    const inProg = document.createElement('button');
-    inProg.className = 'task-inprogress-dot' + (t.in_progress ? ' active' : '');
-    inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
-    inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
     const check = document.createElement('div');
     check.className = 'task-check' + (t.completed ? ' done' : '');
     check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
     const title = document.createElement('span');
     title.className = 'time-grid-chip-title';
     title.textContent = t.title;
-    chip.appendChild(inProg);
     chip.appendChild(check);
     chip.appendChild(title);
+    if (!t.completed) {
+      const inProg = document.createElement('button');
+      inProg.className = 'task-inprogress-btn' + (t.in_progress ? ' active' : '');
+      inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+      inProg.textContent = '▶';
+      inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
+      chip.appendChild(inProg);
+    }
     chip.onclick = () => openTaskDetail(t.id);
     setupChipDrag(chip, t.id);
   } else {
@@ -6201,18 +6221,22 @@ function buildDayBlockColumn(container, key) {
       const t = item.task;
       block.classList.add('is-task');
       if (t.in_progress) block.classList.add('in-progress');
-      const inProg = document.createElement('button');
-      inProg.className = 'task-inprogress-dot' + (t.in_progress ? ' active' : '');
-      inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
-      inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
-      block.appendChild(inProg);
       const check = document.createElement('div');
       check.className = 'task-check';
       check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
       block.appendChild(check);
       const info = document.createElement('div');
+      info.className = 'agenda-block-info';
       info.innerHTML = `<div class="agenda-block-time">${timeLbl}</div><div class="agenda-block-title">${t.title}</div>`;
       block.appendChild(info);
+      if (!t.completed) {
+        const inProg = document.createElement('button');
+        inProg.className = 'task-inprogress-btn' + (t.in_progress ? ' active' : '');
+        inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+        inProg.textContent = '▶';
+        inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
+        block.appendChild(inProg);
+      }
       block.onclick = () => openTaskDetail(t.id);
       setupChipDrag(block, t.id);
     } else {
