@@ -1530,8 +1530,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-24';
-const WHATS_NEW = "Fixed Outlook Calendar events failing to load (\"couldn't fetch\") — calls to Microsoft's calendar API are now routed through Taskwell's own server instead of your browser, since Microsoft blocks those calls from loading directly in a browser tab.";
+const APP_VERSION = '2026-08-24b';
+const WHATS_NEW = "Fixed Outlook Calendar events disappearing after a sync: a failed sync used to wipe out already-loaded Outlook events even though the connection was still fine. A failed sync now leaves your existing events in place instead of clearing them.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3131,8 +3131,11 @@ function extractMeetingLinkFromText(text) {
   return m ? m[0] : null;
 }
 
+// Returns true on success, false on failure — fetchAllFeeds() uses this to decide
+// whether to restore the previous cycle's Outlook events instead of leaving them
+// wiped (see the wipe-on-failure comment in fetchAllFeeds).
 async function fetchOutlookCalendarEvents() {
-  if (!outlookTokens) return;
+  if (!outlookTokens) return true;
   const today = new Date(); today.setHours(0,0,0,0);
   // A full 4-year window (365 days back, 1095 forward) meant every sync made
   // Google/Outlook expand every recurring meeting into every occurrence across
@@ -3180,6 +3183,7 @@ async function fetchOutlookCalendarEvents() {
         description: item.bodyPreview || null, meetLink,
         webLink: item.webLink || null });
     });
+    return true;
   } catch(e) {
     // Previously a silent console.error — a real failure (expired token, revoked
     // access, network issue) looked identical to "nothing changed," and since
@@ -3194,13 +3198,14 @@ async function fetchOutlookCalendarEvents() {
       // a full reconnect (same pattern as Google's handleGcalError).
       updateOutlookStatus();
       showToast('Outlook Calendar disconnected — please reconnect in Settings → Calendar', true);
-      return;
+      return false;
     }
     const key = 'Outlook:' + msg;
     if (!shownGcalErrors.has(key)) {
       shownGcalErrors.add(key);
       showToast(`Outlook Calendar error: ${msg}`, true);
     }
+    return false;
   }
 }
 
@@ -3666,7 +3671,7 @@ async function fetchFeed(feed, colorOverride) {
 }
 
 async function fetchGoogleCalendarEvents() {
-  if (!googleTokens) return;
+  if (!googleTokens) return [];
   const today = new Date(); today.setHours(0,0,0,0);
   // A full 4-year window (365 days back, 1095 forward) meant every sync made
   // Google/Outlook expand every recurring meeting into every occurrence across
@@ -3739,24 +3744,41 @@ async function fetchGoogleCalendarEvents() {
       showToast(`Google Calendar (${label}) error: ${msg}`, true);
     }
   };
+  // Each entry resolves to the failed source key ('google'/'google_second') on
+  // failure, or null on success — fetchAllFeeds() uses this to restore only the
+  // sources that actually failed instead of leaving them wiped.
   const fetches = [
     gcalApi('GET', `calendars/primary/events?${params}`)
-      .then(res => pushItems(res.items, homeColor, 'google'))
-      .catch(handleGcalError('Home'))
+      .then(res => { pushItems(res.items, homeColor, 'google'); return null; })
+      .catch(e => { handleGcalError('Home')(e); return 'google'; })
   ];
   if (secondCalId) {
     const secondColor = calSources.find(s => s.key === 'google_second')?.color || homeColor;
     fetches.push(
       gcalApi('GET', `calendars/${encodeURIComponent(secondCalId)}/events?${params}`)
-        .then(res => pushItems(res.items, secondColor, 'google_second'))
-        .catch(handleGcalError('Second calendar'))
+        .then(res => { pushItems(res.items, secondColor, 'google_second'); return null; })
+        .catch(e => { handleGcalError('Second calendar')(e); return 'google_second'; })
     );
   }
-  await Promise.all(fetches);
+  return (await Promise.all(fetches)).filter(Boolean);
 }
 
 async function fetchAllFeeds() {
+  // A source that fails this cycle (network blip, token hiccup) used to just come
+  // back empty — since calEvents is rebuilt from scratch every cycle, that source's
+  // events would vanish from the view even though nothing was actually wrong with
+  // the connection. Snapshot the outgoing data so a failed source's prior events
+  // can be restored instead of dropped.
+  const prevEvents = calEvents;
   calEvents = {};
+  const restoreSource = (sourceKey) => {
+    Object.entries(prevEvents).forEach(([dk, arr]) => {
+      const keep = arr.filter(ev => ev.source === sourceKey);
+      if (!keep.length) return;
+      if (!calEvents[dk]) calEvents[dk] = [];
+      calEvents[dk].push(...keep);
+    });
+  };
   await Promise.all([
     ...calFeeds.map(async (feed) => {
       const sourceKey = 'ics:' + feed.id;
@@ -3769,8 +3791,8 @@ async function fetchAllFeeds() {
         calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
       });
     }),
-    fetchGoogleCalendarEvents(),
-    fetchOutlookCalendarEvents()
+    fetchGoogleCalendarEvents().then(failedSources => failedSources.forEach(restoreSource)),
+    fetchOutlookCalendarEvents().then(ok => { if (!ok) restoreSource('outlook'); })
   ]);
   try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
   renderWeek(); renderAgenda(); refreshMonthDayCells();
