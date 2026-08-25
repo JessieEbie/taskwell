@@ -119,7 +119,7 @@
     .btn-accent:hover { background: var(--accent-dark); color: var(--ink) !important; }
 
     /* ── HUB ── */
-    #hub .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; flex-shrink: 0; flex-wrap: wrap; }
+    #hub .hub-controls, #today .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; flex-shrink: 0; flex-wrap: wrap; }
     .scroll-area { flex: 1; overflow-y: auto; padding: 16px 20px 24px; -webkit-overflow-scrolling: touch; }
     .section-block { margin-top: 20px; }
     .section-hdr { display: flex; align-items: center; gap: 0; cursor: pointer;
@@ -197,6 +197,22 @@
     .task-edit:hover { color: var(--accent); }
     .task-del { background: none; border: none; color: var(--ink-faint); font-size: 16px; cursor: pointer; padding: 0 2px; flex-shrink: 0; }
     .task-del:hover { color: var(--rust); }
+    /* In-progress toggle — a separate control from the completion checkbox so
+       marking something "started" doesn't fight with marking it "done". */
+    .task-inprogress-dot { width: 14px; height: 14px; border: 1.5px solid var(--khaki); border-radius: 50%;
+                            cursor: pointer; flex-shrink: 0; background: none; padding: 0; }
+    .task-inprogress-dot.active { background: var(--khaki); }
+    .task-row.in-progress { border-left: 3px solid var(--khaki); padding-left: 5px; margin-left: -8px; }
+    .time-grid-chip.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
+    .agenda-block.is-task.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
+    .today-picker-list { max-height: 60vh; overflow-y: auto; margin: 6px 0 10px; }
+    .today-picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer;
+                          border-bottom: 1px solid var(--cream-dark); }
+    .today-picker-item:hover { background: var(--cream-dark); }
+    .today-picker-title { font-size: 13px; color: var(--ink); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .today-picker-list-name { font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
+    .today-picker-empty { font-size: 13px; color: var(--ink-faint); padding: 10px 4px; }
+    .task-list-tag { font-size: 10px; color: var(--ink-faint); margin-left: 5px; flex-shrink: 0; }
     .done-section { margin-top: 8px; }
     .done-hdr { display: flex; align-items: center; justify-content: space-between;
                 font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-faint); }
@@ -280,6 +296,7 @@
                        color: var(--ink); cursor: pointer; min-height: 22px; touch-action: pan-x pan-y; }
     .time-grid-chip.is-event { color: var(--ink); }
     .time-grid-chip .task-check { width: 12px; height: 12px; flex-shrink: 0; }
+    .time-grid-chip .task-inprogress-dot { width: 9px; height: 9px; flex-shrink: 0; }
     .time-grid-chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
     .time-grid-chip.done .time-grid-chip-title { text-decoration: line-through; color: var(--ink-faint); }
     .time-grid-chip.dragging { opacity: .5; }
@@ -295,6 +312,9 @@
     .agenda-block.is-task .task-check { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px;
                                           border-color: rgba(255,255,255,.8); }
     .agenda-block.is-task .task-check.done { background: #fff; }
+    .agenda-block.is-task .task-inprogress-dot { width: 10px; height: 10px; flex-shrink: 0; margin-top: 4px;
+                                                   border-color: rgba(255,255,255,.8); }
+    .agenda-block.is-task .task-inprogress-dot.active { background: #fff; }
     .agenda-block-time { font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; opacity: .9; }
     .agenda-block-title { font-size: 13px; font-weight: 600; line-height: 1.3; }
 
@@ -855,6 +875,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
   </button>
+  <button class="tab-btn" data-tab="today" onclick="switchTab('today')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+    <span>Today</span>
+  </button>
   <button class="tab-btn tab-classic-cal active" data-tab="day" onclick="switchTab('day')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     <span>Day</span>
@@ -897,6 +921,19 @@
       <button class="btn btn-sm btn-ghost" onclick="clearAllCompleted()">Clear all completed</button>
     </div>
     <div class="scroll-area" id="hubScrollArea"></div>
+  </section>
+
+  <!-- TODAY -->
+  <section id="today" class="section">
+    <div class="page-header">
+      <div class="page-title">Today's Tasks</div>
+      <div class="page-sub" id="todaySub"></div>
+    </div>
+    <div class="hub-controls">
+      <button class="btn btn-primary" onclick="openAddTaskModal(todayKey())">+ Add Task</button>
+      <button class="btn btn-primary" onclick="openAddToTodayModal()">+ Add from Lists</button>
+    </div>
+    <div class="scroll-area" id="todayScrollArea"></div>
   </section>
 
   <!-- WEEK -->
@@ -1479,8 +1516,20 @@
     <div id="taskDetailNotes" class="task-detail-notes"></div>
     <div class="modal-row" style="margin-top:14px">
       <button class="btn" onclick="closeModal('taskDetailModal')">Close</button>
+      <button class="btn" id="taskDetailInProgressBtn">Mark in progress</button>
       <button class="btn" id="taskDetailToggleBtn">Mark complete</button>
       <button class="btn btn-primary" id="taskDetailEditBtn">Edit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Existing Task to Today Modal -->
+<div class="modal-overlay" id="addToTodayModal">
+  <div class="modal modal-wide">
+    <div class="modal-title">Add from Lists</div>
+    <div id="addToTodayList" class="today-picker-list"></div>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('addToTodayModal')">Close</button>
     </div>
   </div>
 </div>
@@ -1530,8 +1579,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-24b';
-const WHATS_NEW = "Fixed Outlook Calendar events disappearing after a sync: a failed sync used to wipe out already-loaded Outlook events even though the connection was still fine. A failed sync now leaves your existing events in place instead of clearing them.";
+const APP_VERSION = '2026-08-25';
+const WHATS_NEW = "Added an in-progress indicator you can click on any task, and a new Today's Tasks tab in the rail — a calendar-free view of just what's due or scheduled today, with a way to pull in tasks from any list.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1621,6 +1670,7 @@ create table if not exists public.tasks (
   user_id uuid references auth.users,
   title text not null,
   completed boolean default false,
+  in_progress boolean default false,
   due_date date,
   week_assigned date,
   notes text,
@@ -1927,6 +1977,7 @@ function getVisibleLists() {
   return lists.filter(l => (l.context || 'work') === currentContext);
 }
 function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayKey() { return dateKey(new Date()); }
 function parseDate(val) {
   if (!val || !val.trim()) return null;
   const parts = val.split('/');
@@ -4534,6 +4585,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  if (tab === 'today') renderTodayTasks();
   if (tab === 'week') renderWeek();
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
   if (tab === 'month') renderMonthView();
@@ -5099,9 +5151,9 @@ function makeListBlock(lst) {
   return block;
 }
 
-function makeTaskRow(task) {
+function makeTaskRow(task, opts) {
   const row = document.createElement('div');
-  row.className = 'task-row';
+  row.className = 'task-row' + (task.in_progress ? ' in-progress' : '');
   row.dataset.taskId = task.id;
   const done = task.completed;
 
@@ -5110,6 +5162,12 @@ function makeTaskRow(task) {
   handle.title = 'Drag to move to another list';
   handle.textContent = '⠿';
   row.appendChild(handle);
+
+  const inProg = document.createElement('button');
+  inProg.className = 'task-inprogress-dot' + (task.in_progress ? ' active' : '');
+  inProg.title = task.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+  inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(task.id); };
+  row.appendChild(inProg);
 
   const check = document.createElement('div');
   check.className = 'task-check' + (done ? ' done' : '');
@@ -5150,6 +5208,16 @@ function makeTaskRow(task) {
     else if (diff === 1) { badge.classList.add('soon'); badge.textContent = 'Tomorrow'; }
     else { badge.classList.add('soon'); badge.textContent = fmtDisplay(task.due_date); }
     row.appendChild(badge);
+  }
+
+  if (opts?.showListName) {
+    const lst = lists.find(l => l.id === task.list_id);
+    if (lst) {
+      const tag = document.createElement('span');
+      tag.className = 'task-list-tag';
+      tag.textContent = lst.name;
+      row.appendChild(tag);
+    }
   }
 
   const editBtn = document.createElement('button');
@@ -5245,9 +5313,20 @@ async function toggleTask(id) {
   }
   lastAction = { type: 'toggle', taskId: id, prevCompleted: t.completed };
   t.completed = !t.completed;
+  // A completed task can't also be "in progress" — clear it so the indicator
+  // doesn't linger on finished work.
+  if (t.completed) t.in_progress = false;
   renderHub(); renderWeek(); renderAgenda();
-  await api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed });
+  await api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed, in_progress: t.in_progress });
   if (completingNow && t.repeat_freq) await createNextRepeatOccurrence(t);
+}
+
+async function toggleInProgress(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t || t.completed) return;
+  t.in_progress = !t.in_progress;
+  renderHub(); renderWeek(); renderAgenda();
+  await api('PATCH', `tasks?id=eq.${id}`, { in_progress: t.in_progress });
 }
 
 async function deleteTask(id) {
@@ -5515,6 +5594,13 @@ function openTaskDetail(id) {
     await toggleTask(id);
     closeModal('taskDetailModal');
   };
+  const inProgBtn = document.getElementById('taskDetailInProgressBtn');
+  inProgBtn.style.display = t.completed ? 'none' : '';
+  inProgBtn.textContent = t.in_progress ? 'Unmark in progress' : 'Mark in progress';
+  inProgBtn.onclick = async () => {
+    await toggleInProgress(id);
+    closeModal('taskDetailModal');
+  };
   openModal('taskDetailModal');
 }
 
@@ -5580,11 +5666,11 @@ function listSelectOptionsGroupedBySection() {
 // Quick "+ Task" add, available from every calendar view (Agenda/Week/Month).
 // Lets you pick any list and an optional due date — blank leaves it unassigned,
 // same as adding a task from the Hub with no date.
-function openAddTaskModal() {
+function openAddTaskModal(defaultDate) {
   const sel = document.getElementById('addTaskListSelect');
   sel.innerHTML = listSelectOptionsGroupedBySection();
   document.getElementById('addTaskTitle').value = '';
-  document.getElementById('addTaskDate').value = '';
+  document.getElementById('addTaskDate').value = defaultDate ? fmtDisplay(defaultDate) : '';
   document.getElementById('addTaskStart').value = '';
   document.getElementById('addTaskEnd').value = '';
   openModal('addTaskModal');
@@ -5611,6 +5697,83 @@ async function confirmAddTask() {
     renderHub(); renderWeek(); renderAgenda(); refreshMonthDayCells();
     showToast('Task added');
   } catch(e) { showToast('Error adding task: ' + e.message, true); }
+}
+
+// ══════════════════════════════
+// TODAY
+// ══════════════════════════════
+// A flat, calendar-free view of just today's tasks — same underlying "is this
+// task today" rule buildDayBlockColumn uses for the calendar views
+// (week_assigned wins if set, else due_date), just without any calendar events
+// mixed in.
+function renderTodayTasks() {
+  const area = document.getElementById('todayScrollArea');
+  if (!area) return;
+  const key = todayKey();
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const todaysTasks = tasks.filter(t => visListIds.has(t.list_id) &&
+    (t.week_assigned === key || (!t.week_assigned && t.due_date === key)));
+  const openTasks = todaysTasks.filter(t => !t.completed);
+  const doneTasks = todaysTasks.filter(t => t.completed);
+
+  document.getElementById('todaySub').textContent =
+    `${openTasks.length} open task${openTasks.length !== 1 ? 's' : ''}`;
+
+  area.innerHTML = '';
+  if (openTasks.length === 0 && doneTasks.length === 0) {
+    const emp = document.createElement('div');
+    emp.className = 'no-tasks';
+    emp.textContent = 'Nothing scheduled for today yet.';
+    area.appendChild(emp);
+  } else if (openTasks.length === 0) {
+    const emp = document.createElement('div');
+    emp.className = 'no-tasks';
+    emp.textContent = 'No open tasks';
+    area.appendChild(emp);
+  } else {
+    openTasks.forEach(t => area.appendChild(makeTaskRow(t, { showListName: true })));
+  }
+
+  if (doneTasks.length > 0) {
+    const doneSection = document.createElement('div');
+    doneSection.className = 'done-section';
+    doneSection.innerHTML = `<div class="done-hdr"><span>${doneTasks.length} completed</span></div>`;
+    doneTasks.forEach(t => doneSection.appendChild(makeTaskRow(t, { showListName: true })));
+    area.appendChild(doneSection);
+  }
+}
+
+// Picker for pulling an existing task from any list onto today — reuses
+// dropTaskOnDay() (the same assignment used by dragging a task onto a
+// calendar day) rather than duplicating its update/PATCH logic.
+function openAddToTodayModal() {
+  const key = todayKey();
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const candidates = tasks.filter(t => visListIds.has(t.list_id) && !t.completed &&
+    !(t.week_assigned === key || (!t.week_assigned && t.due_date === key)));
+
+  const listEl = document.getElementById('addToTodayList');
+  listEl.innerHTML = '';
+  if (candidates.length === 0) {
+    listEl.innerHTML = '<div class="today-picker-empty">No other open tasks to add — everything open is already scheduled for today.</div>';
+  } else {
+    candidates
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .forEach(t => {
+        const lst = lists.find(l => l.id === t.list_id);
+        const row = document.createElement('div');
+        row.className = 'today-picker-item';
+        row.innerHTML = `<span class="today-picker-title"></span><span class="today-picker-list-name"></span>`;
+        row.querySelector('.today-picker-title').textContent = t.title;
+        row.querySelector('.today-picker-list-name').textContent = lst?.name || '';
+        row.onclick = async () => {
+          await dropTaskOnDay(t.id, key);
+          openAddToTodayModal(); // refresh the picker in place so it's clear it moved
+        };
+        listEl.appendChild(row);
+      });
+  }
+  openModal('addToTodayModal');
 }
 
 // ══════════════════════════════
@@ -5914,12 +6077,18 @@ function buildUntimedChip(item, key) {
     const t = item.task;
     chip.classList.add('is-task');
     if (t.completed) chip.classList.add('done');
+    if (t.in_progress) chip.classList.add('in-progress');
+    const inProg = document.createElement('button');
+    inProg.className = 'task-inprogress-dot' + (t.in_progress ? ' active' : '');
+    inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+    inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
     const check = document.createElement('div');
     check.className = 'task-check' + (t.completed ? ' done' : '');
     check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
     const title = document.createElement('span');
     title.className = 'time-grid-chip-title';
     title.textContent = t.title;
+    chip.appendChild(inProg);
     chip.appendChild(check);
     chip.appendChild(title);
     chip.onclick = () => openTaskDetail(t.id);
@@ -6031,6 +6200,12 @@ function buildDayBlockColumn(container, key) {
     if (item.kind === 'task') {
       const t = item.task;
       block.classList.add('is-task');
+      if (t.in_progress) block.classList.add('in-progress');
+      const inProg = document.createElement('button');
+      inProg.className = 'task-inprogress-dot' + (t.in_progress ? ' active' : '');
+      inProg.title = t.in_progress ? 'In progress — click to unmark' : 'Mark as in progress';
+      inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
+      block.appendChild(inProg);
       const check = document.createElement('div');
       check.className = 'task-check';
       check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
@@ -6108,6 +6283,10 @@ function renderWeek() {
     buildDayBlockColumn(body, key);
     grid.appendChild(col);
   });
+  // Piggybacks on renderWeek() rather than being called at every one of the
+  // ~20 call sites that mutate tasks — renderWeek() already runs after all of
+  // them, so this keeps the Today tab in sync for free.
+  renderTodayTasks();
 }
 
 function setupChipDrag(chip, taskId) {
