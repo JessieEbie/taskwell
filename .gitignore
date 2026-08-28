@@ -9,3 +9,7 @@ __pycache__/
 # py2app build output
 Taskwell mac app/build/
 Taskwell mac app/dist/
+
+# Local regression test harness — a tool Claude runs before pushing changes,
+# not part of the shipped app. Never committed/deployed.
+tests/
