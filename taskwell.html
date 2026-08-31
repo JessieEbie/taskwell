@@ -1595,8 +1595,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-30';
-const WHATS_NEW = "Outlook Calendar reliability: events now load in pages (so a month of data appears quickly instead of waiting on a single slow request), a failed first attempt retries automatically, and every request has a timeout. Sync also genuinely re-fetches now — previously a stuck sync could leave the button doing nothing until you reloaded.";
+const APP_VERSION = '2026-08-31';
+const WHATS_NEW = "Fixed subscribed calendar feeds vanishing: a feed that timed out dropped all of its events and stayed empty, and one failing feed could wipe every other calendar too. Feeds now keep their last-loaded events, get far longer to respond, and each calendar fails on its own. Declined meetings are also now hidden on subscribed feeds, matching the setting that already worked for connected accounts.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3298,9 +3298,16 @@ async function fetchOutlookCalendarEvents() {
           throw e;
         }
       }
-      const batch = res?.value || [];
-      batch.forEach(pushItem);
-      loaded += batch.length;
+      // A 200 whose body isn't a Graph collection — an empty body, an
+      // edge-function error page, a truncated response — used to fall through
+      // `res?.value || []` as "zero events, success". That reported nothing
+      // wrong while wiping every Outlook event off the calendar. Treat an
+      // unreadable page as the failure it is, so the previous events are kept.
+      if (!res || !Array.isArray(res.value)) {
+        throw new Error('Outlook sent back an unreadable response');
+      }
+      res.value.forEach(pushItem);
+      loaded += res.value.length;
       pages++;
       // nextLink is an absolute Graph URL; the proxy prepends the API root itself.
       const next = res?.['@odata.nextLink'];
@@ -3714,6 +3721,12 @@ function parseICS(text, feedColor) {
     if (propName === 'RECURRENCE-ID') ev.recurrenceId = val;
     if (propName === 'EXDATE') (ev.exdates = ev.exdates || []).push(...val.split(','));
     if (propName === 'STATUS') ev.status = val.trim().toUpperCase();
+    // A meeting you declined stays in a published .ics feed, marked with
+    // PARTSTAT=DECLINED on your ATTENDEE line. Nothing here parsed ATTENDEE at
+    // all, so the "show declined events" setting silently applied only to the
+    // Google/Outlook account connections — declined meetings always showed up
+    // on subscribed feeds no matter what that setting said.
+    if (propName === 'ATTENDEE' && /PARTSTAT\s*=\s*DECLINED/i.test(keyPart)) ev.declined = true;
     if (propName === 'DESCRIPTION') ev.description = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, '\n').trim();
     if (propName === 'URL') ev.url = val.trim();
     if (propName === 'LOCATION') ev.location = val.replace(/\\([,;:\\])/g, '$1').trim();
@@ -3744,6 +3757,9 @@ function parseICS(text, feedColor) {
 
   const result = {};
   vevents.forEach(ev => {
+    // Honours the same Settings → Calendar toggle the account connections use,
+    // so "hide declined" now means the same thing on every calendar source.
+    if (ev.declined && !showDeclinedEvents) return;
     const exclude = ev.rrule && !ev.recurrenceId ? excludedByUid[ev.uid] : null;
     // Same duration applies to every occurrence of a recurring event.
     const s = parseDTVal(ev.dtstart), e2 = ev.dtend ? parseDTVal(ev.dtend) : null;
@@ -3766,14 +3782,28 @@ function parseICS(text, feedColor) {
 // name forever. colorOverride lets callers pass the feed's *effective*
 // display color (which can differ from feed.color once Work/Home/Other
 // context is applied) without needing to fork the object to do it.
+// Per-proxy timeout, and an overall budget across the whole proxy chain. 10s
+// per proxy was far too tight for a big published calendar (a Microsoft/Outlook
+// .ics export in particular is often several MB and routinely takes 15s+), so
+// the feed aborted on essentially every sync — that's the "Could not load:
+// Fetch is aborted" toast, and why the calendar it belonged to kept vanishing.
+const ICS_PROXY_TIMEOUT_MS = 20000;
+const ICS_TOTAL_BUDGET_MS = 45000;
+
+// Returns the parsed events on success, or null on failure. It used to return
+// {} for a failure, which is indistinguishable from "this feed genuinely has
+// no events" — so callers could not tell the two apart and treated a failed
+// feed as an empty one, silently dropping every event it had.
 async function fetchFeed(feed, colorOverride) {
   const url = feed.url.replace(/^webcal:\/\//i, 'https://');
   const effectiveColor = colorOverride || feed.color;
   let lastErr = null;
+  const deadline = Date.now() + ICS_TOTAL_BUDGET_MS;
   for (const [proxy, encode] of CORS_PROXIES) {
+    if (Date.now() > deadline) break;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ICS_PROXY_TIMEOUT_MS);
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10000);
       let proxyUrl = proxy + (encode ? encodeURIComponent(url) : url);
       if (proxy.includes('supabase.co') && feed.username) {
         proxyUrl += `&username=${encodeURIComponent(feed.username)}&password=${encodeURIComponent(feed.password || '')}`;
@@ -3783,10 +3813,18 @@ async function fetchFeed(feed, colorOverride) {
         fetchOpts.headers = { 'Authorization': `Bearer ${authSession.access_token}` };
       }
       const r = await fetch(proxyUrl, fetchOpts);
-      clearTimeout(timer);
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const text = await r.text();
-      if (!text.includes('BEGIN:VCALENDAR')) throw new Error('Not a valid ICS feed');
+      if (!text.includes('BEGIN:VCALENDAR')) {
+        // Outlook's "publish calendar" screen offers two links side by side: an
+        // HTML one (a web page for people to look at) and an ICS one (the actual
+        // calendar data). Pasting the HTML one is an easy mistake, and "Not a
+        // valid ICS feed" gave no hint which link to grab instead.
+        const looksLikeHtml = /^\s*(<!doctype html|<html)/i.test(text);
+        throw new Error(looksLikeHtml
+          ? 'that link is a web page, not calendar data — use the ICS link instead'
+          : 'not a valid ICS feed');
+      }
       if (!feed.name || feed.name === 'Loading…' || feed.name === '⚠ Could not load') {
         const m = text.match(/X-WR-CALNAME:(.+)/);
         feed.name = m ? m[1].trim() : 'Calendar';
@@ -3796,20 +3834,28 @@ async function fetchFeed(feed, colorOverride) {
     } catch(e) {
       lastErr = e;
       feed.name = '⚠ Trying…'; renderCalFeedsList();
+    } finally {
+      clearTimeout(timer);
     }
   }
   feed.name = '⚠ Could not load';
-  if (calFeeds.includes(feed)) await saveCalFeeds();
+  // Persisting the name is best-effort. A feed usually fails because the network
+  // is unavailable — which means this save is about to fail too, and letting it
+  // throw here would escape fetchFeed entirely and abort the whole sync,
+  // destroying every OTHER calendar's events along with it.
+  if (calFeeds.includes(feed)) { try { await saveCalFeeds(); } catch(e) {} }
   renderCalFeedsList();
   console.error('Cal feed error:', feed.url, lastErr);
-  // "Fetch is aborted" is our own 10s timeout firing — surface it as a timeout,
-  // and name the feed so it's clear WHICH calendar is unhappy (this toast used
-  // to look like a general app error with no hint of its source).
+  // "Fetch is aborted" is our own timeout firing — surface it as a timeout, and
+  // name the feed so it's clear WHICH calendar is unhappy (this toast used to
+  // look like a general app error with no hint of its source).
   const feedErr = (lastErr?.name === 'AbortError' || /abort/i.test(lastErr?.message || ''))
     ? 'timed out'
     : (lastErr?.message || 'unknown error');
-  showToast(`Calendar feed "${feed.name || 'Calendar'}" ${feedErr} — will retry on the next sync`);
-  return {};
+  showToast(`Calendar feed "${feed.name || 'Calendar'}" ${feedErr} — keeping the last events it loaded`);
+  // null (not {}) so the caller can tell "this feed failed" from "this feed has
+  // no events" and keep the previously-loaded copy instead of dropping it.
+  return null;
 }
 
 async function fetchGoogleCalendarEvents() {
@@ -3966,19 +4012,46 @@ async function runFetchAllFeeds() {
     });
   };
   await Promise.all([
+    // Every source is individually isolated: whatever it does — return no data,
+    // reject, throw synchronously — must never escape into Promise.all, because
+    // one source throwing would abandon the whole cycle with calEvents already
+    // cleared, wiping every OTHER calendar too. On any failure a source simply
+    // keeps the events it had before this cycle.
     ...calFeeds.map(async (feed) => {
       const sourceKey = 'ics:' + feed.id;
-      // Was hardcoded to the Work theme color regardless of the feed's own assigned
-      // color or Work/Home/Other setting — this pulls the actual effective color.
-      const color = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
-      const evs = await fetchFeed(feed, color);
-      Object.entries(evs).forEach(([dk, arr]) => {
-        if (!calEvents[dk]) calEvents[dk] = [];
-        calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
-      });
+      try {
+        // Was hardcoded to the Work theme color regardless of the feed's own assigned
+        // color or Work/Home/Other setting — this pulls the actual effective color.
+        const color = getCalendarSources().find(s => s.key === sourceKey)?.color || feed.color;
+        const evs = await fetchFeed(feed, color);
+        // Google and Outlook both kept their previous events when a sync failed,
+        // but subscribed .ics feeds never did — a feed that timed out (very easy
+        // to do: they're big, slow, and go through public CORS proxies) silently
+        // dropped every one of its events, and stayed dropped, because the next
+        // sync would just time out the same way. This is the single biggest cause
+        // of "my calendar loads and then disappears".
+        if (evs === null) { restoreSource(sourceKey); return; }
+        Object.entries(evs).forEach(([dk, arr]) => {
+          if (!calEvents[dk]) calEvents[dk] = [];
+          calEvents[dk].push(...arr.map(ev => ({ ...ev, source: sourceKey })));
+        });
+      } catch (e) {
+        console.error('Calendar feed failed during sync:', feed?.url, e);
+        restoreSource(sourceKey);
+      }
     }),
-    fetchGoogleCalendarEvents().then(failedSources => failedSources.forEach(restoreSource)),
-    fetchOutlookCalendarEvents().then(ok => { if (!ok) restoreSource('outlook'); })
+    fetchGoogleCalendarEvents()
+      .then(failedSources => failedSources.forEach(restoreSource))
+      .catch(e => {
+        console.error('Google Calendar failed during sync:', e);
+        restoreSource('google'); restoreSource('google_second');
+      }),
+    fetchOutlookCalendarEvents()
+      .then(ok => { if (!ok) restoreSource('outlook'); })
+      .catch(e => {
+        console.error('Outlook Calendar failed during sync:', e);
+        restoreSource('outlook');
+      })
   ]);
   try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
   renderWeek(); renderAgenda(); refreshMonthDayCells();
@@ -4202,7 +4275,9 @@ async function addCalFeed() {
   if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Checking…'; }
   const evs = await fetchFeed(feed, color);
   if (addBtn) { addBtn.disabled = false; addBtn.textContent = 'Add Feed'; }
-  if (feed.name === '⚠ Could not load') return;
+  // fetchFeed returns null on failure (see its own note) — don't save a feed
+  // we could not actually read.
+  if (!evs || feed.name === '⚠ Could not load') return;
 
   calFeeds.push(feed);
   try {
