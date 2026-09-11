@@ -1595,8 +1595,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-08-31';
-const WHATS_NEW = "Fixed subscribed calendar feeds vanishing: a feed that timed out dropped all of its events and stayed empty, and one failing feed could wipe every other calendar too. Feeds now keep their last-loaded events, get far longer to respond, and each calendar fails on its own. Declined meetings are also now hidden on subscribed feeds, matching the setting that already worked for connected accounts.";
+const APP_VERSION = '2026-09-11';
+const WHATS_NEW = "Fixed repeating meetings landing on the wrong dates. A monthly meeting set to something like \"the 2nd Tuesday\" was repeating on the same day NUMBER each month instead, so it drifted onto whatever weekday that happened to be. Meetings on the 29th-31st could also slide into the following month. Occurrences you deleted out of a repeating series now stay deleted, too.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -3588,11 +3588,39 @@ function parseDTVal(val) {
   return { date: new Date(dt.getFullYear(), dt.getMonth(), dt.getDate()), allDay, timeStr, fullDate: dt };
 }
 
+// The nth occurrence of a weekday within a month — n=1 is the first, n=-1 the
+// last, matching RRULE's BYDAY ordinals ("2TU" = 2nd Tuesday, "-1FR" = last
+// Friday). Returns null when the month has no such occurrence (e.g. a 5th
+// Tuesday in a month that only has four), which RFC 5545 says to skip.
+function nthWeekdayOfMonth(year, month, dow, n) {
+  if (n > 0) {
+    const firstDow = new Date(year, month, 1).getDay();
+    const day = 1 + ((dow - firstDow + 7) % 7) + (n - 1) * 7;
+    const d = new Date(year, month, day);
+    return d.getMonth() === month ? d : null;
+  }
+  const lastOfMonth = new Date(year, month + 1, 0);
+  const day = lastOfMonth.getDate() - ((lastOfMonth.getDay() - dow + 7) % 7) + (n + 1) * 7;
+  if (day < 1) return null;
+  const d = new Date(year, month, day);
+  return d.getMonth() === month ? d : null;
+}
+
 function expandEvent(ev, minD, maxD) {
   const start = parseDTVal(ev.dtstart);
   if (!start) return [];
   const startDate = start.date;
   const results = [];
+
+  // EXDATE lists occurrences deleted out of a recurring series — what you get
+  // when you remove a single meeting from a repeating booking. It was being
+  // parsed into ev.exdates and then never read, so deleted occurrences kept
+  // showing up on the calendar forever.
+  const exdateKeys = new Set();
+  (ev.exdates || []).forEach(v => {
+    const parsed = parseDTVal((v || '').trim());
+    if (parsed) exdateKeys.add(dateKey(parsed.date));
+  });
 
   if (!ev.rrule) {
     const s = new Date(startDate); s.setHours(0,0,0,0);
@@ -3607,7 +3635,21 @@ function expandEvent(ev, minD, maxD) {
   const maxCount = rr.COUNT ? +rr.COUNT : 500;
   let untilDate = null;
   if (rr.UNTIL) { const u = parseDTVal(rr.UNTIL.replace(/[TZ]/g,'').slice(0,8)); if (u) untilDate = u.date; }
-  const byDays = rr.BYDAY ? rr.BYDAY.split(',').map(s => WEEKDAY_IDX[s.replace(/^[+-]?\d*/,'')]).filter(n => n !== undefined) : null;
+  // BYDAY entries can carry an ordinal: "2TU" is the 2nd Tuesday of the period,
+  // "-1FR" the last Friday. That ordinal used to be stripped and thrown away,
+  // which is fine weekly but silently wrong monthly — see the MONTHLY/YEARLY
+  // branch below.
+  const byDayParts = rr.BYDAY ? rr.BYDAY.split(',').map(s => {
+    const m = s.trim().match(/^([+-]?\d+)?([A-Za-z]{2})$/);
+    if (!m) return null;
+    const dow = WEEKDAY_IDX[m[2].toUpperCase()];
+    if (dow === undefined) return null;
+    return { ord: m[1] ? parseInt(m[1], 10) : null, dow };
+  }).filter(Boolean) : null;
+  const byDays = byDayParts ? byDayParts.map(p => p.dow) : null;
+  const byMonthDays = rr.BYMONTHDAY
+    ? rr.BYMONTHDAY.split(',').map(n => parseInt(n, 10)).filter(n => !isNaN(n))
+    : null;
 
   // If series ended before our window (UNTIL in past, no COUNT), skip entirely
   if (untilDate && !rr.COUNT) {
@@ -3615,11 +3657,11 @@ function expandEvent(ev, minD, maxD) {
     if (ud < minD) return results;
   }
 
+  // Only DAILY/WEEKLY reach this now — MONTHLY/YEARLY rebuild their dates per
+  // period instead, since stepping a cursor with setMonth() overflows.
   function advanceCursor(d) {
     if (freq === 'DAILY') d.setDate(d.getDate() + interval);
     else if (freq === 'WEEKLY') d.setDate(d.getDate() + 7 * interval);
-    else if (freq === 'MONTHLY') d.setMonth(d.getMonth() + interval);
-    else if (freq === 'YEARLY') d.setFullYear(d.getFullYear() + interval);
   }
 
   if (freq === 'WEEKLY' && byDays && byDays.length > 1) {
@@ -3653,6 +3695,78 @@ function expandEvent(ev, minD, maxD) {
       if (stop) break;
       weekStart.setDate(weekStart.getDate() + 7 * interval);
     }
+  } else if (freq === 'MONTHLY' || freq === 'YEARLY') {
+    // Monthly/yearly series are walked month-by-month and the date is REBUILT
+    // inside each period, rather than stepping a cursor with setMonth(). Two
+    // bugs came from the old cursor approach:
+    //   * "2nd Tuesday of the month" (BYDAY=2TU) ignored the ordinal entirely
+    //     and just repeated DTSTART's day number every month, so every
+    //     occurrence after the first landed on the wrong date.
+    //   * setMonth() overflows — Jan 31 + 1 month is Mar 3, not Feb 31 — so a
+    //     series on the 29th-31st slid into the following month and stayed
+    //     wrong from then on. RFC 5545 says skip periods where the date
+    //     doesn't exist, which is what rebuilding does.
+    const monthStep = (freq === 'MONTHLY' ? 1 : 12) * interval;
+    const maxN = rr.COUNT ? +rr.COUNT : 1500;
+    const ordinalDays = byDayParts && byDayParts.length ? byDayParts : null;
+    // With neither BYDAY nor BYMONTHDAY, the rule is "same day-of-month as DTSTART".
+    const monthDays = !ordinalDays ? (byMonthDays || [startDate.getDate()]) : null;
+
+    let y = startDate.getFullYear(), m = startDate.getMonth();
+    if (!rr.COUNT) {
+      // Skip straight to the window for open-ended series, so a decade-old
+      // meeting doesn't burn its whole cap before reaching today.
+      const behind = (minD.getFullYear() - y) * 12 + (minD.getMonth() - m);
+      if (behind > 0) {
+        const advanced = m + Math.floor(behind / monthStep) * monthStep;
+        y += Math.floor(advanced / 12);
+        m = ((advanced % 12) + 12) % 12;
+      }
+    }
+
+    let n = 0, guard = 0;
+    while (n < maxN && guard++ < 4000) {
+      if (new Date(y, m, 1) > maxD) break;
+      const dates = [];
+      if (ordinalDays) {
+        ordinalDays.forEach(p => {
+          if (p.ord) {
+            const d = nthWeekdayOfMonth(y, m, p.dow, p.ord);
+            if (d) dates.push(d);
+          } else {
+            // A bare weekday under MONTHLY means every one of them that month.
+            for (let k = 1; k <= 5; k++) {
+              const d = nthWeekdayOfMonth(y, m, p.dow, k);
+              if (d) dates.push(d);
+            }
+          }
+        });
+      } else {
+        monthDays.forEach(md => {
+          // Negative counts back from the month's end (-1 is the last day).
+          const d = md > 0 ? new Date(y, m, md) : new Date(y, m + 1, md + 1);
+          if (d.getMonth() === m && d.getFullYear() === y) dates.push(d);
+        });
+      }
+      dates.sort((a, b) => a - b);
+
+      let stop = false;
+      for (const d of dates) {
+        if (d < startDate) continue;
+        const cs = new Date(d); cs.setHours(0, 0, 0, 0);
+        if (untilDate && cs > untilDate) { stop = true; break; }
+        n++;
+        if (cs >= minD && cs <= maxD) {
+          results.push({ dk: dateKey(d), time: start.timeStr, allDay: start.allDay });
+        }
+        if (n >= maxN) { stop = true; break; }
+      }
+      if (stop) break;
+
+      const next = m + monthStep;
+      y += Math.floor(next / 12);
+      m = ((next % 12) + 12) % 12;
+    }
   } else {
     const cursor = new Date(startDate);
     const maxN = rr.COUNT ? +rr.COUNT : 1500;
@@ -3665,12 +3779,6 @@ function expandEvent(ev, minD, maxD) {
       } else if (freq === 'WEEKLY') {
         const weeks = Math.floor((minD - cursor) / (7 * 86400000));
         cursor.setDate(cursor.getDate() + Math.floor(weeks / interval) * interval * 7);
-      } else if (freq === 'MONTHLY') {
-        const months = (minD.getFullYear() - cursor.getFullYear()) * 12 + (minD.getMonth() - cursor.getMonth());
-        cursor.setMonth(cursor.getMonth() + Math.floor(Math.max(0, months - 1) / interval) * interval);
-      } else if (freq === 'YEARLY') {
-        const years = minD.getFullYear() - cursor.getFullYear();
-        cursor.setFullYear(cursor.getFullYear() + Math.floor(Math.max(0, years - 1) / interval) * interval);
       }
     }
     let n = 0;
@@ -3682,7 +3790,7 @@ function expandEvent(ev, minD, maxD) {
       advanceCursor(cursor);
     }
   }
-  return results;
+  return exdateKeys.size ? results.filter(r => !exdateKeys.has(r.dk)) : results;
 }
 
 function parseICS(text, feedColor) {
