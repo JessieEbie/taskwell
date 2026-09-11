@@ -1595,8 +1595,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-09-11';
-const WHATS_NEW = "Fixed repeating meetings landing on the wrong dates. A monthly meeting set to something like \"the 2nd Tuesday\" was repeating on the same day NUMBER each month instead, so it drifted onto whatever weekday that happened to be. Meetings on the 29th-31st could also slide into the following month. Occurrences you deleted out of a repeating series now stay deleted, too.";
+const APP_VERSION = '2026-09-11b';
+const WHATS_NEW = "Changes that fail to save no longer disappear silently: if ticking off, editing, moving or deleting a task doesn't reach the server, it's put back and you're told, instead of looking saved and reverting later. Meetings scheduled in another timezone now show at the right local time, a meeting that arrives from two connected calendars is shown once rather than twice, and a stalled request can no longer leave the app stuck loading.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2218,11 +2218,11 @@ function saveSession(data) {
 async function refreshSession() {
   if (!authSession?.refresh_token) return { ok: false, invalid: true };
   try {
-    const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
+    const r = await fetchWithTimeout(`${SB_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: 'POST',
       headers: { 'apikey': SB_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: authSession.refresh_token })
-    });
+    }, API_TIMEOUT_MS);
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       const invalid = r.status === 400 || data?.error === 'invalid_grant' || data?.error_code === 'refresh_token_not_found';
@@ -2511,15 +2511,20 @@ async function confirmDeleteMyData() {
   clearLocalSessionState();
 }
 
+// Same reasoning as the calendar calls: a request that never settles leaves its
+// caller awaiting forever. boot() does `await Promise.all([api('lists'),
+// api('tasks')])`, so one hung request there meant the app never finished
+// loading at all — it just sat there with no error and no way forward.
+const API_TIMEOUT_MS = 20000;
 async function api(method, path, body, extraHeaders) {
   const headers = { ...authHeaders(), ...extraHeaders };
-  const r = await fetch(SB_URL + '/rest/v1/' + path, {
-    method, headers, body: body ? JSON.stringify(body) : undefined });
+  const r = await fetchWithTimeout(SB_URL + '/rest/v1/' + path, {
+    method, headers, body: body ? JSON.stringify(body) : undefined }, API_TIMEOUT_MS);
   if (r.status === 401) {
     const result = await refreshSession();
     if (result.ok) {
-      const r2 = await fetch(SB_URL + '/rest/v1/' + path, {
-        method, headers: { ...authHeaders(), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined });
+      const r2 = await fetchWithTimeout(SB_URL + '/rest/v1/' + path, {
+        method, headers: { ...authHeaders(), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined }, API_TIMEOUT_MS);
       if (!r2.ok) throw new Error(await r2.text());
       if (r2.status === 204) return null;
       const txt2 = await r2.text();
@@ -2888,9 +2893,17 @@ async function disconnectGoogleCalendar() {
   if (!confirm('Disconnect Google Calendar?')) return;
   googleTokens = null;
   localStorage.removeItem('tw_google_tokens');
-  await api('POST', 'user_settings',
-    { user_id: authSession.user_id, google_tokens: null },
-    { 'Prefer': 'resolution=merge-duplicates' });
+  // If clearing the stored tokens fails, the disconnect only happened on this
+  // device — reopening the app would find them on the server and reconnect. Say
+  // so rather than letting it look done.
+  try {
+    await api('POST', 'user_settings',
+      { user_id: authSession.user_id, google_tokens: null },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch (e) {
+    console.error('Google disconnect did not persist:', e);
+    showToast('Disconnected here, but saving that failed — it may come back when you reopen the app.', true);
+  }
   updateGcalStatus();
   renderWeek(); renderAgenda();
 }
@@ -3063,18 +3076,32 @@ function updateOutlookStatus() {
 
 async function saveOutlookTokens(tokens) {
   outlookTokens = tokens;
-  await api('POST', 'user_settings',
-    { user_id: authSession.user_id, outlook_tokens: tokens },
-    { 'Prefer': 'resolution=merge-duplicates' });
+  // Keep going even if persisting fails — the in-memory token still works for
+  // this session, so a failure here shouldn't break the calendar fetch that
+  // just refreshed it. But it does mean reconnecting after a reload, so don't
+  // swallow it silently.
+  try {
+    await api('POST', 'user_settings',
+      { user_id: authSession.user_id, outlook_tokens: tokens },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch (e) {
+    console.error('Outlook tokens did not persist:', e);
+    showToast('Outlook is connected for now, but saving that failed — you may need to reconnect later.', true);
+  }
   updateOutlookStatus();
 }
 
 async function disconnectOutlookCalendar() {
   if (!confirm('Disconnect Outlook Calendar?')) return;
   outlookTokens = null;
-  await api('POST', 'user_settings',
-    { user_id: authSession.user_id, outlook_tokens: null },
-    { 'Prefer': 'resolution=merge-duplicates' });
+  try {
+    await api('POST', 'user_settings',
+      { user_id: authSession.user_id, outlook_tokens: null },
+      { 'Prefer': 'resolution=merge-duplicates' });
+  } catch (e) {
+    console.error('Outlook disconnect did not persist:', e);
+    showToast('Disconnected here, but saving that failed — it may come back when you reopen the app.', true);
+  }
   updateOutlookStatus();
   renderWeek(); renderAgenda();
 }
@@ -3567,7 +3594,72 @@ async function deleteCalEvent() {
   }
 }
 
-function parseDTVal(val) {
+// Outlook writes Windows timezone names into TZID ("Pacific Standard Time"),
+// while Google and most other producers write IANA names ("America/Los_Angeles").
+// Intl only understands the IANA form, so the Windows ones need translating.
+const WINDOWS_TZ_TO_IANA = {
+  'Dateline Standard Time': 'Etc/GMT+12', 'Hawaiian Standard Time': 'Pacific/Honolulu',
+  'Alaskan Standard Time': 'America/Anchorage', 'Pacific Standard Time': 'America/Los_Angeles',
+  'Pacific Standard Time (Mexico)': 'America/Tijuana', 'US Mountain Standard Time': 'America/Phoenix',
+  'Mountain Standard Time': 'America/Denver', 'Mountain Standard Time (Mexico)': 'America/Chihuahua',
+  'Central Standard Time': 'America/Chicago', 'Central Standard Time (Mexico)': 'America/Mexico_City',
+  'Canada Central Standard Time': 'America/Regina', 'Central America Standard Time': 'America/Guatemala',
+  'Eastern Standard Time': 'America/New_York', 'US Eastern Standard Time': 'America/Indianapolis',
+  'SA Pacific Standard Time': 'America/Bogota', 'Atlantic Standard Time': 'America/Halifax',
+  'Newfoundland Standard Time': 'America/St_Johns', 'E. South America Standard Time': 'America/Sao_Paulo',
+  'Argentina Standard Time': 'America/Buenos_Aires', 'SA Eastern Standard Time': 'America/Cayenne',
+  'Greenwich Standard Time': 'Atlantic/Reykjavik', 'GMT Standard Time': 'Europe/London',
+  'W. Europe Standard Time': 'Europe/Berlin', 'Central Europe Standard Time': 'Europe/Budapest',
+  'Romance Standard Time': 'Europe/Paris', 'Central European Standard Time': 'Europe/Warsaw',
+  'W. Central Africa Standard Time': 'Africa/Lagos', 'GTB Standard Time': 'Europe/Bucharest',
+  'FLE Standard Time': 'Europe/Kiev', 'Israel Standard Time': 'Asia/Jerusalem',
+  'South Africa Standard Time': 'Africa/Johannesburg', 'Russian Standard Time': 'Europe/Moscow',
+  'Arab Standard Time': 'Asia/Riyadh', 'Arabian Standard Time': 'Asia/Dubai',
+  'India Standard Time': 'Asia/Calcutta', 'China Standard Time': 'Asia/Shanghai',
+  'Singapore Standard Time': 'Asia/Singapore', 'W. Australia Standard Time': 'Australia/Perth',
+  'Tokyo Standard Time': 'Asia/Tokyo', 'Korea Standard Time': 'Asia/Seoul',
+  'AUS Central Standard Time': 'Australia/Darwin', 'AUS Eastern Standard Time': 'Australia/Sydney',
+  'E. Australia Standard Time': 'Australia/Brisbane', 'Tasmania Standard Time': 'Australia/Hobart',
+  'New Zealand Standard Time': 'Pacific/Auckland', 'UTC': 'Etc/UTC',
+};
+
+const _tzidCache = new Map();
+function resolveTzid(tzid) {
+  if (!tzid) return null;
+  if (_tzidCache.has(tzid)) return _tzidCache.get(tzid);
+  let name = String(tzid).replace(/^"|"$/g, '').trim();
+  if (WINDOWS_TZ_TO_IANA[name]) name = WINDOWS_TZ_TO_IANA[name];
+  let resolved = null;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: name });
+    resolved = name;
+  } catch (e) {
+    resolved = null; // unknown zone — fall back to treating the time as local
+  }
+  _tzidCache.set(tzid, resolved);
+  return resolved;
+}
+
+// Offset of `tz` from UTC, in minutes, at a given instant (DST-aware).
+function tzOffsetMinutes(tz, instant) {
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instant).reduce((a, x) => (a[x.type] = x.value, a), {});
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, (+p.hour) % 24, +p.minute, +p.second);
+  return (asUTC - instant.getTime()) / 60000;
+}
+
+// A wall-clock reading in `tz` → the actual instant it refers to. Two passes so
+// a first guess that landed on the far side of a DST transition gets corrected.
+function zonedWallToDate(y, mo, d, h, mi, s, tz) {
+  const naive = Date.UTC(y, mo, d, h, mi, s);
+  let instant = new Date(naive - tzOffsetMinutes(tz, new Date(naive)) * 60000);
+  return new Date(naive - tzOffsetMinutes(tz, instant) * 60000);
+}
+
+function parseDTVal(val, tzid) {
   if (!val) return null;
   const isUTC = val.endsWith('Z');
   const clean = val.replace('Z', '');
@@ -3576,8 +3668,18 @@ function parseDTVal(val) {
   let dt;
   if (!allDay) {
     const h = +clean.slice(9,11), mi = +clean.slice(11,13), s = +(clean.slice(13,15)||0);
-    dt = isUTC ? new Date(Date.UTC(y, mo, d, h, mi, s)) : new Date(y, mo, d, h, mi, s);
+    if (isUTC) {
+      dt = new Date(Date.UTC(y, mo, d, h, mi, s));
+    } else {
+      // TZID used to be dropped on the floor, so a meeting scheduled in another
+      // timezone rendered at its raw wall-clock number in yours — wrong by the
+      // offset, and near midnight, on the wrong day entirely.
+      const tz = resolveTzid(tzid);
+      dt = tz ? zonedWallToDate(y, mo, d, h, mi, s, tz) : new Date(y, mo, d, h, mi, s);
+    }
   } else {
+    // All-day entries are floating dates — converting them between zones is what
+    // makes an all-day event drift onto the day before.
     dt = new Date(y, mo, d);
   }
   let timeStr = null;
@@ -3607,7 +3709,7 @@ function nthWeekdayOfMonth(year, month, dow, n) {
 }
 
 function expandEvent(ev, minD, maxD) {
-  const start = parseDTVal(ev.dtstart);
+  const start = parseDTVal(ev.dtstart, ev.dtstartTzid);
   if (!start) return [];
   const startDate = start.date;
   const results = [];
@@ -3618,7 +3720,7 @@ function expandEvent(ev, minD, maxD) {
   // showing up on the calendar forever.
   const exdateKeys = new Set();
   (ev.exdates || []).forEach(v => {
-    const parsed = parseDTVal((v || '').trim());
+    const parsed = parseDTVal((v || '').trim(), ev.exdateTzid);
     if (parsed) exdateKeys.add(dateKey(parsed.date));
   });
 
@@ -3793,6 +3895,10 @@ function expandEvent(ev, minD, maxD) {
   return exdateKeys.size ? results.filter(r => !exdateKeys.has(r.dk)) : results;
 }
 
+// TZID rides on the property's parameters, not its value:
+// "DTSTART;TZID=Eastern Standard Time:20260911T100000".
+const tzidOf = (keyPart) => { const m = /(?:^|;)TZID=([^;:]+)/i.exec(keyPart); return m ? m[1] : null; };
+
 function parseICS(text, feedColor) {
   text = text.replace(/\r?\n[ \t]/g, ''); // unfold
   const lines = text.split(/\r?\n/);
@@ -3812,22 +3918,28 @@ function parseICS(text, feedColor) {
     // series' occurrence at that original time, even though the override itself
     // isn't rendered — otherwise a deleted single occurrence reappears as a ghost.
     if (propName === 'END' && val === 'VEVENT') {
-      if (ev && ev.recurrenceId) cancelledOrModifiedIds.push({ uid: ev.uid, recurrenceId: ev.recurrenceId });
+      if (ev && ev.recurrenceId) cancelledOrModifiedIds.push({ uid: ev.uid, recurrenceId: ev.recurrenceId, recurrenceIdTzid: ev.recurrenceIdTzid });
       if (ev && ev.summary && ev.dtstart && ev.status !== 'CANCELLED') vevents.push(ev);
       ev = null; continue;
     }
     if (!ev) continue;
     if (propName === 'SUMMARY') ev.summary = val.replace(/\\([,;:\\])/g, '$1').replace(/\\n/gi, ' ').trim();
-    if (propName === 'DTSTART') { ev.dtstart = val; ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8; }
-    if (propName === 'DTEND') ev.dtend = val;
+    if (propName === 'DTSTART') {
+      ev.dtstart = val; ev.dtstartTzid = tzidOf(keyPart);
+      ev.allDay = /VALUE=DATE/.test(keyPart) || val.length === 8;
+    }
+    if (propName === 'DTEND') { ev.dtend = val; ev.dtendTzid = tzidOf(keyPart); }
     if (propName === 'RRULE') ev.rrule = val;
     if (propName === 'UID') ev.uid = val;
     // A modified single occurrence of a recurring event keeps the same UID but adds
     // RECURRENCE-ID (the *original* occurrence time it replaces) — without tracking
     // this, the RRULE expansion below would still generate the old-time occurrence
     // alongside this override, showing the same meeting twice after a time change.
-    if (propName === 'RECURRENCE-ID') ev.recurrenceId = val;
-    if (propName === 'EXDATE') (ev.exdates = ev.exdates || []).push(...val.split(','));
+    if (propName === 'RECURRENCE-ID') { ev.recurrenceId = val; ev.recurrenceIdTzid = tzidOf(keyPart); }
+    if (propName === 'EXDATE') {
+      ev.exdateTzid = ev.exdateTzid || tzidOf(keyPart);
+      (ev.exdates = ev.exdates || []).push(...val.split(','));
+    }
     if (propName === 'STATUS') ev.status = val.trim().toUpperCase();
     // A meeting you declined stays in a published .ics feed, marked with
     // PARTSTAT=DECLINED on your ATTENDEE line. Nothing here parsed ATTENDEE at
@@ -3854,9 +3966,9 @@ function parseICS(text, feedColor) {
   // these dates so a rescheduled or deleted occurrence doesn't also show at its
   // old time.
   const excludedByUid = {};
-  const addExclusion = ({ uid, recurrenceId }) => {
+  const addExclusion = ({ uid, recurrenceId, recurrenceIdTzid }) => {
     if (!uid || !recurrenceId) return;
-    const parsed = parseDTVal(recurrenceId);
+    const parsed = parseDTVal(recurrenceId, recurrenceIdTzid);
     if (!parsed) return;
     (excludedByUid[uid] = excludedByUid[uid] || new Set()).add(dateKey(parsed.date));
   };
@@ -3870,7 +3982,7 @@ function parseICS(text, feedColor) {
     if (ev.declined && !showDeclinedEvents) return;
     const exclude = ev.rrule && !ev.recurrenceId ? excludedByUid[ev.uid] : null;
     // Same duration applies to every occurrence of a recurring event.
-    const s = parseDTVal(ev.dtstart), e2 = ev.dtend ? parseDTVal(ev.dtend) : null;
+    const s = parseDTVal(ev.dtstart, ev.dtstartTzid), e2 = ev.dtend ? parseDTVal(ev.dtend, ev.dtendTzid) : null;
     const durationMin = (s && e2 && !s.allDay) ? Math.round((e2.fullDate - s.fullDate) / 60000) : null;
     expandEvent(ev, minD, maxD)
       .filter(({ dk }) => !exclude || !exclude.has(dk))
@@ -4161,8 +4273,43 @@ async function runFetchAllFeeds() {
         restoreSource('outlook');
       })
   ]);
+  dedupeCalEvents(calEvents);
   try { localStorage.setItem('tw_cal_cache', JSON.stringify(calEvents)); } catch(e) {}
   renderWeek(); renderAgenda(); refreshMonthDayCells();
+}
+
+// The same meeting can arrive from two sources at once — the commonest case
+// being an Outlook account connected directly AND that same calendar also
+// subscribed as an .ics link — which drew every event twice, on every view.
+//
+// Two events are the same meeting if they share a UID at the same time, or (only
+// when they came from DIFFERENT sources) the same title at the same time. The
+// cross-source restriction matters: one calendar legitimately having two
+// identically-named slots at the same hour is unusual but possible, and that is
+// not ours to silently collapse.
+function dedupeCalEvents(byDay) {
+  Object.keys(byDay).forEach(dk => {
+    const byUid = new Map(), byTitle = new Map(), kept = [];
+    byDay[dk].forEach(ev => {
+      const slot = `${ev.time || ''}|${ev.allDay ? 1 : 0}`;
+      const uidKey = ev.uid ? `${ev.uid}|${slot}` : null;
+      const titleKey = `${(ev.title || '').trim().toLowerCase()}|${slot}`;
+      const dup = (uidKey && byUid.get(uidKey))
+        || (byTitle.has(titleKey) && byTitle.get(titleKey).source !== ev.source ? byTitle.get(titleKey) : null);
+      if (dup) {
+        // Keep whichever copy carries the richer detail — a linked account knows
+        // the join link and web link; a subscribed feed usually doesn't.
+        ['meetLink', 'webLink', 'location', 'description', 'durationMin', 'endTime'].forEach(f => {
+          if (dup[f] == null && ev[f] != null) dup[f] = ev[f];
+        });
+        return;
+      }
+      if (uidKey) byUid.set(uidKey, ev);
+      byTitle.set(titleKey, ev);
+      kept.push(ev);
+    });
+    byDay[dk] = kept;
+  });
 }
 
 // Wraps fetchAllFeeds() with a confirmation toast — used by the manual "Sync" buttons
@@ -5623,19 +5770,52 @@ async function createNextRepeatOccurrence(t) {
   } catch(e) { showToast('Could not create next repeat: ' + e.message, true); }
 }
 
+// ── Optimistic writes ──
+// These all update the screen first and save afterwards, which is what makes the
+// app feel instant. The cost used to be that a failed save was completely
+// invisible: the screen kept showing the change, the server never received it,
+// and it silently reverted on the next reload — so ticking a task off on a
+// flaky connection just quietly didn't happen. These helpers snapshot the
+// affected state and put it back, with a visible message, when a save fails.
+function snapshotData() {
+  return { tasks: tasks.map(t => ({ ...t })), lists: lists.map(l => ({ ...l })) };
+}
+function rerenderAll() {
+  renderHub(); renderWeek(); renderAgenda(); refreshMonthDayCells();
+}
+async function saveOrRollback(snap, write, what) {
+  try {
+    await write();
+    return true;
+  } catch (e) {
+    tasks = snap.tasks;
+    lists = snap.lists;
+    // The change never happened, so there is nothing left to undo.
+    lastAction = null;
+    rerenderAll();
+    console.error('Save failed (' + what + '):', e);
+    showToast(navigator.onLine === false
+      ? `You're offline — ${what} wasn't saved, so it's been put back.`
+      : `Couldn't save ${what} — it's been put back. Please try again.`, true);
+    return false;
+  }
+}
+
 async function toggleTask(id) {
   const t = tasks.find(t => t.id === id);
   if (!t) return;
   const completingNow = !t.completed;
+  const snap = snapshotData();
   if (completingNow && autoClearCompleted) {
     // Auto-clear mode: completing a task removes it right away instead of leaving
     // it struck-through until a manual "Clear completed" — still undoable via Cmd/Ctrl+Z,
     // same as the manual Clear Completed actions below.
+    const removed = { ...t };
     lastAction = { type: 'restoreTasks', tasks: [{ ...t, completed: true }] };
     tasks = tasks.filter(x => x.id !== id);
-    renderHub(); renderWeek(); renderAgenda();
-    await api('DELETE', `tasks?id=eq.${id}`);
-    if (completingNow && t.repeat_freq) await createNextRepeatOccurrence(t);
+    rerenderAll();
+    if (!await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that task')) return;
+    if (removed.repeat_freq) await createNextRepeatOccurrence(removed);
     return;
   }
   lastAction = { type: 'toggle', taskId: id, prevCompleted: t.completed };
@@ -5643,34 +5823,44 @@ async function toggleTask(id) {
   // A completed task can't also be "in progress" — clear it so the indicator
   // doesn't linger on finished work.
   if (t.completed) t.in_progress = false;
-  renderHub(); renderWeek(); renderAgenda();
-  await api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed, in_progress: t.in_progress });
+  rerenderAll();
+  const ok = await saveOrRollback(snap,
+    () => api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed, in_progress: t.in_progress }),
+    'that task');
+  if (!ok) return;
   if (completingNow && t.repeat_freq) await createNextRepeatOccurrence(t);
 }
 
 async function toggleInProgress(id) {
   const t = tasks.find(t => t.id === id);
   if (!t || t.completed) return;
+  const snap = snapshotData();
   t.in_progress = !t.in_progress;
-  renderHub(); renderWeek(); renderAgenda();
-  await api('PATCH', `tasks?id=eq.${id}`, { in_progress: t.in_progress });
+  rerenderAll();
+  await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${id}`, { in_progress: t.in_progress }), 'that task');
 }
 
 async function deleteTask(id) {
   const t = tasks.find(t => t.id === id);
+  const snap = snapshotData();
   if (t) lastAction = { type: 'restoreTasks', tasks: [{ ...t }] };
   tasks = tasks.filter(t => t.id !== id);
-  renderHub(); renderWeek();
-  await api('DELETE', `tasks?id=eq.${id}`);
+  rerenderAll();
+  await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that deletion');
 }
 
 async function clearCompleted(listId) {
   const removed = tasks.filter(t => t.list_id === listId && t.completed).map(t => ({ ...t }));
-  if (removed.length) lastAction = { type: 'restoreTasks', tasks: removed };
+  if (!removed.length) return;
+  const snap = snapshotData();
+  lastAction = { type: 'restoreTasks', tasks: removed };
   const ids = removed.map(t => t.id);
   tasks = tasks.filter(t => !(t.list_id === listId && t.completed));
-  renderHub(); renderWeek();
-  for (const id of ids) await api('DELETE', `tasks?id=eq.${id}`);
+  rerenderAll();
+  // One request rather than a delete per task: a loop that failed halfway left
+  // some tasks gone from the server and the rest not, which no rollback can
+  // faithfully undo.
+  await saveOrRollback(snap, () => api('DELETE', `tasks?id=in.(${ids.join(',')})`), 'those completed tasks');
 }
 
 async function clearAllCompleted() {
@@ -5679,24 +5869,28 @@ async function clearAllCompleted() {
   if (!ids.length) { showToast('No completed tasks to clear'); return; }
   if (!confirm(`Clear ${ids.length} completed task${ids.length > 1 ? 's' : ''} across all lists?`)) return;
   const idSet = new Set(ids);
+  const snap = snapshotData();
   const removed = tasks.filter(t => idSet.has(t.id)).map(t => ({ ...t }));
   lastAction = { type: 'restoreTasks', tasks: removed };
   tasks = tasks.filter(t => !idSet.has(t.id));
-  renderHub(); renderWeek();
-  for (const id of ids) await api('DELETE', `tasks?id=eq.${id}`);
-  showToast(`Cleared ${ids.length} completed task${ids.length > 1 ? 's' : ''}`);
+  rerenderAll();
+  const ok = await saveOrRollback(snap, () => api('DELETE', `tasks?id=in.(${ids.join(',')})`), 'those completed tasks');
+  if (ok) showToast(`Cleared ${ids.length} completed task${ids.length > 1 ? 's' : ''}`);
 }
 
 async function deleteList(id, name) {
   if (!confirm(`Delete "${name}" and all its tasks?`)) return;
   const removedList = lists.find(l => l.id === id);
   const removedTasks = tasks.filter(t => t.list_id === id).map(t => ({ ...t }));
+  const snap = snapshotData();
   if (removedList) lastAction = { type: 'restoreList', list: { ...removedList }, tasks: removedTasks };
   tasks = tasks.filter(t => t.list_id !== id);
   lists = lists.filter(l => l.id !== id);
-  renderHub(); renderWeek();
-  await api('DELETE', `tasks?list_id=eq.${id}`);
-  await api('DELETE', `lists?id=eq.${id}`);
+  rerenderAll();
+  await saveOrRollback(snap, async () => {
+    await api('DELETE', `tasks?list_id=eq.${id}`);
+    await api('DELETE', `lists?id=eq.${id}`);
+  }, `"${name}"`);
 }
 
 let renameListTargetId = null;
@@ -5726,25 +5920,32 @@ async function undoLastAction() {
   if (!lastAction) { showToast('Nothing to undo'); return; }
   const action = lastAction;
   lastAction = null;
+  const snap = snapshotData();
+  let ok = true;
   if (action.type === 'toggle') {
     const t = tasks.find(t => t.id === action.taskId);
     if (t) {
       t.completed = action.prevCompleted;
-      renderHub(); renderWeek(); renderAgenda();
-      await api('PATCH', `tasks?id=eq.${action.taskId}`, { completed: t.completed });
+      rerenderAll();
+      ok = await saveOrRollback(snap,
+        () => api('PATCH', `tasks?id=eq.${action.taskId}`, { completed: t.completed }), 'that undo');
     }
   } else if (action.type === 'restoreTasks') {
     tasks = tasks.concat(action.tasks);
-    renderHub(); renderWeek();
-    for (const t of action.tasks) await api('POST', 'tasks', t);
+    rerenderAll();
+    // One insert for the whole batch — a per-task loop could half-succeed and
+    // leave the undo itself partially applied.
+    ok = await saveOrRollback(snap, () => api('POST', 'tasks', action.tasks), 'that undo');
   } else if (action.type === 'restoreList') {
     lists = lists.concat([action.list]);
     tasks = tasks.concat(action.tasks);
-    renderHub(); renderWeek();
-    await api('POST', 'lists', action.list);
-    for (const t of action.tasks) await api('POST', 'tasks', t);
+    rerenderAll();
+    ok = await saveOrRollback(snap, async () => {
+      await api('POST', 'lists', action.list);
+      if (action.tasks.length) await api('POST', 'tasks', action.tasks);
+    }, 'that undo');
   }
-  showToast('Undone');
+  if (ok) showToast('Undone');
 }
 
 document.addEventListener('keydown', e => {
@@ -5964,14 +6165,18 @@ async function confirmEditTask() {
   if (!start_time) end_time = null;
   const t = tasks.find(t => t.id === editingTaskId);
   if (!t) return;
+  const snap = snapshotData();
   // Keep week_assigned in sync with due_date so editing the date actually moves the
   // task's calendar placement — otherwise a previously drag-placed task (which has
   // week_assigned set) would stay stuck on its old day since that field wins over due_date.
   t.title = title; t.due_date = due_date; t.week_assigned = due_date; t.notes = notes; t.repeat_freq = repeat_freq;
   t.start_time = start_time; t.end_time = end_time;
   closeModal('editTaskModal');
-  renderHub(); renderWeek(); renderAgenda();
-  await api('PATCH', `tasks?id=eq.${editingTaskId}`, { title, due_date, week_assigned: due_date, notes, repeat_freq, start_time, end_time });
+  rerenderAll();
+  await saveOrRollback(snap,
+    () => api('PATCH', `tasks?id=eq.${editingTaskId}`,
+      { title, due_date, week_assigned: due_date, notes, repeat_freq, start_time, end_time }),
+    'your edits');
 }
 
 // Builds <optgroup>-grouped <option>s for a list-picker <select>: Work first, then
@@ -6178,10 +6383,14 @@ function initEdgeScrollNav(elId, navFn) {
 
 async function dropTaskOnDay(taskId, key) {
   const t = tasks.find(t => t.id === taskId);
-  if (t) { t.week_assigned = key; t.due_date = key; }
-  renderWeek(); renderHub(); renderMiniCal();
-  await api('PATCH', `tasks?id=eq.${taskId}`, { week_assigned: key, due_date: key });
-  showToast('Task assigned');
+  if (!t) return;
+  const snap = snapshotData();
+  t.week_assigned = key; t.due_date = key;
+  rerenderAll(); renderMiniCal();
+  const ok = await saveOrRollback(snap,
+    () => api('PATCH', `tasks?id=eq.${taskId}`, { week_assigned: key, due_date: key }), 'that task');
+  if (ok) showToast('Task assigned');
+  else renderMiniCal();
 }
 
 function weekCatFilterIds(visLists) {
