@@ -11,6 +11,10 @@
   <title>Taskwell</title>
   <style>
     :root {
+      /* Priority is a deep red, deliberately distinct from --rust (orange), which
+         already means "overdue" and "in progress" — a flag that looked like either
+         of those would stop reading as its own signal. */
+      --priority: #B3303D;
       --cream: #F5F0E8; --cream-dark: #EDE6D6;
       --rose: #C4907A; --rose-dark: #A67055; --rose-pale: #E8C4B4;
       --ink: #2E2118; --ink-soft: #6B5744; --ink-faint: #B8A898;
@@ -211,6 +215,29 @@
     .time-grid-chip.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
     .agenda-block.is-task.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
     .agenda-block-info { flex: 1; min-width: 0; }
+
+    /* ── Priority ──
+       Toggle lives on the right of a row, away from the checkbox and the
+       in-progress triangle, so the three controls can't be mistaken for each
+       other. Hollow flag = off, filled red = on — same idea as ▷/▶.
+       Outlines rather than box-shadows on chips/blocks, because in-progress
+       already uses an inset box-shadow there and the two would overwrite. */
+    .task-priority-btn { background: none; border: none; color: var(--ink-faint); font-size: 14px;
+                         cursor: pointer; padding: 0 3px; flex-shrink: 0; line-height: 1; }
+    .task-priority-btn:hover { color: var(--priority); }
+    .task-priority-btn.active { color: var(--priority); }
+    .task-row.priority { background: color-mix(in srgb, var(--priority) 7%, transparent); }
+    .task-row.priority .task-text:not(.done) { font-weight: 700; }
+    .priority-flag { color: var(--priority); font-size: 11px; flex-shrink: 0; line-height: 1; }
+    .time-grid-chip.priority { outline: 1.5px solid var(--priority); outline-offset: -1.5px; }
+    .time-grid-chip.priority .time-grid-chip-title { font-weight: 700; }
+    .agenda-block.is-task.priority { outline: 2.5px solid var(--priority); outline-offset: -2.5px; }
+    .agenda-block.is-task.priority .priority-flag { color: #fff; }
+    .month-day-item.is-task.priority { font-weight: 700; outline: 1.5px solid var(--priority); outline-offset: -1.5px; }
+    .chip.priority { border-color: var(--priority); border-width: 1.5px; font-weight: 700; }
+    .modal-check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 4px 0 10px;
+                       cursor: pointer; font-size: 14px; color: var(--ink); }
+    .modal-check-row input { width: 18px; height: 18px; accent-color: var(--priority); cursor: pointer; }
     .today-picker-list { max-height: 60vh; overflow-y: auto; margin: 6px 0 10px; }
     .today-picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer;
                           border-bottom: 1px solid var(--cream-dark); }
@@ -504,7 +531,9 @@
     .palette-swatch.selected { border-color: var(--ink); }
     .palette-swatch-name { font-size: 9px; font-family: 'Helvetica Neue', sans-serif;
       color: var(--ink-faint); white-space: nowrap; }
-    .modal-row { display: flex; gap: 10px; margin-top: 4px; }
+    /* flex-wrap: the task detail popup has several action buttons in a 340px-wide
+       modal — without wrapping they ran off the edge on a phone. */
+    .modal-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
 
     /* ── Toast / Loading ── */
     .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(60px);
@@ -595,6 +624,8 @@
        apply unconditionally, making the checkbox oversized on desktop/trackpad too. */
     @media (pointer: coarse) {
       .task-check { width: 20px; height: 20px; flex-shrink: 0; }
+      /* A 14px glyph is far too small to hit reliably with a finger. */
+      .task-priority-btn { min-width: 44px; min-height: 44px; }
     }
     .btn { min-height: 36px; }
     .btn-sm { min-height: 32px; }
@@ -1493,6 +1524,7 @@
       <option value="monthly">Monthly</option>
       <option value="yearly">Yearly</option>
     </select>
+    <label class="modal-check-row"><input type="checkbox" id="editTaskPriority" /> <span>&#9873; Priority</span></label>
     <label class="modal-label">Notes</label>
     <textarea class="modal-input" id="editTaskNotes" placeholder="Notes, links, etc. (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div class="modal-row">
@@ -1517,6 +1549,7 @@
       <input class="modal-input" type="time" id="addTaskStart" style="flex:1" />
       <input class="modal-input" type="time" id="addTaskEnd" style="flex:1" />
     </div>
+    <label class="modal-check-row"><input type="checkbox" id="addTaskPriority" /> <span>&#9873; Priority</span></label>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('addTaskModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmAddTask()">Add</button>
@@ -1532,6 +1565,7 @@
     <div id="taskDetailNotes" class="task-detail-notes"></div>
     <div class="modal-row" style="margin-top:14px">
       <button class="btn" onclick="closeModal('taskDetailModal')">Close</button>
+      <button class="btn" id="taskDetailPriorityBtn">Mark priority</button>
       <button class="btn" id="taskDetailInProgressBtn">Mark in progress</button>
       <button class="btn" id="taskDetailToggleBtn">Mark complete</button>
       <button class="btn btn-primary" id="taskDetailEditBtn">Edit</button>
@@ -1595,8 +1629,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-09-11b';
-const WHATS_NEW = "Changes that fail to save no longer disappear silently: if ticking off, editing, moving or deleting a task doesn't reach the server, it's put back and you're told, instead of looking saved and reverting later. Meetings scheduled in another timezone now show at the right local time, a meeting that arrives from two connected calendars is shown once rather than twice, and a stalled request can no longer leave the app stuck loading.";
+const APP_VERSION = '2026-09-12';
+const WHATS_NEW = "You can now flag tasks as priority: tap the flag on the right of a task, or tick Priority when adding or editing one. Flagged tasks move to the top of their list and stand out in bold with a red flag in every view — Hub, Today, Week, Agenda and Month.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1687,6 +1721,7 @@ create table if not exists public.tasks (
   title text not null,
   completed boolean default false,
   in_progress boolean default false,
+  priority boolean default false,
   due_date date,
   week_assigned date,
   notes text,
@@ -1994,6 +2029,22 @@ function getVisibleLists() {
 }
 function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function todayKey() { return dateKey(new Date()); }
+
+// For any text that ends up inside innerHTML. Calendar event titles and
+// locations come from OTHER people — anyone can send a meeting invite, and it
+// lands in a connected calendar automatically — so inserting them as raw HTML
+// let an invite titled with a script tag run inside Taskwell, where the Supabase
+// session and Google/Outlook tokens live.
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Only http(s) links may become an href; anything else (javascript:, data:)
+// is refused rather than escaped, since escaping doesn't neutralise a scheme.
+function safeHttpUrl(s) {
+  const v = String(s ?? '').trim();
+  return /^https?:\/\//i.test(v) ? v : null;
+}
 function parseDate(val) {
   if (!val || !val.trim()) return null;
   const parts = val.split('/');
@@ -2097,7 +2148,7 @@ function showCalEvPopup(ev, anchorEl) {
 
   // Title with color dot
   const titleEl = document.getElementById('calEvPopupTitle');
-  titleEl.innerHTML = `<span class="cal-ev-popup-color" style="background:${ev.color}"></span>${ev.title}`;
+  titleEl.innerHTML = `<span class="cal-ev-popup-color" style="background:${escHtml(ev.color)}"></span>${escHtml(ev.title)}`;
 
   const body = document.getElementById('calEvPopupBody');
   body.innerHTML = '';
@@ -2115,13 +2166,14 @@ function showCalEvPopup(ev, anchorEl) {
   // real addresses, so they're shown as plain text instead of a bogus maps link.
   if (ev.location) {
     const r = document.createElement('div'); r.className = 'cal-ev-popup-row';
-    const isUrl = /^https?:\/\//.test(ev.location);
+    const url = safeHttpUrl(ev.location);
     const isGenericVirtualLabel = /^(virtual|online|teams meeting|microsoft teams meeting|zoom meeting|google meet)$/i.test(ev.location.trim());
-    const loc = isUrl
-      ? `<a href="${ev.location}" target="_blank" rel="noopener" style="color:var(--accent)">${ev.location}</a>`
+    const locText = escHtml(ev.location);
+    const loc = url
+      ? `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="color:var(--accent)">${locText}</a>`
       : isGenericVirtualLabel
-      ? ev.location
-      : `<a href="https://maps.apple.com/?q=${encodeURIComponent(ev.location)}" target="_blank" rel="noopener" style="color:var(--accent)">${ev.location}</a>`;
+      ? locText
+      : `<a href="https://maps.apple.com/?q=${encodeURIComponent(ev.location)}" target="_blank" rel="noopener" style="color:var(--accent)">${locText}</a>`;
     r.innerHTML = `<span class="cal-ev-popup-icon">&#128205;</span><span>${loc}</span>`;
     body.appendChild(r);
   }
@@ -2137,15 +2189,16 @@ function showCalEvPopup(ev, anchorEl) {
   // Action buttons
   const actions = document.getElementById('calEvPopupActions');
   actions.innerHTML = '';
-  if (ev.meetLink) {
+  // safeHttpUrl: a feed-supplied javascript: link would otherwise run on click.
+  if (safeHttpUrl(ev.meetLink)) {
     const a = document.createElement('a');
-    a.href = ev.meetLink; a.target = '_blank'; a.rel = 'noopener';
+    a.href = safeHttpUrl(ev.meetLink); a.target = '_blank'; a.rel = 'noopener';
     a.className = 'cal-ev-popup-btn primary'; a.textContent = 'Join Meeting';
     actions.appendChild(a);
   }
-  if (ev.webLink) {
+  if (safeHttpUrl(ev.webLink)) {
     const a = document.createElement('a');
-    a.href = ev.webLink; a.target = '_blank'; a.rel = 'noopener';
+    a.href = safeHttpUrl(ev.webLink); a.target = '_blank'; a.rel = 'noopener';
     a.className = 'cal-ev-popup-btn'; a.textContent = 'Open in Calendar';
     actions.appendChild(a);
   }
@@ -5572,7 +5625,7 @@ function closeListFocus() {
 }
 function renderFocusedList(area, lst) {
   const listTasks = tasks.filter(t => t.list_id === lst.id);
-  const openTasks = listTasks.filter(t => !t.completed);
+  const openTasks = priorityFirst(listTasks.filter(t => !t.completed));
   const doneTasks = listTasks.filter(t => t.completed);
 
   const wrap = document.createElement('div');
@@ -5591,7 +5644,7 @@ function renderFocusedList(area, lst) {
 
 function makeListBlock(lst) {
   const listTasks = tasks.filter(t => t.list_id === lst.id);
-  const openTasks = listTasks.filter(t => !t.completed);
+  const openTasks = priorityFirst(listTasks.filter(t => !t.completed));
   const doneTasks = listTasks.filter(t => t.completed);
   // Closed by default (busy otherwise with everything expanded) — a list only
   // stays open once you've explicitly opened it this session (listCollapsed
@@ -5625,7 +5678,7 @@ function makeListBlock(lst) {
 
 function makeTaskRow(task, opts) {
   const row = document.createElement('div');
-  row.className = 'task-row' + (task.in_progress ? ' in-progress' : '');
+  row.className = 'task-row' + (task.in_progress ? ' in-progress' : '') + (task.priority ? ' priority' : '');
   row.dataset.taskId = task.id;
   const done = task.completed;
 
@@ -5693,6 +5746,15 @@ function makeTaskRow(task, opts) {
       row.appendChild(tag);
     }
   }
+
+  const flag = document.createElement('button');
+  flag.className = 'task-priority-btn' + (task.priority ? ' active' : '');
+  flag.title = task.priority ? 'Priority — click to remove' : 'Mark as priority';
+  flag.setAttribute('aria-label', flag.title);
+  flag.setAttribute('aria-pressed', task.priority ? 'true' : 'false');
+  flag.textContent = task.priority ? '⚑' : '⚐';
+  flag.onclick = (e) => { e.stopPropagation(); toggleTaskPriority(task.id); };
+  row.appendChild(flag);
 
   const editBtn = document.createElement('button');
   editBtn.className = 'task-edit'; editBtn.title = 'Edit task'; editBtn.textContent = '✎';
@@ -5763,7 +5825,9 @@ async function createNextRepeatOccurrence(t) {
     const [nt] = await api('POST', 'tasks', {
       list_id: t.list_id, title: t.title, notes: t.notes || null,
       due_date: nextDate, week_assigned: nextDate, completed: false,
-      repeat_freq: t.repeat_freq, user_id: authSession?.user_id
+      repeat_freq: t.repeat_freq, user_id: authSession?.user_id,
+      // A flagged repeating task stays flagged on its next occurrence.
+      ...(t.priority ? { priority: true } : {})
     });
     tasks.push(nt);
     renderHub(); renderWeek(); renderAgenda();
@@ -5838,6 +5902,23 @@ async function toggleInProgress(id) {
   t.in_progress = !t.in_progress;
   rerenderAll();
   await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${id}`, { in_progress: t.in_progress }), 'that task');
+}
+
+async function toggleTaskPriority(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  const snap = snapshotData();
+  t.priority = !t.priority;
+  rerenderAll();
+  await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${id}`, { priority: t.priority }), 'that priority flag');
+}
+
+// Flagged tasks float to the top of a list; everything else keeps its existing
+// order (Array.prototype.sort is stable). Used for lists, Today, and the
+// untimed strips — but never for timed calendar blocks, where the order IS the
+// time of day and must not be rearranged.
+function priorityFirst(arr) {
+  return arr.slice().sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
 }
 
 async function deleteTask(id) {
@@ -6102,7 +6183,7 @@ function openTaskDetail(id) {
   document.getElementById('taskDetailTitle').textContent = t.title;
   const lst = lists.find(l => l.id === t.list_id);
   const repeatLabel = t.repeat_freq ? `Repeats ${t.repeat_freq}` : null;
-  const meta = [lst?.name, t.due_date ? fmtDisplay(t.due_date) : null, repeatLabel].filter(Boolean).join(' · ');
+  const meta = [t.priority ? '⚑ Priority' : null, lst?.name, t.due_date ? fmtDisplay(t.due_date) : null, repeatLabel].filter(Boolean).join(' · ');
   document.getElementById('taskDetailMeta').textContent = meta;
   const notesEl = document.getElementById('taskDetailNotes');
   if (t.notes) {
@@ -6120,6 +6201,12 @@ function openTaskDetail(id) {
   toggleBtn.textContent = t.completed ? 'Mark incomplete' : 'Mark complete';
   toggleBtn.onclick = async () => {
     await toggleTask(id);
+    closeModal('taskDetailModal');
+  };
+  const prioBtn = document.getElementById('taskDetailPriorityBtn');
+  prioBtn.textContent = t.priority ? 'Remove priority' : 'Mark priority';
+  prioBtn.onclick = async () => {
+    await toggleTaskPriority(id);
     closeModal('taskDetailModal');
   };
   const inProgBtn = document.getElementById('taskDetailInProgressBtn');
@@ -6149,6 +6236,7 @@ function openEditTaskModal(id) {
   document.getElementById('editTaskEnd').value = t.end_time || '';
   document.getElementById('editTaskRepeat').value = t.repeat_freq || '';
   document.getElementById('editTaskNotes').value = t.notes || '';
+  document.getElementById('editTaskPriority').checked = !!t.priority;
   openModal('editTaskModal');
   setTimeout(() => document.getElementById('editTaskTitle').focus(), 200);
 }
@@ -6165,18 +6253,21 @@ async function confirmEditTask() {
   if (!start_time) end_time = null;
   const t = tasks.find(t => t.id === editingTaskId);
   if (!t) return;
+  const priority = document.getElementById('editTaskPriority').checked;
   const snap = snapshotData();
   // Keep week_assigned in sync with due_date so editing the date actually moves the
   // task's calendar placement — otherwise a previously drag-placed task (which has
   // week_assigned set) would stay stuck on its old day since that field wins over due_date.
   t.title = title; t.due_date = due_date; t.week_assigned = due_date; t.notes = notes; t.repeat_freq = repeat_freq;
   t.start_time = start_time; t.end_time = end_time;
+  // Only send `priority` when it actually changed. Sending it on every edit would
+  // make ALL task edits fail for anyone whose database doesn't have the column
+  // yet — including edits that have nothing to do with priority.
+  const patch = { title, due_date, week_assigned: due_date, notes, repeat_freq, start_time, end_time };
+  if (!!t.priority !== priority) { t.priority = priority; patch.priority = priority; }
   closeModal('editTaskModal');
   rerenderAll();
-  await saveOrRollback(snap,
-    () => api('PATCH', `tasks?id=eq.${editingTaskId}`,
-      { title, due_date, week_assigned: due_date, notes, repeat_freq, start_time, end_time }),
-    'your edits');
+  await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${editingTaskId}`, patch), 'your edits');
 }
 
 // Builds <optgroup>-grouped <option>s for a list-picker <select>: Work first, then
@@ -6205,6 +6296,7 @@ function openAddTaskModal(defaultDate) {
   document.getElementById('addTaskDate').value = defaultDate ? fmtDisplay(defaultDate) : '';
   document.getElementById('addTaskStart').value = '';
   document.getElementById('addTaskEnd').value = '';
+  document.getElementById('addTaskPriority').checked = false;
   openModal('addTaskModal');
   setTimeout(() => document.getElementById('addTaskTitle').focus(), 50);
 }
@@ -6219,10 +6311,12 @@ async function confirmAddTask() {
   if (start_time && !due_date) { showToast('Pick a date to set a time', true); return; }
   if (start_time && !end_time) end_time = minutesToTaskTime(taskTimeToMinutes(start_time) + DEFAULT_TASK_DURATION_MIN);
   if (!start_time) end_time = null;
+  const priority = document.getElementById('addTaskPriority').checked;
   try {
     const [t] = await api('POST', 'tasks', {
       list_id: listId, title, completed: false, due_date, week_assigned: due_date,
-      start_time, end_time, user_id: authSession?.user_id
+      start_time, end_time, user_id: authSession?.user_id,
+      ...(priority ? { priority: true } : {})
     });
     tasks.push(t);
     closeModal('addTaskModal');
@@ -6245,7 +6339,7 @@ function renderTodayTasks() {
   const visListIds = new Set(getVisibleLists().map(l => l.id));
   const todaysTasks = tasks.filter(t => visListIds.has(t.list_id) &&
     (t.week_assigned === key || (!t.week_assigned && t.due_date === key)));
-  const openTasks = todaysTasks.filter(t => !t.completed);
+  const openTasks = priorityFirst(todaysTasks.filter(t => !t.completed));
   const doneTasks = todaysTasks.filter(t => t.completed);
 
   document.getElementById('todaySub').textContent =
@@ -6527,7 +6621,7 @@ function renderUnassignedFilterRow(container) {
       b.className = val === currentListVal ? 'active' : '';
       b.style.paddingLeft = indent ? '28px' : '';
       b.style.fontSize = indent ? '12px' : '';
-      b.innerHTML = `<span class="week-filter-check">${val === currentListVal ? '✓' : ''}</span>${label}`;
+      b.innerHTML = `<span class="week-filter-check">${val === currentListVal ? '✓' : ''}</span>${escHtml(label)}`;
       b.onclick = () => { weekListFilter = val === 'all' ? null : val; menu.style.display = 'none'; refreshBoth(); };
       menu.appendChild(b);
     });
@@ -6614,6 +6708,7 @@ function buildUntimedChip(item, key, opts) {
     chip.classList.add('is-task');
     if (t.completed) chip.classList.add('done');
     if (t.in_progress) chip.classList.add('in-progress');
+    if (t.priority) chip.classList.add('priority');
     const check = document.createElement('div');
     check.className = 'task-check' + (t.completed ? ' done' : '');
     check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
@@ -6625,6 +6720,14 @@ function buildUntimedChip(item, key, opts) {
       inProg.textContent = t.in_progress ? '▶' : '▷';
       inProg.onclick = (e) => { e.stopPropagation(); toggleInProgress(t.id); };
       chip.appendChild(inProg);
+    }
+    // Indicator only on these compact chips — a separate tap target this small
+    // is miss-prone on a phone, and tapping the chip opens the detail popup,
+    // which has a full-size priority toggle.
+    if (t.priority) {
+      const pf = document.createElement('span');
+      pf.className = 'priority-flag'; pf.textContent = '⚑'; pf.title = 'Priority';
+      chip.appendChild(pf);
     }
     const title = document.createElement('span');
     title.className = 'time-grid-chip-title';
@@ -6697,7 +6800,7 @@ function buildDayBlockColumn(container, key, opts) {
   const untimedItems = [];
   const timedItems = [];
 
-  dayTasks.forEach(t => {
+  priorityFirst(dayTasks).forEach(t => {
     const lst = lists.find(l => l.id === t.list_id);
     const color = (lst?.context || 'work') === 'home' ? homeColor : workColor;
     const startMin = taskTimeToMinutes(t.start_time);
@@ -6751,6 +6854,7 @@ function buildDayBlockColumn(container, key, opts) {
       const t = item.task;
       block.classList.add('is-task');
       if (t.in_progress) block.classList.add('in-progress');
+      if (t.priority) block.classList.add('priority');
       const check = document.createElement('div');
       check.className = 'task-check';
       check.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
@@ -6765,7 +6869,7 @@ function buildDayBlockColumn(container, key, opts) {
       }
       const info = document.createElement('div');
       info.className = 'agenda-block-info';
-      info.innerHTML = `<div class="agenda-block-time">${timeLbl}</div><div class="agenda-block-title">${t.title}</div>`;
+      info.innerHTML = `<div class="agenda-block-time">${escHtml(timeLbl)}</div><div class="agenda-block-title">${t.priority ? '<span class="priority-flag" title="Priority">⚑</span> ' : ''}${escHtml(t.title)}</div>`;
       if (opts?.showListName) {
         const lst = lists.find(l => l.id === t.list_id);
         if (lst) {
@@ -6781,7 +6885,7 @@ function buildDayBlockColumn(container, key, opts) {
     } else {
       const ev = item.ev;
       block.classList.add('is-event');
-      block.innerHTML = `<div class="agenda-block-time">${timeLbl}</div><div class="agenda-block-title">${ev.title}</div>`;
+      block.innerHTML = `<div class="agenda-block-time">${escHtml(timeLbl)}</div><div class="agenda-block-title">${escHtml(ev.title)}</div>`;
       block.onclick = () => { ev._dk = key; showCalEvPopup(ev, block); };
     }
     list.appendChild(block);
@@ -6999,11 +7103,21 @@ function renderPendingChipsInto(containerId) {
     return;
   }
   if (area) area.style.display = '';
-  unassigned.forEach(t => {
+  priorityFirst(unassigned).forEach(t => {
     const chip = document.createElement('div');
-    chip.className = 'chip';
+    chip.className = 'chip' + (t.priority ? ' priority' : '');
     const lst = lists.find(l => l.id === t.list_id);
-    chip.innerHTML = `<span>${t.title}${t.due_date ? ` · ${fmtDisplay(t.due_date)}` : ''}</span>${lst ? `<span style="font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif">${lst.name}</span>` : ''}`;
+    // Built from DOM nodes, not an innerHTML template, so a "<" in a task title or
+    // list name can't break the markup.
+    const label = document.createElement('span');
+    label.textContent = (t.priority ? '⚑ ' : '') + t.title + (t.due_date ? ` · ${fmtDisplay(t.due_date)}` : '');
+    chip.appendChild(label);
+    if (lst) {
+      const ln = document.createElement('span');
+      ln.style.cssText = "font-size:10px;opacity:0.6;margin-left:4px;font-family:'Helvetica Neue',sans-serif";
+      ln.textContent = lst.name;
+      chip.appendChild(ln);
+    }
     chip.draggable = true;
     setupChipDrag(chip, t.id);
     chips.appendChild(chip);
@@ -7109,7 +7223,7 @@ function dayItemsFor(key) {
   const homeColor = (PALETTES.find(p => p.id === userPalettes.home) || PALETTES[0]).rail;
   return [
     ...dayEvents.map(ev => ({ type: 'event', title: ev.title, color: ev.color, ev, time: ev.allDay ? null : ev.time })),
-    ...dayTasks.map(t => {
+    ...priorityFirst(dayTasks).map(t => {
       const lst = lists.find(l => l.id === t.list_id);
       const color = (lst?.context || 'work') === 'home' ? homeColor : workColor;
       const startMin = taskTimeToMinutes(t.start_time);
@@ -7125,12 +7239,14 @@ function fillMonthDayItems(wrap, key) {
   const items = dayItemsFor(key);
   items.forEach(it => {
     const el = document.createElement('div');
-    el.className = 'month-day-item ' + (it.type === 'task' ? 'is-task' : 'is-event');
+    el.className = 'month-day-item ' + (it.type === 'task' ? 'is-task' : 'is-event')
+      + (it.type === 'task' && it.task.priority ? ' priority' : '');
     if (it.color) {
       el.style.borderColor = it.color;
       el.style.background = `color-mix(in srgb, ${it.color} 22%, var(--paper))`;
     }
-    el.textContent = it.time ? `${it.time} ${it.title}` : it.title;
+    const flagPrefix = it.type === 'task' && it.task.priority ? '⚑ ' : '';
+    el.textContent = flagPrefix + (it.time ? `${it.time} ${it.title}` : it.title);
     if (it.type === 'event') {
       el.onclick = (e) => { e.stopPropagation(); it.ev._dk = key; showCalEvPopup(it.ev, el); };
     } else {
