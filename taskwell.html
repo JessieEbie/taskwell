@@ -1706,8 +1706,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13c';
-const WHATS_NEW = "New Notes tab for getting things out of your head fast: press Cmd+K anywhere, type, press Enter. Notes captured during a meeting are tagged with that meeting automatically. Afterwards, tick whichever lines of a note should become tasks and send them to any list — the note stays as you wrote it, and shows those tasks' current state rather than a stale copy.";
+const APP_VERSION = '2026-10-13d';
+const WHATS_NEW = "Fixed unfinished tasks getting stranded on yesterday. Taskwell only moved them forward when it started up, so leaving the app open overnight meant Today came up empty while everything sat in yesterday's column. It now notices the date changing while it is open, carries unfinished tasks over, and tells you if that fails instead of quietly reverting.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -4885,7 +4885,7 @@ async function boot() {
       console.warn('Notes unavailable (table may not exist yet):', e?.message);
     }
     await healMissingSections();
-    rolloverPastTasks();
+    await rolloverPastTasks();
     renderHub(); renderWeek(); renderMiniCal(); renderAgenda();
     loadCalCache();
     (async () => {
@@ -4924,10 +4924,14 @@ async function boot() {
       const now = Date.now();
       if (now - lastVisibilitySync < 30000) return;
       lastVisibilitySync = now;
+      checkDayChanged();
       fetchAllFeeds();
     };
     document.addEventListener('visibilitychange', syncOnReturn);
     window.addEventListener('focus', syncOnReturn);
+    // Also while sitting open and visible — midnight can pass without any
+    // focus change at all.
+    setInterval(checkDayChanged, 60 * 1000);
 
     // First time this browser successfully signs into a self-hosted backend,
     // register it in the default backend's directory (best-effort, silent) so
@@ -5906,15 +5910,38 @@ async function addTask(listId) {
   } catch(e) { showToast('Error adding task'); }
 }
 
-function rolloverPastTasks() {
+async function rolloverPastTasks() {
   const today = dateKey(new Date());
   const stale = tasks.filter(t => !t.completed && t.week_assigned && t.week_assigned < today);
   if (!stale.length) return;
+  const snap = snapshotData();
   stale.forEach(t => { t.week_assigned = today; });
-  Promise.all(stale.map(t =>
-    api('PATCH', `tasks?id=eq.${t.id}`, { week_assigned: today }).catch(() => {})
-  ));
-  showToast(`${stale.length} task${stale.length > 1 ? 's' : ''} rolled over to today`);
+  rerenderAll();
+  // One request for the whole batch. The old version fired a PATCH per task and
+  // swallowed every failure, so a rollover could appear to work on screen while
+  // the server still had yesterday's date — and silently undo itself on reload.
+  const ids = stale.map(t => t.id);
+  const ok = await saveOrRollback(snap,
+    () => api('PATCH', `tasks?id=in.(${ids.join(',')})`, { week_assigned: today }),
+    'moving those tasks to today');
+  if (ok) showToast(`${stale.length} task${stale.length > 1 ? 's' : ''} rolled over to today`);
+}
+
+// Taskwell gets left open for days at a time — it's an installed app, not a tab
+// you close. Nothing used to notice midnight passing, so yesterday's tasks sat
+// in yesterday's column and Today came up empty until the app was restarted.
+let lastKnownDay = dateKey(new Date());
+function checkDayChanged() {
+  const now = dateKey(new Date());
+  if (now === lastKnownDay) return;
+  const previousDay = lastKnownDay;
+  lastKnownDay = now;
+  // Follow the date over only if the view was sitting on what used to be today.
+  // If she deliberately navigated to some other day, leave her where she is.
+  if (selectedDay === previousDay) selectedDay = now;
+  rolloverPastTasks();
+  renderMiniCal();
+  rerenderAll();
 }
 
 // ── Undo (single-step: reverts only the most recent destructive action) ──
