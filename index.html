@@ -266,6 +266,12 @@
     .note-btn:hover { border-color: var(--accent); color: var(--ink); }
     @media (pointer: coarse) { .note-btn { min-height: 44px; padding: 5px 14px; } }
     .notes-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; }
+    .note-line-picker { max-height: 40vh; overflow-y: auto; margin-bottom: 10px; }
+    .note-line-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 2px; min-height: 44px;
+                     border-bottom: 1px solid var(--cream-dark); cursor: pointer; font-size: 13px; color: var(--ink); }
+    .note-line-row input { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+    .note-task-chip { display: inline-flex; align-items: center; gap: 4px; }
+    .note-task-chip.done { color: var(--ink-faint); text-decoration: line-through; }
     .time-grid-chip .task-list-tag { margin-left: 6px; }
     .agenda-block-info .task-list-tag { color: rgba(255,255,255,.75); margin-left: 0; margin-top: 1px; }
     .done-section { margin-top: 8px; }
@@ -1632,13 +1638,14 @@
 <!-- Send a note to a task list -->
 <div class="modal-overlay" id="noteToTaskModal">
   <div class="modal">
-    <div class="modal-title">Send to a list</div>
-    <div class="capture-context" id="noteToTaskPreview"></div>
+    <div class="modal-title">Create tasks</div>
+    <div class="capture-context">Tick what should become a task. The note itself stays as it is.</div>
+    <div id="noteToTaskLines" class="note-line-picker"></div>
     <label class="modal-label">List</label>
     <select class="modal-select" id="noteToTaskList"></select>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('noteToTaskModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="confirmNoteToTask()">Add task</button>
+      <button class="btn btn-primary" onclick="confirmNoteToTask()">Add tasks</button>
     </div>
   </div>
 </div>
@@ -1699,8 +1706,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13b';
-const WHATS_NEW = "New Notes tab, for getting things out of your head fast. Press Cmd+K anywhere, type, press Enter — no list to pick, no fields to fill. Anything captured during a meeting is tagged with that meeting automatically. Later, turn a note into a task on any list; the note then shows that task's current state rather than a stale copy.";
+const APP_VERSION = '2026-10-13c';
+const WHATS_NEW = "New Notes tab for getting things out of your head fast: press Cmd+K anywhere, type, press Enter. Notes captured during a meeting are tagged with that meeting automatically. Afterwards, tick whichever lines of a note should become tasks and send them to any list — the note stays as you wrote it, and shows those tasks' current state rather than a stale copy.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1813,7 +1820,7 @@ create table if not exists public.notes (
   body text not null,
   event_title text,
   day date,
-  task_id uuid,
+  task_ids jsonb default '[]'::jsonb,
   archived boolean default false,
   created_at timestamptz default now()
 );
@@ -6690,24 +6697,28 @@ function buildNoteCard(n) {
     ev.textContent = 'During ' + n.event_title;
     meta.appendChild(ev);
   }
-  // A note that became a task shows the task's CURRENT state rather than a copy
-  // of its text, so the note can't drift out of step with the task.
-  const linked = n.task_id ? tasks.find(t => t.id === n.task_id) : null;
-  if (linked) {
-    const lst = lists.find(l => l.id === linked.list_id);
-    const sent = document.createElement('span');
-    sent.className = 'note-sent';
-    sent.textContent = (linked.completed ? '\u2713 Done' : '\u2192 Task')
-      + (lst ? ' in ' + lst.name : '');
-    meta.appendChild(sent);
+  // Tasks made from this note show their CURRENT state rather than a copy of
+  // their text, so the note can't drift out of step with them.
+  const linked = (n.task_ids || []).map(id => tasks.find(t => t.id === id)).filter(Boolean);
+  linked.slice(0, 3).forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'note-sent note-task-chip' + (t.completed ? ' done' : '');
+    chip.textContent = (t.completed ? '\u2713 ' : '\u2192 ') + t.title;
+    meta.appendChild(chip);
+  });
+  if (linked.length > 3) {
+    const more = document.createElement('span');
+    more.textContent = `+${linked.length - 3} more`;
+    meta.appendChild(more);
   }
 
   const actions = document.createElement('div');
   actions.className = 'note-actions';
-  if (!linked) {
+  {
+    // Stays available: a note can keep producing tasks as you work through it.
     const toTask = document.createElement('button');
     toTask.className = 'note-btn';
-    toTask.textContent = 'Make a task';
+    toTask.textContent = linked.length ? 'Create more tasks' : 'Create tasks';
     toTask.onclick = () => openNoteToTask(n.id);
     actions.appendChild(toTask);
   }
@@ -6738,11 +6749,39 @@ async function archiveNote(id) {
 }
 
 let noteToTaskId = null;
+
+// Splits a note into the individual things it mentions. Bullet and checkbox
+// markers are stripped so a pasted list doesn't turn into tasks called "- x".
+function noteLines(body) {
+  return String(body || '').split('\n')
+    .map(l => l.replace(/^\s*(?:[-*\u2022]|\[\s?\]|\d+[.)])\s+/, '').trim())
+    .filter(Boolean);
+}
+
 function openNoteToTask(id) {
   const n = notes.find(x => x.id === id);
   if (!n) return;
   noteToTaskId = id;
-  document.getElementById('noteToTaskPreview').textContent = n.body.split('\n')[0].slice(0, 120);
+  const lines = noteLines(n.body);
+  const already = new Set((n.task_ids || [])
+    .map(tid => tasks.find(t => t.id === tid)?.title).filter(Boolean));
+  const box = document.getElementById('noteToTaskLines');
+  box.innerHTML = '';
+  lines.forEach((line, i) => {
+    const row = document.createElement('label');
+    row.className = 'note-line-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.line = line;
+    // A single-line note is unambiguous, so don't make her tick it. Lines that
+    // already became tasks start unticked, to avoid accidental duplicates.
+    cb.checked = lines.length === 1 && !already.has(line);
+    cb.disabled = already.has(line);
+    const text = document.createElement('span');
+    text.textContent = already.has(line) ? line + '  (already a task)' : line;
+    row.appendChild(cb); row.appendChild(text);
+    box.appendChild(row);
+  });
   const sel = document.getElementById('noteToTaskList');
   sel.innerHTML = listSelectOptionsGroupedBySection();
   openModal('noteToTaskModal');
@@ -6752,25 +6791,33 @@ async function confirmNoteToTask() {
   const n = notes.find(x => x.id === noteToTaskId);
   const listId = document.getElementById('noteToTaskList').value;
   if (!n || !listId) return;
-  // The first line becomes the task title; the whole note rides along as the
-  // task's notes, so nothing captured gets lost in the handover.
-  const lines = n.body.split('\n');
-  const title = lines[0].slice(0, 200);
-  const rest = lines.slice(1).join('\n').trim();
+  const picked = [...document.querySelectorAll('#noteToTaskLines input:checked')]
+    .map(cb => cb.dataset.line);
+  if (!picked.length) { showToast('Tick at least one line to make a task from'); return; }
   closeModal('noteToTaskModal');
+  const created = [];
   try {
-    const [task] = await api('POST', 'tasks', {
-      list_id: listId, title, completed: false,
-      notes: rest || null, user_id: authSession?.user_id,
-    });
-    tasks.push(task);
-    n.task_id = task.id;
-    await api('PATCH', `notes?id=eq.${n.id}`, { task_id: task.id });
+    for (const title of picked) {
+      // Only the line becomes the task. The note keeps its own text — copying
+      // the whole note into every task is what made this wrong the first time.
+      const [task] = await api('POST', 'tasks', {
+        list_id: listId, title: title.slice(0, 200), completed: false,
+        user_id: authSession?.user_id,
+      });
+      tasks.push(task);
+      created.push(task.id);
+    }
+    n.task_ids = [...(n.task_ids || []), ...created];
+    await api('PATCH', `notes?id=eq.${n.id}`, { task_ids: n.task_ids });
     renderNotes(); renderHub(); renderWeek();
-    showToast('Added to ' + (lists.find(l => l.id === listId)?.name || 'list'));
+    const where = lists.find(l => l.id === listId)?.name || 'list';
+    showToast(`${created.length} task${created.length > 1 ? 's' : ''} added to ${where}`);
   } catch (e) {
-    console.error('Making a task from a note failed:', e);
-    showToast("Couldn't make that task — " + (e?.message || 'please try again'), true);
+    console.error('Creating tasks from a note failed:', e);
+    // Whatever did get created is already in `tasks`; reflect reality rather
+    // than pretending nothing happened.
+    if (created.length) { n.task_ids = [...(n.task_ids || []), ...created]; renderNotes(); renderHub(); }
+    showToast("Couldn't finish making those tasks — " + (e?.message || 'please try again'), true);
   }
 }
 
