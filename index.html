@@ -255,9 +255,35 @@
     .note-day-hdr:first-child { margin-top: 0; }
     .note-card { background: var(--paper); border: 1px solid var(--cream-dark); border-radius: 10px;
                  padding: 10px 12px; margin-bottom: 8px; }
-    .note-body { font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word;
-                 cursor: text; }
+    .note-body { font-size: 14px; color: var(--ink); word-break: break-word; cursor: text; }
+    .note-body.plain { white-space: pre-wrap; }
     .note-body:hover { color: var(--accent-dark); }
+    /* Rich content, in both the editor and the cards. */
+    .rt-editor, .note-body.rich { line-height: 1.5; }
+    .rt-editor ul, .note-body.rich ul, .rt-editor ol, .note-body.rich ol { margin: 4px 0 4px 20px; }
+    .rt-editor li, .note-body.rich li { margin: 2px 0; }
+    .rt-editor h3, .note-body.rich h3 { font-size: 15px; margin: 8px 0 4px; }
+    .rt-editor p, .note-body.rich p { margin: 4px 0; }
+    .rt-editor a, .note-body.rich a { color: var(--accent-dark); }
+    /* Checklists: a real list, with the marker replaced by a box that toggles. */
+    ul.chk { list-style: none; margin-left: 4px !important; padding-left: 0; }
+    ul.chk ul.chk { margin-left: 20px !important; }
+    ul.chk > li { position: relative; padding-left: 24px; cursor: pointer; }
+    ul.chk > li::before { content: '\2610'; position: absolute; left: 2px; top: -1px;
+                          font-size: 15px; color: var(--ink-soft); }
+    ul.chk > li[data-done="1"]::before { content: '\2611'; color: var(--accent-dark); }
+    ul.chk > li[data-done="1"] { color: var(--ink-faint); text-decoration: line-through; }
+    .rt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; }
+    .rt-toolbar button { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; min-height: 34px;
+                         padding: 4px 9px; border: 1px solid var(--cream-dark); border-radius: 7px;
+                         background: var(--cream); color: var(--ink-soft); cursor: pointer; }
+    .rt-toolbar button:hover { border-color: var(--accent); color: var(--ink); }
+    .rt-sep { width: 1px; height: 20px; background: var(--cream-dark); margin: 0 3px; }
+    .rt-editor { min-height: 190px; max-height: 46vh; overflow-y: auto;
+                 border: 1.5px solid var(--cream-dark); border-radius: 8px; background: var(--cream);
+                 padding: 10px 12px; font-family: Georgia, serif; font-size: 15px; color: var(--ink); }
+    .rt-editor:focus { outline: none; border-color: var(--accent); }
+    @media (pointer: coarse) { .rt-toolbar button { min-height: 44px; padding: 4px 13px; } }
     .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
                  font-size: 11px; color: var(--ink-faint); }
     .note-event { color: var(--ink-soft); }
@@ -1677,8 +1703,19 @@
 <div class="modal-overlay" id="noteEditModal">
   <div class="modal modal-wide">
     <div class="modal-title" id="noteEditTitle">Note</div>
-    <textarea class="modal-input" id="noteEditBody" rows="11"
-              style="resize:vertical;font-family:inherit;font-size:15px;line-height:1.5"></textarea>
+    <div class="rt-toolbar" id="noteEditToolbar">
+      <button type="button" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
+      <button type="button" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
+      <span class="rt-sep"></span>
+      <button type="button" data-cmd="insertUnorderedList" title="Bullets">&bull;&nbsp;List</button>
+      <button type="button" data-cmd="insertOrderedList" title="Numbered">1.&nbsp;List</button>
+      <button type="button" data-cmd="checklist" title="Checklist">&#9744;&nbsp;Check</button>
+      <span class="rt-sep"></span>
+      <button type="button" data-cmd="outdent" title="Outdent (⇧Tab)">&larr;</button>
+      <button type="button" data-cmd="indent" title="Indent (Tab)">&rarr;</button>
+    </div>
+    <div class="rt-editor" id="noteEditBody" contenteditable="true" role="textbox"
+         aria-multiline="true" aria-label="Note"></div>
     <div class="modal-row" style="justify-content:flex-start;gap:10px;margin-top:10px">
       <div style="flex:1">
         <label class="modal-label">Day</label>
@@ -1766,8 +1803,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13f';
-const WHATS_NEW = "Notes are now notes rather than an inbox: click any note to edit it, change which day it belongs to, and attach it to a meeting — including one coming up, so you can write notes FOR a meeting beforehand. There is also a New note button, and notes can be deleted outright rather than only archived.";
+const APP_VERSION = '2026-10-13g';
+const WHATS_NEW = "Notes now have real formatting: bold, italic, headings, numbered lists, and proper bullets that nest with Tab and un-nest with Shift+Tab. Checklists can be ticked off in place. Making tasks from a note reads one line per bullet, including nested ones.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -6905,8 +6942,9 @@ function buildNoteCard(n) {
   const card = document.createElement('div');
   card.className = 'note-card';
   const body = document.createElement('div');
-  body.className = 'note-body';
-  body.textContent = n.body;
+  const rich = noteIsRich(n.body);
+  body.className = 'note-body ' + (rich ? 'rich' : 'plain');
+  if (rich) body.innerHTML = sanitizeNoteHtml(n.body); else body.textContent = n.body;
   body.title = 'Click to edit';
   body.onclick = () => openNoteEditor(n.id);
   card.appendChild(body);
@@ -6983,6 +7021,128 @@ async function archiveNote(id) {
 }
 
 
+
+// ── Rich text ──
+// Notes are stored as HTML so bullets can genuinely nest. That means the stored
+// value must be treated as untrusted on the way back out: only this allowlist of
+// tags and attributes survives, so a note can never carry script or an event
+// handler, however it got there.
+const RT_TAGS = new Set(['P','BR','DIV','B','STRONG','I','EM','U','UL','OL','LI','H3','A','SPAN']);
+function sanitizeNoteHtml(html) {
+  const doc = new DOMParser().parseFromString('<div id="r">' + String(html || '') + '</div>', 'text/html');
+  const root = doc.getElementById('r');
+  const walk = (node) => {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === 3) return;                       // text is fine
+      if (child.nodeType !== 1) { child.remove(); return; }    // comments and the rest
+      if (!RT_TAGS.has(child.tagName)) {
+        // Keep what the user typed, drop the wrapper.
+        while (child.firstChild) node.insertBefore(child.firstChild, child);
+        child.remove();
+        return;
+      }
+      [...child.attributes].forEach(a => {
+        const n = a.name.toLowerCase();
+        const keep =
+          (child.tagName === 'A' && n === 'href' && safeHttpUrl(a.value)) ||
+          (child.tagName === 'UL' && n === 'class' && a.value === 'chk') ||
+          (child.tagName === 'LI' && n === 'data-done');
+        if (!keep) child.removeAttribute(a.name);
+      });
+      if (child.tagName === 'A') { child.setAttribute('target', '_blank'); child.setAttribute('rel', 'noopener noreferrer'); }
+      walk(child);
+    });
+  };
+  walk(root);
+  return root.innerHTML;
+}
+
+// Notes written before rich text are plain strings. Anything without a tag is
+// treated as plain and shown with its line breaks intact.
+function noteIsRich(body) { return /<(p|div|ul|ol|li|br|b|i|u|h3|strong|em|a)\b/i.test(String(body || '')); }
+
+// The lines a note offers up when making tasks from it: one per block or list
+// item, regardless of whether the note is rich or plain.
+function noteLines(body) {
+  if (!noteIsRich(body)) {
+    return String(body || '').split('\n')
+      .map(l => l.replace(/^\s*(?:[-*•]|\[\s?\]|\d+[.)])\s+/, '').trim())
+      .filter(Boolean);
+  }
+  const doc = new DOMParser().parseFromString('<div id="r">' + sanitizeNoteHtml(body) + '</div>', 'text/html');
+  const root = doc.getElementById('r');
+  const blocks = root.querySelectorAll('li, p, h3, div');
+  const out = [];
+  (blocks.length ? [...blocks] : [root]).forEach(el => {
+    // A list item containing a nested list would otherwise swallow its children.
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('ul, ol').forEach(x => x.remove());
+    const text = (clone.textContent || '').trim();
+    if (text) out.push(text);
+  });
+  return out;
+}
+
+// ── Editor behavior ──
+function rtExec(cmd) {
+  const ed = document.getElementById('noteEditBody');
+  ed.focus();
+  if (cmd === 'checklist') { rtToggleChecklist(); return; }
+  document.execCommand(cmd, false, null);
+}
+
+// Turns the list the cursor is in into a checklist, or back again.
+function rtToggleChecklist() {
+  const sel = document.getSelection();
+  if (!sel.rangeCount) return;
+  let node = sel.getRangeAt(0).startContainer;
+  if (node.nodeType === 3) node = node.parentNode;
+  let list = node.closest ? node.closest('ul, ol') : null;
+  if (!list) { document.execCommand('insertUnorderedList'); 
+               node = document.getSelection().getRangeAt(0).startContainer;
+               if (node.nodeType === 3) node = node.parentNode;
+               list = node.closest ? node.closest('ul, ol') : null; }
+  if (!list) return;
+  if (list.classList.contains('chk')) {
+    list.classList.remove('chk');
+    [...list.children].forEach(li => li.removeAttribute('data-done'));
+  } else {
+    list.classList.add('chk');
+    [...list.children].forEach(li => { if (!li.hasAttribute('data-done')) li.setAttribute('data-done', '0'); });
+  }
+}
+
+function rtInit() {
+  const ed = document.getElementById('noteEditBody');
+  const bar = document.getElementById('noteEditToolbar');
+  if (!ed || ed.dataset.wired) return;
+  ed.dataset.wired = '1';
+  // mousedown, not click: clicking a toolbar button must not steal the cursor
+  // out of the text before the command runs.
+  bar.addEventListener('mousedown', (e) => {
+    const btn = e.target.closest('button[data-cmd]');
+    if (!btn) return;
+    e.preventDefault();
+    rtExec(btn.dataset.cmd);
+  });
+  ed.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand(e.shiftKey ? 'outdent' : 'indent', false, null);
+    } else if ((e.metaKey || e.ctrlKey) && 'bi'.includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : 'italic', false, null);
+    }
+  });
+  // Ticking a box inside the editor.
+  ed.addEventListener('click', (e) => {
+    const li = e.target.closest('ul.chk > li');
+    if (!li || !ed.contains(li)) return;
+    if (e.offsetX > 24) return;  // only the box itself, so text stays selectable
+    li.setAttribute('data-done', li.getAttribute('data-done') === '1' ? '0' : '1');
+  });
+}
+
 // ── Note editor ──
 // Capture is the fast path; this is where a note becomes an actual note —
 // edited, dated, and attached to the meeting it belongs to. That meeting can be
@@ -7018,7 +7178,10 @@ function openNoteEditor(id) {
   editingNoteId = id;
   const day = n?.day || todayKey();
   document.getElementById('noteEditTitle').textContent = n ? 'Edit note' : 'New note';
-  document.getElementById('noteEditBody').value = n?.body || '';
+  rtInit();
+  const ed = document.getElementById('noteEditBody');
+  const body = n?.body || '';
+  ed.innerHTML = noteIsRich(body) ? sanitizeNoteHtml(body) : escHtml(body).replace(/\n/g, '<br>');
   const dayInput = document.getElementById('noteEditDay');
   dayInput.value = fmtDisplay(day);
   wireAutoDate(dayInput);
@@ -7032,12 +7195,13 @@ function openNoteEditor(id) {
   del.style.display = n ? '' : 'none';
   del.onclick = () => deleteNote(id);
   openModal('noteEditModal');
-  setTimeout(() => document.getElementById('noteEditBody').focus(), 60);
+  setTimeout(() => ed.focus(), 60);
 }
 
 async function saveNoteEdit() {
-  const body = document.getElementById('noteEditBody').value.trim();
-  if (!body) { showToast('A note needs some text'); return; }
+  const ed = document.getElementById('noteEditBody');
+  const body = sanitizeNoteHtml(ed.innerHTML);
+  if (!(ed.textContent || '').trim()) { showToast('A note needs some text'); return; }
   const day = parseDate(document.getElementById('noteEditDay').value) || todayKey();
   const event_title = document.getElementById('noteEditEvent').value || null;
   const existing = editingNoteId ? notes.find(x => x.id === editingNoteId) : null;
@@ -7086,14 +7250,6 @@ async function deleteNote(id) {
 }
 
 let noteToTaskId = null;
-
-// Splits a note into the individual things it mentions. Bullet and checkbox
-// markers are stripped so a pasted list doesn't turn into tasks called "- x".
-function noteLines(body) {
-  return String(body || '').split('\n')
-    .map(l => l.replace(/^\s*(?:[-*\u2022]|\[\s?\]|\d+[.)])\s+/, '').trim())
-    .filter(Boolean);
-}
 
 function openNoteToTask(id) {
   const n = notes.find(x => x.id === id);
