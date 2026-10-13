@@ -247,6 +247,25 @@
     .today-picker-empty { font-size: 13px; color: var(--ink-faint); padding: 10px 4px; }
     .task-list-tag { font-size: 10px; color: var(--ink-faint); margin-left: 5px; flex-shrink: 0; }
     .task-reminder-icon { font-size: 10px; margin-left: 4px; flex-shrink: 0; opacity: .75; }
+    #notes .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; flex-shrink: 0; flex-wrap: wrap; }
+    .capture-hint { font-size: 11px; color: var(--ink-faint); }
+    .capture-context { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; min-height: 16px; }
+    .note-day-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
+                    text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
+    .note-day-hdr:first-child { margin-top: 0; }
+    .note-card { background: var(--paper); border: 1px solid var(--cream-dark); border-radius: 10px;
+                 padding: 10px 12px; margin-bottom: 8px; }
+    .note-body { font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+    .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+                 font-size: 11px; color: var(--ink-faint); }
+    .note-event { color: var(--ink-soft); }
+    .note-sent { color: var(--accent-dark); }
+    .note-actions { margin-left: auto; display: flex; gap: 6px; }
+    .note-btn { background: none; border: 1px solid var(--cream-dark); border-radius: 8px; cursor: pointer;
+                font-size: 11px; color: var(--ink-soft); padding: 5px 10px; min-height: 32px; }
+    .note-btn:hover { border-color: var(--accent); color: var(--ink); }
+    @media (pointer: coarse) { .note-btn { min-height: 44px; padding: 5px 14px; } }
+    .notes-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; }
     .time-grid-chip .task-list-tag { margin-left: 6px; }
     .agenda-block-info .task-list-tag { color: rgba(255,255,255,.75); margin-left: 0; margin-top: 1px; }
     .done-section { margin-top: 8px; }
@@ -918,6 +937,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
   </button>
+  <button class="tab-btn" data-tab="notes" onclick="switchTab('notes')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h12l4 4v12a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M8 10h8"/><path d="M8 14h6"/></svg>
+    <span>Notes</span>
+  </button>
   <button class="tab-btn" data-tab="today" onclick="switchTab('today')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     <span>Today</span>
@@ -977,6 +1000,19 @@
       <button class="btn btn-primary" onclick="openAddToTodayModal()">+ Add from Lists</button>
     </div>
     <div class="scroll-area" id="todayScrollArea"></div>
+  </section>
+
+  <!-- NOTES (quick capture) -->
+  <section id="notes" class="section">
+    <div class="page-header">
+      <div class="page-title">Notes</div>
+      <div class="page-sub" id="notesSub"></div>
+    </div>
+    <div class="hub-controls">
+      <button class="btn btn-primary" onclick="openCaptureModal()">+ Capture</button>
+      <span class="capture-hint">or press &#8984;K anywhere</span>
+    </div>
+    <div class="scroll-area" id="notesScrollArea"></div>
   </section>
 
   <!-- WEEK -->
@@ -1578,6 +1614,35 @@
   </div>
 </div>
 
+<!-- Quick Capture -->
+<div class="modal-overlay" id="captureModal">
+  <div class="modal">
+    <div class="modal-title">Capture</div>
+    <div class="capture-context" id="captureContext"></div>
+    <textarea class="modal-input" id="captureBody" rows="4" placeholder="Anything. Sort it out later."
+              style="resize:vertical;font-family:inherit;font-size:15px"></textarea>
+    <div class="capture-hint">Enter saves &middot; Shift+Enter for a new line &middot; Esc closes</div>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('captureModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCapture()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Send a note to a task list -->
+<div class="modal-overlay" id="noteToTaskModal">
+  <div class="modal">
+    <div class="modal-title">Send to a list</div>
+    <div class="capture-context" id="noteToTaskPreview"></div>
+    <label class="modal-label">List</label>
+    <select class="modal-select" id="noteToTaskList"></select>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('noteToTaskModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmNoteToTask()">Add task</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add Existing Task to Today Modal -->
 <div class="modal-overlay" id="addToTodayModal">
   <div class="modal modal-wide">
@@ -1634,8 +1699,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13';
-const WHATS_NEW = "Tasks can now remind you. Pick a lead time under \"Remind me\" when adding or editing a task, and Taskwell puts a matching alert on your Google Calendar — so the reminder reaches your Mac, phone and iPad even when Taskwell is closed. Completing, rescheduling or deleting the task updates the reminder with it.";
+const APP_VERSION = '2026-10-13b';
+const WHATS_NEW = "New Notes tab, for getting things out of your head fast. Press Cmd+K anywhere, type, press Enter — no list to pick, no fields to fill. Anything captured during a meeting is tagged with that meeting automatically. Later, turn a note into a task on any list; the note then shows that task's current state rather than a stale copy.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1740,6 +1805,19 @@ create table if not exists public.tasks (
   created_at timestamptz default now()
 );
 
+-- Quick capture. One box for anything worth getting out of your head mid-meeting;
+-- sorted into tasks or kept as notes later.
+create table if not exists public.notes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users not null,
+  body text not null,
+  event_title text,
+  day date,
+  task_id uuid,
+  archived boolean default false,
+  created_at timestamptz default now()
+);
+
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users not null,
   cal_feeds jsonb,
@@ -1771,12 +1849,15 @@ create table if not exists public.allowed_emails (
 
 alter table public.lists enable row level security;
 alter table public.tasks enable row level security;
+alter table public.notes enable row level security;
 alter table public.user_settings enable row level security;
 alter table public.allowed_emails enable row level security;
 
 create policy "lists: own rows" on public.lists for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "tasks: own rows" on public.tasks for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "notes: own rows" on public.notes for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "user_settings: own row" on public.user_settings for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -1805,6 +1886,8 @@ create policy "allowlisted only" on public.lists as restrictive
   for all using (public.is_allowed_user()) with check (public.is_allowed_user());
 create policy "allowlisted only" on public.tasks as restrictive
   for all using (public.is_allowed_user()) with check (public.is_allowed_user());
+create policy "allowlisted only" on public.notes as restrictive
+  for all using (public.is_allowed_user()) with check (public.is_allowed_user());
 create policy "allowlisted only" on public.user_settings as restrictive
   for all using (public.is_allowed_user()) with check (public.is_allowed_user());
 `;
@@ -1816,7 +1899,7 @@ const SETUP_SQL_ALLOWLIST = `insert into public.allowed_emails (email) values ('
 
 // Calendar OAuth — fill in your client IDs to enable calendar sync.
 // ── State ──
-let lists = [], tasks = [];
+let lists = [], tasks = [], notes = [];
 let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 // Last-used view preferences (Hub's Home/Work filter, Week/Agenda's unassigned-tray
 // filter) — cached in localStorage for instant load, then reconciled against the
@@ -2476,7 +2559,7 @@ const USER_CACHE_KEYS = ['tw_google_tokens', 'tw_cal_feeds', 'tw_cal_cache', 'tw
 // leaking into someone else's session) and as the shared base for sign-out.
 function wipeLocalUserCache() {
   USER_CACHE_KEYS.forEach(k => { try { localStorage.removeItem(k); } catch(e) {} });
-  lists = []; tasks = []; calEvents = {};
+  lists = []; tasks = []; notes = []; calEvents = {};
   googleTokens = null; outlookTokens = null; outlookEmail = ''; calFeeds = [];
   serverLastSeen = null; secondCalId = ''; secondCalContext = 'work';
   userPalettes = { work: 'original', home: 'sage', all: 'rose' };
@@ -4786,6 +4869,14 @@ async function boot() {
       api('GET','tasks?order=created_at.asc'),
       loadCalFeeds()
     ]);
+    // Loaded separately and forgivingly: if the notes table hasn't been created
+    // yet, the app must still start normally rather than failing to boot.
+    try {
+      notes = await api('GET', 'notes?archived=eq.false&order=created_at.desc');
+    } catch (e) {
+      notes = [];
+      console.warn('Notes unavailable (table may not exist yet):', e?.message);
+    }
     await healMissingSections();
     rolloverPastTasks();
     renderHub(); renderWeek(); renderMiniCal(); renderAgenda();
@@ -5124,6 +5215,7 @@ function switchTab(tab) {
   document.getElementById(tab).classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   if (tab === 'today') renderTodayTasks();
+  if (tab === 'notes') renderNotes();
   if (tab === 'week') renderWeek();
   if (tab === 'day') { renderMiniCal(); renderAgenda(); }
   if (tab === 'month') renderMonthView();
@@ -6165,6 +6257,24 @@ async function undoLastAction() {
   if (ok) showToast('Undone');
 }
 
+// Cmd/Ctrl+K opens capture from anywhere — the whole point is that getting a
+// thought down costs nothing. Enter saves, Shift+Enter makes a new line, Esc
+// closes, so a capture never needs the mouse.
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
+    e.preventDefault();
+    if (authSession) openCaptureModal();
+    return;
+  }
+  const captureOpen = document.getElementById('captureModal')?.classList.contains('open');
+  if (!captureOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeModal('captureModal'); return; }
+  if (e.key === 'Enter' && !e.shiftKey && document.activeElement?.id === 'captureBody') {
+    e.preventDefault();
+    saveCapture();
+  }
+});
+
 document.addEventListener('keydown', e => {
   if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return;
   const el = document.activeElement;
@@ -6473,6 +6583,195 @@ async function confirmAddTask() {
     const remindRaw = document.getElementById('addTaskRemind').value;
     if (remindRaw !== '') { t.reminder_minutes = Number(remindRaw); await persistTaskReminder(t); }
   } catch(e) { showToast('Error adding task: ' + e.message, true); }
+}
+
+
+// ══════════════════════════════
+// QUICK CAPTURE / NOTES
+// ══════════════════════════════
+// One box for anything worth getting out of your head, with no decisions at the
+// moment of capture — no list to pick, no fields to fill. Type, Enter, done.
+// Sorting happens later, when there's attention to spare for it.
+
+// The meeting happening right now, if any, so a note captured at 10:20 isn't a
+// contextless fragment when read back later.
+function currentMeetingTitle(now = new Date()) {
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const todays = (calEvents[dateKey(now)] || []).filter(ev => !ev.allDay && ev.time);
+  for (const ev of todays) {
+    const start = timeToMinutes(ev.time);
+    if (start < 0) continue;
+    const end = start + (ev.durationMin > 0 ? ev.durationMin : 60);
+    if (mins >= start && mins < end) return ev.title;
+  }
+  return null;
+}
+
+function openCaptureModal() {
+  const box = document.getElementById('captureBody');
+  box.value = '';
+  const meeting = currentMeetingTitle();
+  document.getElementById('captureContext').textContent = meeting ? 'During: ' + meeting : '';
+  openModal('captureModal');
+  setTimeout(() => box.focus(), 50);
+}
+
+async function saveCapture() {
+  const box = document.getElementById('captureBody');
+  const body = box.value.trim();
+  if (!body) { closeModal('captureModal'); return; }
+  const note = {
+    user_id: authSession?.user_id, body,
+    event_title: currentMeetingTitle(), day: todayKey(),
+  };
+  closeModal('captureModal');
+  try {
+    const [saved] = await api('POST', 'notes', note);
+    notes.unshift(saved);
+    renderNotes();
+    showToast('Captured');
+  } catch (e) {
+    console.error('Capture failed:', e);
+    // Never lose what was typed — put it back in the box so it can be retried.
+    box.value = body;
+    openModal('captureModal');
+    showToast("Couldn't save that — " + (e?.message || 'please try again'), true);
+  }
+}
+
+function renderNotes() {
+  const area = document.getElementById('notesScrollArea');
+  if (!area) return;
+  const live = notes.filter(n => !n.archived);
+  const sub = document.getElementById('notesSub');
+  if (sub) sub.textContent = live.length ? `${live.length} note${live.length !== 1 ? 's' : ''}` : '';
+  area.innerHTML = '';
+  if (!live.length) {
+    const empty = document.createElement('div');
+    empty.className = 'notes-empty';
+    empty.textContent = 'Nothing captured yet. Press \u2318K anywhere to jot something down.';
+    area.appendChild(empty);
+    return;
+  }
+  let lastDay = null;
+  live.forEach(n => {
+    const day = n.day || (n.created_at || '').slice(0, 10);
+    if (day !== lastDay) {
+      lastDay = day;
+      const hdr = document.createElement('div');
+      hdr.className = 'note-day-hdr';
+      hdr.textContent = day === todayKey() ? 'Today'
+        : new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      area.appendChild(hdr);
+    }
+    area.appendChild(buildNoteCard(n));
+  });
+}
+
+function buildNoteCard(n) {
+  const card = document.createElement('div');
+  card.className = 'note-card';
+  const body = document.createElement('div');
+  body.className = 'note-body';
+  body.textContent = n.body;
+  card.appendChild(body);
+
+  const meta = document.createElement('div');
+  meta.className = 'note-meta';
+  if (n.created_at) {
+    const t = new Date(n.created_at);
+    const span = document.createElement('span');
+    span.textContent = t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    meta.appendChild(span);
+  }
+  if (n.event_title) {
+    const ev = document.createElement('span');
+    ev.className = 'note-event';
+    ev.textContent = 'During ' + n.event_title;
+    meta.appendChild(ev);
+  }
+  // A note that became a task shows the task's CURRENT state rather than a copy
+  // of its text, so the note can't drift out of step with the task.
+  const linked = n.task_id ? tasks.find(t => t.id === n.task_id) : null;
+  if (linked) {
+    const lst = lists.find(l => l.id === linked.list_id);
+    const sent = document.createElement('span');
+    sent.className = 'note-sent';
+    sent.textContent = (linked.completed ? '\u2713 Done' : '\u2192 Task')
+      + (lst ? ' in ' + lst.name : '');
+    meta.appendChild(sent);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'note-actions';
+  if (!linked) {
+    const toTask = document.createElement('button');
+    toTask.className = 'note-btn';
+    toTask.textContent = 'Make a task';
+    toTask.onclick = () => openNoteToTask(n.id);
+    actions.appendChild(toTask);
+  }
+  const done = document.createElement('button');
+  done.className = 'note-btn';
+  done.textContent = 'Archive';
+  done.onclick = () => archiveNote(n.id);
+  actions.appendChild(done);
+  meta.appendChild(actions);
+
+  card.appendChild(meta);
+  return card;
+}
+
+async function archiveNote(id) {
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  const before = notes.map(x => ({ ...x }));
+  n.archived = true;
+  renderNotes();
+  try {
+    await api('PATCH', `notes?id=eq.${id}`, { archived: true });
+  } catch (e) {
+    notes = before;
+    renderNotes();
+    showToast("Couldn't archive that note — please try again.", true);
+  }
+}
+
+let noteToTaskId = null;
+function openNoteToTask(id) {
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  noteToTaskId = id;
+  document.getElementById('noteToTaskPreview').textContent = n.body.split('\n')[0].slice(0, 120);
+  const sel = document.getElementById('noteToTaskList');
+  sel.innerHTML = listSelectOptionsGroupedBySection();
+  openModal('noteToTaskModal');
+}
+
+async function confirmNoteToTask() {
+  const n = notes.find(x => x.id === noteToTaskId);
+  const listId = document.getElementById('noteToTaskList').value;
+  if (!n || !listId) return;
+  // The first line becomes the task title; the whole note rides along as the
+  // task's notes, so nothing captured gets lost in the handover.
+  const lines = n.body.split('\n');
+  const title = lines[0].slice(0, 200);
+  const rest = lines.slice(1).join('\n').trim();
+  closeModal('noteToTaskModal');
+  try {
+    const [task] = await api('POST', 'tasks', {
+      list_id: listId, title, completed: false,
+      notes: rest || null, user_id: authSession?.user_id,
+    });
+    tasks.push(task);
+    n.task_id = task.id;
+    await api('PATCH', `notes?id=eq.${n.id}`, { task_id: task.id });
+    renderNotes(); renderHub(); renderWeek();
+    showToast('Added to ' + (lists.find(l => l.id === listId)?.name || 'list'));
+  } catch (e) {
+    console.error('Making a task from a note failed:', e);
+    showToast("Couldn't make that task — " + (e?.message || 'please try again'), true);
+  }
 }
 
 // ══════════════════════════════
