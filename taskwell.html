@@ -255,7 +255,9 @@
     .note-day-hdr:first-child { margin-top: 0; }
     .note-card { background: var(--paper); border: 1px solid var(--cream-dark); border-radius: 10px;
                  padding: 10px 12px; margin-bottom: 8px; }
-    .note-body { font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+    .note-body { font-size: 14px; color: var(--ink); white-space: pre-wrap; word-break: break-word;
+                 cursor: text; }
+    .note-body:hover { color: var(--accent-dark); }
     .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
                  font-size: 11px; color: var(--ink-faint); }
     .note-event { color: var(--ink-soft); }
@@ -1051,7 +1053,8 @@
     </div>
     <div class="hub-controls">
       <button class="btn btn-primary" onclick="openCaptureModal()">+ Capture</button>
-      <span class="capture-hint">or press &#8984;K anywhere</span>
+      <button class="btn btn-primary" onclick="openNoteEditor(null)">+ New note</button>
+      <span class="capture-hint">&#8984;K captures from anywhere</span>
     </div>
     <div class="scroll-area" id="notesScrollArea"></div>
   </section>
@@ -1670,6 +1673,28 @@
   </div>
 </div>
 
+<!-- Note editor -->
+<div class="modal-overlay" id="noteEditModal">
+  <div class="modal modal-wide">
+    <div class="modal-title" id="noteEditTitle">Note</div>
+    <textarea class="modal-input" id="noteEditBody" rows="11"
+              style="resize:vertical;font-family:inherit;font-size:15px;line-height:1.5"></textarea>
+    <div class="modal-row" style="justify-content:flex-start;gap:10px;margin-top:10px">
+      <div style="flex:1">
+        <label class="modal-label">Day</label>
+        <input class="modal-input" id="noteEditDay" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+      </div>
+    </div>
+    <label class="modal-label">Meeting</label>
+    <select class="modal-select" id="noteEditEvent"></select>
+    <div class="modal-row">
+      <button class="btn" onclick="closeModal('noteEditModal')">Cancel</button>
+      <button class="btn btn-danger" id="noteEditDelete">Delete</button>
+      <button class="btn btn-primary" onclick="saveNoteEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Send a note to a task list -->
 <div class="modal-overlay" id="noteToTaskModal">
   <div class="modal">
@@ -1741,8 +1766,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13e';
-const WHATS_NEW = "New Brief tab: today's tasks, anything due in the next week grouped by day, and today's calendar — all on one screen. The same view is embedded in Rosey, so there is only one of it and it stays current by itself.";
+const APP_VERSION = '2026-10-13f';
+const WHATS_NEW = "Notes are now notes rather than an inbox: click any note to edit it, change which day it belongs to, and attach it to a meeting — including one coming up, so you can write notes FOR a meeting beforehand. There is also a New note button, and notes can be deleted outright rather than only archived.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -6882,6 +6907,8 @@ function buildNoteCard(n) {
   const body = document.createElement('div');
   body.className = 'note-body';
   body.textContent = n.body;
+  body.title = 'Click to edit';
+  body.onclick = () => openNoteEditor(n.id);
   card.appendChild(body);
 
   const meta = document.createElement('div');
@@ -6895,7 +6922,7 @@ function buildNoteCard(n) {
   if (n.event_title) {
     const ev = document.createElement('span');
     ev.className = 'note-event';
-    ev.textContent = 'During ' + n.event_title;
+    ev.textContent = n.event_title;
     meta.appendChild(ev);
   }
   // Tasks made from this note show their CURRENT state rather than a copy of
@@ -6923,6 +6950,12 @@ function buildNoteCard(n) {
     toTask.onclick = () => openNoteToTask(n.id);
     actions.appendChild(toTask);
   }
+  const edit = document.createElement('button');
+  edit.className = 'note-btn';
+  edit.textContent = 'Edit';
+  edit.onclick = () => openNoteEditor(n.id);
+  actions.appendChild(edit);
+
   const done = document.createElement('button');
   done.className = 'note-btn';
   done.textContent = 'Archive';
@@ -6946,6 +6979,109 @@ async function archiveNote(id) {
     notes = before;
     renderNotes();
     showToast("Couldn't archive that note — please try again.", true);
+  }
+}
+
+
+// ── Note editor ──
+// Capture is the fast path; this is where a note becomes an actual note —
+// edited, dated, and attached to the meeting it belongs to. That meeting can be
+// one coming up, so notes can be written FOR a meeting rather than only during
+// one.
+let editingNoteId = null;
+
+// Every event on a given day, as options for the meeting picker.
+function fillNoteEventOptions(day, selectedTitle) {
+  const sel = document.getElementById('noteEditEvent');
+  if (!sel) return;
+  const evs = (calEvents[day] || []).slice().sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    return timeToMinutes(a.time) - timeToMinutes(b.time);
+  });
+  const opts = ['<option value="">No meeting</option>'];
+  evs.forEach(ev => {
+    const label = (ev.allDay ? 'All day' : (ev.time || '')) + ' \u00b7 ' + ev.title;
+    opts.push(`<option value="${escHtml(ev.title)}">${escHtml(label)}</option>`);
+  });
+  // A note may already name a meeting that isn't on this day any more — keep it
+  // rather than silently dropping what she wrote it against.
+  if (selectedTitle && !evs.some(ev => ev.title === selectedTitle)) {
+    opts.push(`<option value="${escHtml(selectedTitle)}">${escHtml(selectedTitle)}</option>`);
+  }
+  sel.innerHTML = opts.join('');
+  sel.value = selectedTitle || '';
+}
+
+function openNoteEditor(id) {
+  const n = id ? notes.find(x => x.id === id) : null;
+  editingNoteId = id;
+  const day = n?.day || todayKey();
+  document.getElementById('noteEditTitle').textContent = n ? 'Edit note' : 'New note';
+  document.getElementById('noteEditBody').value = n?.body || '';
+  const dayInput = document.getElementById('noteEditDay');
+  dayInput.value = fmtDisplay(day);
+  wireAutoDate(dayInput);
+  fillNoteEventOptions(day, n?.event_title || '');
+  // Changing the day re-offers that day's meetings.
+  dayInput.oninput = () => {
+    const d = parseDate(dayInput.value);
+    if (d) fillNoteEventOptions(d, document.getElementById('noteEditEvent').value);
+  };
+  const del = document.getElementById('noteEditDelete');
+  del.style.display = n ? '' : 'none';
+  del.onclick = () => deleteNote(id);
+  openModal('noteEditModal');
+  setTimeout(() => document.getElementById('noteEditBody').focus(), 60);
+}
+
+async function saveNoteEdit() {
+  const body = document.getElementById('noteEditBody').value.trim();
+  if (!body) { showToast('A note needs some text'); return; }
+  const day = parseDate(document.getElementById('noteEditDay').value) || todayKey();
+  const event_title = document.getElementById('noteEditEvent').value || null;
+  const existing = editingNoteId ? notes.find(x => x.id === editingNoteId) : null;
+  closeModal('noteEditModal');
+  try {
+    if (existing) {
+      const before = { ...existing };
+      Object.assign(existing, { body, day, event_title });
+      renderNotes();
+      try {
+        await api('PATCH', `notes?id=eq.${existing.id}`, { body, day, event_title });
+      } catch (e) {
+        Object.assign(existing, before);
+        renderNotes();
+        throw e;
+      }
+    } else {
+      const [saved] = await api('POST', 'notes', {
+        user_id: authSession?.user_id, body, day, event_title,
+      });
+      notes.unshift(saved);
+      renderNotes();
+    }
+    showToast('Saved');
+  } catch (e) {
+    console.error('Saving the note failed:', e);
+    showToast("Couldn't save that note — " + (e?.message || 'please try again'), true);
+  }
+}
+
+async function deleteNote(id) {
+  const n = notes.find(x => x.id === id);
+  if (!n) return;
+  if (!confirm('Delete this note? This cannot be undone.')) return;
+  const before = notes.map(x => ({ ...x }));
+  notes = notes.filter(x => x.id !== id);
+  closeModal('noteEditModal');
+  renderNotes();
+  try {
+    await api('DELETE', `notes?id=eq.${id}`);
+  } catch (e) {
+    notes = before;
+    renderNotes();
+    showToast("Couldn't delete that note — please try again.", true);
   }
 }
 
