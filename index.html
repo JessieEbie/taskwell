@@ -266,6 +266,28 @@
     .note-btn:hover { border-color: var(--accent); color: var(--ink); }
     @media (pointer: coarse) { .note-btn { min-height: 44px; padding: 5px 14px; } }
     .notes-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; }
+    .brief-block { margin-bottom: 26px; }
+    .brief-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
+                 text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint);
+                 margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .brief-count { background: var(--cream-dark); color: var(--ink-soft); border-radius: 10px;
+                   padding: 1px 7px; font-size: 10px; }
+    .brief-day { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft);
+                 margin: 12px 0 4px; }
+    .brief-ev { display: flex; align-items: baseline; gap: 10px; padding: 7px 0;
+                border-bottom: 1px solid var(--cream-dark); font-size: 13px; }
+    .brief-ev-time { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; color: var(--ink-soft);
+                     min-width: 74px; flex-shrink: 0; }
+    .brief-ev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .brief-ev-title { flex: 1; }
+    .brief-none { font-size: 13px; color: var(--ink-faint); font-style: italic; padding: 4px 0; }
+    /* Embed mode: Rosey shows this same view in a frame, so the app chrome goes
+       away and only the brief is left. */
+    body.embed .rail, body.embed .page-header { display: none; }
+    body.embed .main { padding: 0; }
+    body.embed .scroll-area { overflow: visible; padding: 4px 0 8px; }
+    body.embed { background: transparent; }
+    body.embed .login-screen { display: none; }
     .note-line-picker { max-height: 40vh; overflow-y: auto; margin-bottom: 10px; }
     .note-line-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 2px; min-height: 44px;
                      border-bottom: 1px solid var(--cream-dark); cursor: pointer; font-size: 13px; color: var(--ink); }
@@ -943,6 +965,10 @@
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     <span>Hub</span>
   </button>
+  <button class="tab-btn" data-tab="brief" onclick="switchTab('brief')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    <span>Brief</span>
+  </button>
   <button class="tab-btn" data-tab="notes" onclick="switchTab('notes')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h12l4 4v12a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1z"/><path d="M8 10h8"/><path d="M8 14h6"/></svg>
     <span>Notes</span>
@@ -1006,6 +1032,15 @@
       <button class="btn btn-primary" onclick="openAddToTodayModal()">+ Add from Lists</button>
     </div>
     <div class="scroll-area" id="todayScrollArea"></div>
+  </section>
+
+  <!-- BRIEF -->
+  <section id="brief" class="section">
+    <div class="page-header">
+      <div class="page-title" id="briefTitle">Today</div>
+      <div class="page-sub" id="briefSub"></div>
+    </div>
+    <div class="scroll-area" id="briefScrollArea"></div>
   </section>
 
   <!-- NOTES (quick capture) -->
@@ -1706,8 +1741,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13d';
-const WHATS_NEW = "Fixed unfinished tasks getting stranded on yesterday. Taskwell only moved them forward when it started up, so leaving the app open overnight meant Today came up empty while everything sat in yesterday's column. It now notices the date changing while it is open, carries unfinished tasks over, and tells you if that fails instead of quietly reverting.";
+const APP_VERSION = '2026-10-13e';
+const WHATS_NEW = "New Brief tab: today's tasks, anything due in the next week grouped by day, and today's calendar — all on one screen. The same view is embedded in Rosey, so there is only one of it and it stays current by itself.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -4732,6 +4767,7 @@ async function removeCalFeed(i) {
 // ── Boot ──
 
 async function boot() {
+  applyEmbedMode();
   // Handle OAuth callback — token in hash (implicit) or code in query (PKCE)
   const hash = window.location.hash;
   const qp = new URLSearchParams(window.location.search);
@@ -4887,6 +4923,7 @@ async function boot() {
     await healMissingSections();
     await rolloverPastTasks();
     renderHub(); renderWeek(); renderMiniCal(); renderAgenda();
+    if (applyEmbedMode()) renderBrief();
     loadCalCache();
     (async () => {
       await fetchAllFeeds();
@@ -5225,6 +5262,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  if (tab === 'brief') renderBrief();
   if (tab === 'today') renderTodayTasks();
   if (tab === 'notes') renderNotes();
   if (tab === 'week') renderWeek();
@@ -6620,6 +6658,142 @@ async function confirmAddTask() {
 }
 
 
+
+// ══════════════════════════════
+// BRIEF
+// ══════════════════════════════
+// Where things stand right now: what's on today, what's coming in the next
+// week, and the shape of the day. Rendered here and embedded by Rosey, so
+// there is only one implementation of it.
+const BRIEF_LOOKAHEAD_DAYS = 7;
+
+function briefTaskSets() {
+  const visListIds = new Set(getVisibleLists().map(l => l.id));
+  const today = todayKey();
+  const horizon = (() => { const d = new Date(); d.setDate(d.getDate() + BRIEF_LOOKAHEAD_DAYS); return dateKey(d); })();
+  const mine = tasks.filter(t => visListIds.has(t.list_id) && !t.completed);
+  const dayOf = t => t.week_assigned || t.due_date;
+  return {
+    todays: priorityFirst(mine.filter(t => dayOf(t) === today)),
+    // Everything landing in the next week, soonest first. Today is already
+    // covered above, so it isn't repeated here.
+    soon: mine.filter(t => { const d = dayOf(t); return d && d > today && d <= horizon; })
+              .sort((a, b) => (dayOf(a) < dayOf(b) ? -1 : dayOf(a) > dayOf(b) ? 1 : 0)),
+  };
+}
+
+function renderBrief() {
+  const area = document.getElementById('briefScrollArea');
+  if (!area) return;
+  const today = todayKey();
+  const { todays, soon } = briefTaskSets();
+  const events = visibleCalEvents(today).slice().sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1;
+    if (!a.allDay && b.allDay) return 1;
+    return timeToMinutes(a.time) - timeToMinutes(b.time);
+  });
+
+  const titleEl = document.getElementById('briefTitle');
+  if (titleEl) titleEl.textContent = new Date(today + 'T12:00:00')
+    .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const subEl = document.getElementById('briefSub');
+  if (subEl) {
+    const bits = [];
+    if (todays.length) bits.push(`${todays.length} task${todays.length !== 1 ? 's' : ''} today`);
+    if (events.length) bits.push(`${events.length} event${events.length !== 1 ? 's' : ''}`);
+    subEl.textContent = bits.join(' \u00b7 ') || 'Clear';
+  }
+
+  area.innerHTML = '';
+  const block = (label, count) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'brief-block';
+    const hdr = document.createElement('div');
+    hdr.className = 'brief-hdr';
+    hdr.textContent = label;
+    if (count) {
+      const c = document.createElement('span');
+      c.className = 'brief-count'; c.textContent = count;
+      hdr.appendChild(c);
+    }
+    wrap.appendChild(hdr);
+    area.appendChild(wrap);
+    return wrap;
+  };
+  const none = (wrap, text) => {
+    const e = document.createElement('div');
+    e.className = 'brief-none'; e.textContent = text;
+    wrap.appendChild(e);
+  };
+
+  // 1. Today's tasks — interactive, so the brief is somewhere to work from
+  // rather than only read.
+  const todayBlock = block('Today', todays.length);
+  if (!todays.length) none(todayBlock, 'Nothing scheduled for today.');
+  else todays.forEach(t => todayBlock.appendChild(makeTaskRow(t, { showListName: true })));
+
+  // 2. The week ahead, grouped by day so it reads as a run-up rather than a list.
+  const soonBlock = block('Due within a week', soon.length);
+  if (!soon.length) none(soonBlock, 'Nothing due in the next week.');
+  else {
+    let lastDay = null;
+    soon.forEach(t => {
+      const day = t.week_assigned || t.due_date;
+      if (day !== lastDay) {
+        lastDay = day;
+        const h = document.createElement('div');
+        h.className = 'brief-day';
+        const d = new Date(day + 'T12:00:00');
+        const days = Math.round((d - new Date(today + 'T12:00:00')) / 86400000);
+        h.textContent = (days === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'long' }))
+          + ' \u00b7 ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        soonBlock.appendChild(h);
+      }
+      soonBlock.appendChild(makeTaskRow(t, { showListName: true }));
+    });
+  }
+
+  // 3. The shape of the day.
+  const calBlock = block('Today\u2019s calendar', events.length);
+  if (!events.length) none(calBlock, 'No events today.');
+  else events.forEach(ev => {
+    const row = document.createElement('div');
+    row.className = 'brief-ev';
+    const time = document.createElement('span');
+    time.className = 'brief-ev-time';
+    time.textContent = ev.allDay ? 'All day' : (ev.time || '');
+    const dot = document.createElement('span');
+    dot.className = 'brief-ev-dot';
+    dot.style.background = ev.color || 'var(--accent)';
+    const title = document.createElement('span');
+    title.className = 'brief-ev-title';
+    title.textContent = ev.title;
+    row.appendChild(time); row.appendChild(dot); row.appendChild(title);
+    row.onclick = () => { ev._dk = today; showCalEvPopup(ev, row); };
+    calBlock.appendChild(row);
+  });
+}
+
+// Rosey embeds this view in a frame. Same origin, so the signed-in session is
+// already shared — nothing to log into twice.
+function isEmbedded() {
+  return /(^|[?&#])embed=brief\b/.test(location.search + location.hash)
+    || location.hash === '#brief-embed';
+}
+function applyEmbedMode() {
+  if (!isEmbedded()) return false;
+  document.body.classList.add('embed');
+  document.querySelectorAll('.section').forEach(x => x.classList.remove('active'));
+  document.getElementById('brief').classList.add('active');
+  // Signed out inside a frame: say so in one line rather than letting a whole
+  // login page unfold inside the host page.
+  if (!authSession) {
+    const area = document.getElementById('briefScrollArea');
+    if (area) area.innerHTML = '<div class="brief-none">Open Taskwell to sign in.</div>';
+  }
+  return true;
+}
+
 // ══════════════════════════════
 // QUICK CAPTURE / NOTES
 // ══════════════════════════════
@@ -7475,8 +7649,9 @@ function renderWeek() {
   });
   // Piggybacks on renderWeek() rather than being called at every one of the
   // ~20 call sites that mutate tasks — renderWeek() already runs after all of
-  // them, so this keeps the Today tab in sync for free.
+  // them, so this keeps the Today tab and the Brief in sync for free.
   renderTodayTasks();
+  renderBrief();
 }
 
 function setupChipDrag(chip, taskId) {
