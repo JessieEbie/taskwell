@@ -246,6 +246,7 @@
     .today-picker-list-name { font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
     .today-picker-empty { font-size: 13px; color: var(--ink-faint); padding: 10px 4px; }
     .task-list-tag { font-size: 10px; color: var(--ink-faint); margin-left: 5px; flex-shrink: 0; }
+    .task-reminder-icon { font-size: 10px; margin-left: 4px; flex-shrink: 0; opacity: .75; }
     .time-grid-chip .task-list-tag { margin-left: 6px; }
     .agenda-block-info .task-list-tag { color: rgba(255,255,255,.75); margin-left: 0; margin-top: 1px; }
     .done-section { margin-top: 8px; }
@@ -1525,6 +1526,8 @@
       <option value="yearly">Yearly</option>
     </select>
     <label class="modal-check-row"><input type="checkbox" id="editTaskPriority" /> <span>&#9873; Priority</span></label>
+    <label class="modal-label">Remind me</label>
+    <select class="modal-select" id="editTaskRemind"></select>
     <label class="modal-label">Notes</label>
     <textarea class="modal-input" id="editTaskNotes" placeholder="Notes, links, etc. (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div class="modal-row">
@@ -1550,6 +1553,8 @@
       <input class="modal-input" type="time" id="addTaskEnd" style="flex:1" />
     </div>
     <label class="modal-check-row"><input type="checkbox" id="addTaskPriority" /> <span>&#9873; Priority</span></label>
+    <label class="modal-label">Remind me</label>
+    <select class="modal-select" id="addTaskRemind"></select>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('addTaskModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmAddTask()">Add</button>
@@ -1629,8 +1634,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-09-12';
-const WHATS_NEW = "You can now flag tasks as priority: tap the flag on the right of a task, or tick Priority when adding or editing one. Flagged tasks move to the top of their list and stand out in bold with a red flag in every view — Hub, Today, Week, Agenda and Month.";
+const APP_VERSION = '2026-10-13';
+const WHATS_NEW = "Tasks can now remind you. Pick a lead time under \"Remind me\" when adding or editing a task, and Taskwell puts a matching alert on your Google Calendar — so the reminder reaches your Mac, phone and iPad even when Taskwell is closed. Completing, rescheduling or deleting the task updates the reminder with it.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -1722,6 +1727,10 @@ create table if not exists public.tasks (
   completed boolean default false,
   in_progress boolean default false,
   priority boolean default false,
+  reminder_minutes int,
+  remind_at timestamptz,
+  reminder_emailed_at timestamptz,
+  reminder_gcal_id text,
   due_date date,
   week_assigned date,
   notes text,
@@ -4146,8 +4155,12 @@ async function fetchGoogleCalendarEvents() {
     singleEvents: 'true', orderBy: 'startTime', maxResults: '2500'
   });
   const localDk = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  // Events Taskwell created to back a task reminder are already on screen as the
+  // task itself — drawing them as calendar events too would show everything twice.
+  const reminderEventIds = new Set(tasks.map(t => t.reminder_gcal_id).filter(Boolean));
   const pushItems = (items, color, source) => {
     (items || []).forEach(item => {
+      if (reminderEventIds.has(item.id)) return;
       if (item.status === 'cancelled') return;
       if (hideBirthdays && item.eventType === 'birthday') return;
       const selfAttendee = item.attendees?.find(a => a.self);
@@ -5747,6 +5760,14 @@ function makeTaskRow(task, opts) {
     }
   }
 
+  if (task.reminder_minutes != null && !done) {
+    const bell = document.createElement('span');
+    bell.className = 'task-reminder-icon';
+    bell.textContent = '\u{1F514}';
+    bell.title = 'Reminder: ' + (reminderLabel(task.reminder_minutes) || 'set');
+    row.appendChild(bell);
+  }
+
   const flag = document.createElement('button');
   flag.className = 'task-priority-btn' + (task.priority ? ' active' : '');
   flag.title = task.priority ? 'Priority — click to remove' : 'Mark as priority';
@@ -5879,6 +5900,7 @@ async function toggleTask(id) {
     tasks = tasks.filter(x => x.id !== id);
     rerenderAll();
     if (!await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that task')) return;
+    await deleteReminderEvent(removed.reminder_gcal_id);
     if (removed.repeat_freq) await createNextRepeatOccurrence(removed);
     return;
   }
@@ -5892,6 +5914,8 @@ async function toggleTask(id) {
     () => api('PATCH', `tasks?id=eq.${id}`, { completed: t.completed, in_progress: t.in_progress }),
     'that task');
   if (!ok) return;
+  // Completing clears the reminder; un-completing puts it back.
+  if (t.reminder_minutes != null) await persistTaskReminder(t);
   if (completingNow && t.repeat_freq) await createNextRepeatOccurrence(t);
 }
 
@@ -5902,6 +5926,116 @@ async function toggleInProgress(id) {
   t.in_progress = !t.in_progress;
   rerenderAll();
   await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${id}`, { in_progress: t.in_progress }), 'that task');
+}
+
+// ── Task reminders ──
+// Opt-in per task. A reminder writes a matching event to Google Calendar with a
+// popup alert, so the alert is delivered by Calendar itself — which already
+// works on every device, and keeps working when Taskwell is closed. The event's
+// id is kept on the task so the event can be updated or removed with it, and so
+// these events can be filtered back out of Taskwell's own calendar views (see
+// fetchGoogleCalendarEvents) instead of showing every task twice.
+const REMINDER_CHOICES = [
+  ['', 'No reminder'], ['0', 'At the time'], ['10', '10 minutes before'],
+  ['30', '30 minutes before'], ['60', '1 hour before'], ['1440', '1 day before'],
+];
+// A task with a date but no time has no natural moment to fire at, so reminders
+// for those land mid-morning rather than at midnight.
+const REMINDER_UNTIMED_HOUR = 9;
+
+// The moment the task itself is due — the reminder fires `reminder_minutes` before this.
+function taskReminderBase(t) {
+  const day = t.week_assigned || t.due_date;
+  if (!day) return null;
+  const d = new Date(day + 'T00:00:00');
+  if (isNaN(d)) return null;
+  const mins = taskTimeToMinutes(t.start_time);
+  if (mins >= 0) d.setMinutes(mins); else d.setHours(REMINDER_UNTIMED_HOUR);
+  return d;
+}
+function taskRemindAt(t) {
+  if (t.reminder_minutes == null || t.completed) return null;
+  const base = taskReminderBase(t);
+  return base ? new Date(base.getTime() - Number(t.reminder_minutes) * 60000) : null;
+}
+// Google wants a local wall-clock string plus a timeZone, not a UTC instant.
+function gcalLocalIso(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+}
+
+// Creates, updates or removes the calendar event backing a task's reminder.
+// Never throws: a reminder failing to sync must not take down the save of the
+// task itself.
+async function syncTaskReminder(t) {
+  const base = (!t.completed && t.reminder_minutes != null) ? taskReminderBase(t) : null;
+  if (!googleTokens) {
+    if (base) showToast('Connect Google Calendar in Settings to get reminder alerts on your devices.', true);
+    return;
+  }
+  try {
+    if (!base) {
+      if (t.reminder_gcal_id) {
+        await gcalApi('DELETE', `calendars/primary/events/${t.reminder_gcal_id}`).catch(() => {});
+        t.reminder_gcal_id = null;
+      }
+      return;
+    }
+    const endMins = taskTimeToMinutes(t.end_time);
+    let end;
+    if (endMins >= 0) { end = new Date(base); end.setHours(0, endMins, 0, 0); }
+    if (!end || end <= base) end = new Date(base.getTime() + DEFAULT_TASK_DURATION_MIN * 60000);
+    const body = {
+      summary: t.title,
+      description: 'Reminder from Taskwell',
+      start: { dateTime: gcalLocalIso(base), timeZone: userTimezone },
+      end: { dateTime: gcalLocalIso(end), timeZone: userTimezone },
+      reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: Number(t.reminder_minutes) }] },
+    };
+    if (t.reminder_gcal_id) {
+      await gcalApi('PUT', `calendars/primary/events/${t.reminder_gcal_id}`, body);
+    } else {
+      const created = await gcalApi('POST', 'calendars/primary/events', body);
+      t.reminder_gcal_id = created?.id || null;
+    }
+  } catch (e) {
+    console.error('Reminder calendar sync failed:', e);
+    showToast("Couldn't put that reminder on your calendar — " + (e?.message || 'please try again'), true);
+  }
+}
+
+// Syncs the calendar event and saves the reminder fields. reminder_emailed_at is
+// cleared whenever the reminder changes, so a rescheduled task can email again.
+async function persistTaskReminder(t) {
+  await syncTaskReminder(t);
+  const remindAt = taskRemindAt(t);
+  try {
+    await api('PATCH', `tasks?id=eq.${t.id}`, {
+      reminder_minutes: t.reminder_minutes ?? null,
+      remind_at: remindAt ? remindAt.toISOString() : null,
+      reminder_emailed_at: null,
+      reminder_gcal_id: t.reminder_gcal_id || null,
+    });
+  } catch (e) {
+    console.error('Saving reminder failed:', e);
+    showToast("Couldn't save that reminder — " + (e?.message || 'please try again'), true);
+  }
+}
+
+function fillReminderSelect(id, current) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.innerHTML = REMINDER_CHOICES
+    .map(([v, label]) => `<option value="${v}">${escHtml(label)}</option>`).join('');
+  sel.value = current == null ? '' : String(current);
+}
+function reminderLabel(minutes) {
+  const found = REMINDER_CHOICES.find(([v]) => v !== '' && Number(v) === Number(minutes));
+  return found ? found[1] : null;
+}
+async function deleteReminderEvent(eventId) {
+  if (!eventId || !googleTokens) return;
+  try { await gcalApi('DELETE', `calendars/primary/events/${eventId}`); } catch (e) { /* already gone is fine */ }
 }
 
 async function toggleTaskPriority(id) {
@@ -5925,9 +6059,11 @@ async function deleteTask(id) {
   const t = tasks.find(t => t.id === id);
   const snap = snapshotData();
   if (t) lastAction = { type: 'restoreTasks', tasks: [{ ...t }] };
+  const reminderEventId = t?.reminder_gcal_id;
   tasks = tasks.filter(t => t.id !== id);
   rerenderAll();
-  await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that deletion');
+  const ok = await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that deletion');
+  if (ok) await deleteReminderEvent(reminderEventId);
 }
 
 async function clearCompleted(listId) {
@@ -6183,7 +6319,8 @@ function openTaskDetail(id) {
   document.getElementById('taskDetailTitle').textContent = t.title;
   const lst = lists.find(l => l.id === t.list_id);
   const repeatLabel = t.repeat_freq ? `Repeats ${t.repeat_freq}` : null;
-  const meta = [t.priority ? '⚑ Priority' : null, lst?.name, t.due_date ? fmtDisplay(t.due_date) : null, repeatLabel].filter(Boolean).join(' · ');
+  const reminderText = t.reminder_minutes != null ? ('\u{1F514} ' + (reminderLabel(t.reminder_minutes) || 'Reminder set')) : null;
+  const meta = [t.priority ? '⚑ Priority' : null, reminderText, lst?.name, t.due_date ? fmtDisplay(t.due_date) : null, repeatLabel].filter(Boolean).join(' · ');
   document.getElementById('taskDetailMeta').textContent = meta;
   const notesEl = document.getElementById('taskDetailNotes');
   if (t.notes) {
@@ -6237,6 +6374,7 @@ function openEditTaskModal(id) {
   document.getElementById('editTaskRepeat').value = t.repeat_freq || '';
   document.getElementById('editTaskNotes').value = t.notes || '';
   document.getElementById('editTaskPriority').checked = !!t.priority;
+  fillReminderSelect('editTaskRemind', t.reminder_minutes);
   openModal('editTaskModal');
   setTimeout(() => document.getElementById('editTaskTitle').focus(), 200);
 }
@@ -6254,6 +6392,7 @@ async function confirmEditTask() {
   const t = tasks.find(t => t.id === editingTaskId);
   if (!t) return;
   const priority = document.getElementById('editTaskPriority').checked;
+  const prevDue = t.due_date, prevStart = t.start_time, prevEnd = t.end_time;
   const snap = snapshotData();
   // Keep week_assigned in sync with due_date so editing the date actually moves the
   // task's calendar placement — otherwise a previously drag-placed task (which has
@@ -6265,9 +6404,17 @@ async function confirmEditTask() {
   // yet — including edits that have nothing to do with priority.
   const patch = { title, due_date, week_assigned: due_date, notes, repeat_freq, start_time, end_time };
   if (!!t.priority !== priority) { t.priority = priority; patch.priority = priority; }
+  const remindRaw = document.getElementById('editTaskRemind').value;
+  const remindMinutes = remindRaw === '' ? null : Number(remindRaw);
+  // A reminder also has to move when the task's date or time moves, not only when
+  // the reminder choice itself is changed.
+  const timingMoved = prevDue !== due_date || prevStart !== start_time || prevEnd !== end_time;
+  const reminderChanged = (t.reminder_minutes ?? null) !== remindMinutes;
+  t.reminder_minutes = remindMinutes;
   closeModal('editTaskModal');
   rerenderAll();
-  await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${editingTaskId}`, patch), 'your edits');
+  const ok = await saveOrRollback(snap, () => api('PATCH', `tasks?id=eq.${editingTaskId}`, patch), 'your edits');
+  if (ok && (reminderChanged || (remindMinutes != null && timingMoved))) await persistTaskReminder(t);
 }
 
 // Builds <optgroup>-grouped <option>s for a list-picker <select>: Work first, then
@@ -6297,6 +6444,7 @@ function openAddTaskModal(defaultDate) {
   document.getElementById('addTaskStart').value = '';
   document.getElementById('addTaskEnd').value = '';
   document.getElementById('addTaskPriority').checked = false;
+  fillReminderSelect('addTaskRemind', null);
   openModal('addTaskModal');
   setTimeout(() => document.getElementById('addTaskTitle').focus(), 50);
 }
@@ -6322,6 +6470,8 @@ async function confirmAddTask() {
     closeModal('addTaskModal');
     renderHub(); renderWeek(); renderAgenda(); refreshMonthDayCells();
     showToast('Task added');
+    const remindRaw = document.getElementById('addTaskRemind').value;
+    if (remindRaw !== '') { t.reminder_minutes = Number(remindRaw); await persistTaskReminder(t); }
   } catch(e) { showToast('Error adding task: ' + e.message, true); }
 }
 
