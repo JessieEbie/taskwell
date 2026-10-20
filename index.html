@@ -309,6 +309,40 @@
     .note-pin.on { color: var(--khaki); }
     @media (pointer: coarse) { .note-pin { min-width: 44px; min-height: 44px; } }
     .note-card.pinned { border-color: var(--khaki); box-shadow: inset 3px 0 0 var(--khaki); }
+    /* Projects. A note's project is free text, so the rail is built from what
+       has actually been typed rather than from a fixed list. It scrolls
+       sideways instead of wrapping, so a dozen projects can never push the
+       notes themselves off the bottom of a phone. */
+    .note-proj-rail { display: flex; align-items: center; gap: 6px; padding: 0 20px 10px;
+                      flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+                      scrollbar-width: none; }
+    .note-proj-rail::-webkit-scrollbar { display: none; }
+    .note-proj-rail[hidden] { display: none; }
+    .proj-pill { font-family: 'Helvetica Neue', sans-serif; font-size: 11.5px; white-space: nowrap;
+                 border: 1px solid var(--cream-dark); background: var(--paper); color: var(--ink-soft);
+                 border-radius: 14px; padding: 6px 12px; min-height: 32px; cursor: pointer;
+                 flex-shrink: 0; }
+    .proj-pill:hover { border-color: var(--accent); color: var(--ink); }
+    .proj-pill.on { background: var(--accent-pale); border-color: var(--accent);
+                    color: var(--ink); font-weight: 700; }
+    .proj-pill .n { color: var(--ink-faint); margin-left: 5px; font-weight: 400; }
+    .proj-pill.on .n { color: var(--ink-soft); }
+    @media (pointer: coarse) { .proj-pill { min-height: 44px; padding: 6px 14px; } }
+    .note-project { color: var(--brown); cursor: pointer; font-weight: 700; }
+    .note-project:hover { text-decoration: underline; }
+    .note-proj-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
+                     text-transform: uppercase; letter-spacing: .08em; color: var(--brown);
+                     margin: 20px 0 7px; padding-bottom: 5px;
+                     border-bottom: 1px solid var(--cream-dark);
+                     display: flex; align-items: center; gap: 8px; }
+    .note-proj-hdr:first-child { margin-top: 0; }
+    .note-proj-hdr .n { color: var(--ink-faint); font-weight: 400; letter-spacing: 0; }
+    .note-proj-hdr .dig { margin-left: auto; font-family: inherit; font-size: 10.5px;
+                          font-weight: 400; letter-spacing: 0; text-transform: none;
+                          color: var(--ink-soft); background: none; border: none;
+                          cursor: pointer; padding: 4px 6px; }
+    .note-proj-hdr .dig:hover { color: var(--brown); text-decoration: underline; }
+    @media (pointer: coarse) { .note-proj-hdr .dig { min-height: 44px; } }
     .brief-block { margin-bottom: 26px; }
     .brief-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
                  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-faint);
@@ -749,6 +783,7 @@
       .page-header { padding: 10px 12px 0; flex-wrap: wrap; gap: 4px; }
       .page-title { font-size: 20px; }
       .hub-controls { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }
+      .note-proj-rail { padding: 0 12px 8px; }
       .section-body { grid-template-columns: 1fr; gap: 8px; }
       #week .week-controls { padding: 8px 12px 0; }
       #day > .week-nav-row, #month > .week-nav-row { padding: 8px 12px 0; }
@@ -1097,8 +1132,10 @@
       <button class="btn btn-primary" onclick="openNoteEditor(null)">+ New note</button>
       <input class="note-search" id="noteSearch" type="search" placeholder="Search notes…"
              oninput="notesQuery = this.value; renderNotes();" />
+      <button class="btn" id="notesGroupBtn" onclick="toggleNotesGrouping()">Group by project</button>
       <span class="note-filter" id="notePersonFilter" hidden></span>
     </div>
+    <div class="note-proj-rail" id="noteProjRail" hidden></div>
     <div class="scroll-area" id="notesScrollArea"></div>
   </section>
 
@@ -1744,6 +1781,9 @@
     <label class="modal-label">Person (optional)</label>
     <input class="modal-input" id="noteEditPerson" list="notePeopleList" placeholder="e.g. a student or colleague" />
     <datalist id="notePeopleList"></datalist>
+    <label class="modal-label">Project (optional)</label>
+    <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign" />
+    <datalist id="noteProjectList"></datalist>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('noteEditModal')">Cancel</button>
       <button class="btn btn-danger" id="noteEditDelete">Delete</button>
@@ -1823,7 +1863,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-13h';
+const APP_VERSION = '2026-10-20';
 const WHATS_NEW = "Three things to keep notes findable: star a note to put it On the agenda and it stays above the timeline; search across note text, meetings and people; and tag a note with a person, then click that name to see everything about them in order.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -1940,6 +1980,7 @@ create table if not exists public.notes (
   task_ids jsonb default '[]'::jsonb,
   on_agenda boolean default false,
   person text,
+  project text,
   archived boolean default false,
   created_at timestamptz default now()
 );
@@ -6902,8 +6943,12 @@ function currentMeetingTitle(now = new Date()) {
 function openCaptureModal() {
   const box = document.getElementById('captureBody');
   box.value = '';
+  const bits = [];
   const meeting = currentMeetingTitle();
-  document.getElementById('captureContext').textContent = meeting ? 'During: ' + meeting : '';
+  if (meeting) bits.push('During: ' + meeting);
+  const project = activeProjectForNewNote();
+  if (project) bits.push('Project: ' + project);
+  document.getElementById('captureContext').textContent = bits.join('  \u00b7  ');
   openModal('captureModal');
   setTimeout(() => box.focus(), 50);
 }
@@ -6916,6 +6961,11 @@ async function saveCapture() {
     user_id: authSession?.user_id, body,
     event_title: currentMeetingTitle(), day: todayKey(),
   };
+  // Only sent when there is one, so capture keeps working on a database where
+  // the project column hasn't been added yet. Capture is the mid-meeting panic
+  // button; it must not be the thing that breaks.
+  const captureProject = activeProjectForNewNote();
+  if (captureProject) note.project = captureProject;
   closeModal('captureModal');
   try {
     const [saved] = await api('POST', 'notes', note);
@@ -6934,10 +6984,22 @@ async function saveCapture() {
 function renderNotes() {
   const area = document.getElementById('notesScrollArea');
   if (!area) return;
+
+  // A project filter can outlive the project itself — every note in it archived,
+  // or the project renamed from somewhere else. Drop it rather than leaving the
+  // tab stuck on an empty result with nothing to click to get back.
+  if (notesProject && notesProject !== NO_PROJECT &&
+      !notes.some(n => !n.archived && (n.project || '').trim() === notesProject)) {
+    notesProject = null;
+  }
+
   const q = notesQuery.trim().toLowerCase();
   let live = notes.filter(n => !n.archived);
   if (notesPerson) live = live.filter(n => (n.person || '') === notesPerson);
-  if (q) live = live.filter(n => (noteText(n) + ' ' + (n.event_title || '') + ' ' + (n.person || ''))
+  if (notesProject === NO_PROJECT) live = live.filter(n => !(n.project || '').trim());
+  else if (notesProject) live = live.filter(n => (n.project || '').trim() === notesProject);
+  if (q) live = live.filter(n => (noteText(n) + ' ' + (n.event_title || '') + ' ' +
+                                  (n.person || '') + ' ' + (n.project || ''))
                                   .toLowerCase().includes(q));
 
   const chip = document.getElementById('notePersonFilter');
@@ -6949,11 +7011,23 @@ function renderNotes() {
   const people = knownPeople();
   const dl = document.getElementById('notePeopleList');
   if (dl) dl.innerHTML = people.map(pn => `<option value="${escHtml(pn)}"></option>`).join('');
+  const pdl = document.getElementById('noteProjectList');
+  if (pdl) pdl.innerHTML = knownProjects()
+    .map(pr => `<option value="${escHtml(pr.name)}"></option>`).join('');
+  renderProjectRail();
+
+  // Grouping by project only means anything while looking at all of them; once
+  // you're inside one project there is only ever the one group.
+  const gbtn = document.getElementById('notesGroupBtn');
+  if (gbtn) {
+    gbtn.hidden = !!notesProject;
+    gbtn.textContent = notesGroupBy === 'project' ? 'Group by date' : 'Group by project';
+  }
 
   const sub = document.getElementById('notesSub');
   if (sub) {
     const total = notes.filter(n => !n.archived).length;
-    sub.textContent = (q || notesPerson)
+    sub.textContent = (q || notesPerson || notesProject)
       ? `${live.length} of ${total}`
       : (total ? `${total} note${total !== 1 ? 's' : ''}` : '');
   }
@@ -6962,7 +7036,7 @@ function renderNotes() {
   if (!live.length) {
     const empty = document.createElement('div');
     empty.className = 'notes-empty';
-    empty.textContent = (q || notesPerson)
+    empty.textContent = (q || notesPerson || notesProject)
       ? 'Nothing matches that.'
       : 'Nothing captured yet. Press \u2318K anywhere to jot something down.';
     area.appendChild(empty);
@@ -6976,13 +7050,18 @@ function renderNotes() {
     area.appendChild(h);
   };
 
-  // Pinned notes sit above the timeline — the thing that keeps a long list of
-  // notes from becoming one undifferentiated pile.
+  // Pinned notes sit above everything else — the thing that keeps a long list
+  // of notes from becoming one undifferentiated pile.
   const pinned = live.filter(n => n.on_agenda);
   const rest = live.filter(n => !n.on_agenda);
   if (pinned.length) {
     heading('On the agenda');
     pinned.forEach(n => area.appendChild(buildNoteCard(n)));
+  }
+
+  if (notesGroupBy === 'project' && !notesProject) {
+    renderNotesByProject(area, rest);
+    return;
   }
 
   let lastDay = null;
@@ -6997,7 +7076,43 @@ function renderNotes() {
   });
 }
 
-function buildNoteCard(n) {
+// One heading per project, each with a way straight into that project on its
+// own. Named projects come first alphabetically; loose notes go last, because
+// they're the pile still to be sorted rather than a project of their own.
+// Cards here show their date, since a project's notes span many days.
+function renderNotesByProject(area, list) {
+  const groups = new Map();
+  list.forEach(n => {
+    const key = (n.project || '').trim() || NO_PROJECT;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(n);
+  });
+  const keys = [...groups.keys()].filter(k => k !== NO_PROJECT).sort((a, b) => a.localeCompare(b));
+  if (groups.has(NO_PROJECT)) keys.push(NO_PROJECT);
+
+  keys.forEach(key => {
+    const group = groups.get(key);
+    const hdr = document.createElement('div');
+    hdr.className = 'note-proj-hdr';
+    const name = document.createElement('span');
+    name.textContent = key === NO_PROJECT ? 'No project' : key;
+    hdr.appendChild(name);
+    const count = document.createElement('span');
+    count.className = 'n';
+    count.textContent = group.length;
+    hdr.appendChild(count);
+    const dig = document.createElement('button');
+    dig.className = 'dig';
+    dig.textContent = 'Open \u2192';
+    dig.title = 'Show only this project';
+    dig.onclick = () => filterNotesByProject(key);
+    hdr.appendChild(dig);
+    area.appendChild(hdr);
+    group.forEach(n => area.appendChild(buildNoteCard(n, { showDate: true })));
+  });
+}
+
+function buildNoteCard(n, opts) {
   const card = document.createElement('div');
   card.className = 'note-card' + (n.on_agenda ? ' pinned' : '');
   const body = document.createElement('div');
@@ -7010,17 +7125,39 @@ function buildNoteCard(n) {
 
   const meta = document.createElement('div');
   meta.className = 'note-meta';
-  if (n.created_at) {
-    const t = new Date(n.created_at);
-    const span = document.createElement('span');
-    span.textContent = t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    meta.appendChild(span);
+  {
+    // Grouped by project there is no day heading above the card, so the date has
+    // to be on the card itself or the note has no place in time at all. The date
+    // comes from the note's own day, the same field the timeline groups by — a
+    // note written FOR next Tuesday's meeting belongs on next Tuesday, not on
+    // the day it happened to be typed.
+    const bits = [];
+    if (opts?.showDate) {
+      const day = n.day || (n.created_at || '').slice(0, 10);
+      if (day) bits.push(new Date(day + 'T12:00:00')
+        .toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    }
+    if (n.created_at) bits.push(new Date(n.created_at)
+      .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+    if (bits.length) {
+      const span = document.createElement('span');
+      span.textContent = bits.join(', ');
+      meta.appendChild(span);
+    }
   }
   if (n.event_title) {
     const ev = document.createElement('span');
     ev.className = 'note-event';
     ev.textContent = n.event_title;
     meta.appendChild(ev);
+  }
+  if ((n.project || '').trim()) {
+    const pr = document.createElement('span');
+    pr.className = 'note-project';
+    pr.textContent = n.project.trim();
+    pr.title = 'Show only this project';
+    pr.onclick = () => filterNotesByProject(n.project.trim());
+    meta.appendChild(pr);
   }
   if (n.person) {
     const who = document.createElement('span');
@@ -7099,10 +7236,18 @@ async function archiveNote(id) {
 
 // ── Finding notes again ──
 // A timeline is fine at twenty notes and useless at three hundred, so: a small
-// pinned set that stays at the top, free-text search, and filtering to one
-// person.
+// pinned set that stays at the top, free-text search, filtering to one person,
+// and projects — a note's lasting home, where person and meeting only say where
+// it came from.
 let notesQuery = '';
 let notesPerson = null;
+
+// null = every project; NO_PROJECT = only the notes that have none; otherwise
+// the project's own name. A control character, so it can never collide with
+// something actually typed into the project field.
+const NO_PROJECT = '\u0000none';
+let notesProject = null;
+let notesGroupBy = 'date';   // 'date' | 'project'
 
 // Plain text of a note, for searching — rich notes are HTML underneath.
 function noteText(n) {
@@ -7118,6 +7263,111 @@ function knownPeople() {
 function filterNotesBy(person) {
   notesPerson = person || null;
   renderNotes();
+}
+
+// ── Projects ──
+// Projects are free text on the note itself, like the person field, rather than
+// a table of their own: one less thing to set up before writing anything down,
+// and the list of projects is simply whatever has been used.
+function knownProjects() {
+  const counts = new Map();
+  notes.filter(n => !n.archived).forEach(n => {
+    const name = (n.project || '').trim();
+    if (!name) return;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  });
+  return [...counts.entries()].map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderProjectRail() {
+  const rail = document.getElementById('noteProjRail');
+  if (!rail) return;
+  const projects = knownProjects();
+  const loose = notes.filter(n => !n.archived && !(n.project || '').trim()).length;
+  // Nothing to dig into until at least one note has been given a project — and
+  // the rail stays up while a filter is on, so there's always a way back out.
+  rail.hidden = !projects.length && !notesProject;
+  rail.innerHTML = '';
+  if (rail.hidden) return;
+
+  let activePill = null;
+  const pill = (label, count, active, onClick) => {
+    const b = document.createElement('button');
+    b.className = 'proj-pill' + (active ? ' on' : '');
+    b.appendChild(document.createTextNode(label));
+    if (count != null) {
+      const c = document.createElement('span');
+      c.className = 'n';
+      c.textContent = count;
+      b.appendChild(c);
+    }
+    b.onclick = onClick;
+    rail.appendChild(b);
+    if (active) activePill = b;
+  };
+
+  pill('All', null, !notesProject, () => filterNotesByProject(null));
+  projects.forEach(pr => pill(pr.name, pr.count, notesProject === pr.name,
+                              () => filterNotesByProject(pr.name)));
+  if (loose) pill('No project', loose, notesProject === NO_PROJECT,
+                  () => filterNotesByProject(NO_PROJECT));
+
+  // Free text picks up typos, and a typo quietly splits one project in two.
+  // Renaming is offered only on the project being looked at, and sits right
+  // beside it rather than at the end of a rail you'd have to scroll to find.
+  if (notesProject && notesProject !== NO_PROJECT && activePill) {
+    const ren = document.createElement('button');
+    ren.className = 'proj-pill';
+    ren.textContent = 'Rename\u2026';
+    ren.title = 'Rename this project on every note in it';
+    ren.onclick = () => renameProject(notesProject);
+    activePill.after(ren);
+  }
+  // With more projects than fit the width, the selected one can sit off-screen.
+  if (activePill && activePill.scrollIntoView) {
+    activePill.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+}
+
+function filterNotesByProject(project) {
+  notesProject = project || null;
+  renderNotes();
+  const area = document.getElementById('notesScrollArea');
+  if (area) area.scrollTop = 0;
+}
+
+function toggleNotesGrouping() {
+  notesGroupBy = notesGroupBy === 'project' ? 'date' : 'project';
+  renderNotes();
+}
+
+// Renames across every note in the project at once, so a project stays one
+// project rather than becoming two with similar names.
+async function renameProject(from) {
+  const to = (prompt('Rename this project on every note in it:', from) || '').trim();
+  if (!to || to === from) return;
+  const hit = notes.filter(n => (n.project || '').trim() === from);
+  if (!hit.length) return;
+  const ids = hit.map(n => n.id);
+  hit.forEach(n => { n.project = to; });
+  if (notesProject === from) notesProject = to;
+  renderNotes();
+  try {
+    await api('PATCH', `notes?id=in.(${ids.join(',')})`, { project: to });
+    showToast(`Renamed to ${to}`);
+  } catch (e) {
+    hit.forEach(n => { n.project = from; });
+    if (notesProject === to) notesProject = from;
+    renderNotes();
+    showToast("Couldn't rename that project — please try again.", true);
+  }
+}
+
+// Capturing or writing a note while inside a project files it there. Otherwise
+// it would land in "No project" and have to be sorted by hand straight away.
+function activeProjectForNewNote() {
+  return (notesProject && notesProject !== NO_PROJECT) ? notesProject : null;
 }
 
 async function toggleNoteAgenda(id) {
@@ -7300,6 +7550,7 @@ function openNoteEditor(id) {
   wireAutoDate(dayInput);
   fillNoteEventOptions(day, n?.event_title || '');
   document.getElementById('noteEditPerson').value = n?.person || '';
+  document.getElementById('noteEditProject').value = n?.project || activeProjectForNewNote() || '';
   // Changing the day re-offers that day's meetings.
   dayInput.oninput = () => {
     const d = parseDate(dayInput.value);
@@ -7319,15 +7570,16 @@ async function saveNoteEdit() {
   const day = parseDate(document.getElementById('noteEditDay').value) || todayKey();
   const event_title = document.getElementById('noteEditEvent').value || null;
   const person = document.getElementById('noteEditPerson').value.trim() || null;
+  const project = document.getElementById('noteEditProject').value.trim() || null;
   const existing = editingNoteId ? notes.find(x => x.id === editingNoteId) : null;
   closeModal('noteEditModal');
   try {
     if (existing) {
       const before = { ...existing };
-      Object.assign(existing, { body, day, event_title, person });
+      Object.assign(existing, { body, day, event_title, person, project });
       renderNotes();
       try {
-        await api('PATCH', `notes?id=eq.${existing.id}`, { body, day, event_title, person });
+        await api('PATCH', `notes?id=eq.${existing.id}`, { body, day, event_title, person, project });
       } catch (e) {
         Object.assign(existing, before);
         renderNotes();
@@ -7335,7 +7587,7 @@ async function saveNoteEdit() {
       }
     } else {
       const [saved] = await api('POST', 'notes', {
-        user_id: authSession?.user_id, body, day, event_title, person,
+        user_id: authSession?.user_id, body, day, event_title, person, project,
       });
       notes.unshift(saved);
       renderNotes();
