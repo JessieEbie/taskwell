@@ -139,7 +139,11 @@
                            cursor: pointer; padding: 7px 8px; line-height: 1; }
     .section-hdr-rename:hover { color: var(--ink); }
     .section-hdr-rename + .section-hdr-delete { margin-left: 0; }
-    .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    /* align-items: start — grid items stretch to the row height by default, so
+       a collapsed list sitting beside an expanded one grew a tall blank body
+       and looked like an open list with nothing in it. */
+    .section-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                    gap: 16px; align-items: start; }
     .list-block { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px;
                   overflow: hidden; }
     .list-hdr { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
@@ -156,6 +160,14 @@
     .list-rename:hover { color: var(--ink); }
     .list-focus-btn { font-size: 13px; color: var(--ink-faint); background: none; border: none; cursor: pointer; padding: 0 4px; flex-shrink: 0; }
     .list-focus-btn:hover { color: var(--accent-dark); }
+    /* Always on the header, so a list can be added to without opening it first. */
+    .list-add-btn { font-size: 15px; line-height: 1; color: var(--ink-faint); background: none;
+                    border: none; cursor: pointer; padding: 0 4px; flex-shrink: 0; }
+    .list-add-btn:hover { color: var(--accent-dark); }
+    @media (pointer: coarse) {
+      .list-add-btn, .list-focus-btn, .list-rename, .list-del { min-width: 44px; min-height: 44px; }
+      .list-hdr { gap: 0; }
+    }
     .list-focus-view { padding: 4px 20px 20px; }
     .list-focus-hdr { display: flex; align-items: center; gap: 10px; padding: 6px 0 14px; }
     .list-focus-name { font-size: 20px; color: var(--ink); flex: 1; }
@@ -1863,7 +1875,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-22';
+const APP_VERSION = '2026-10-28';
 const WHATS_NEW = "Three things to keep notes findable: star a note to put it On the agenda and it stays above the timeline; search across note text, meetings and people; and tag a note with a person, then click that name to see everything about them in order.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -5883,7 +5895,18 @@ function buildListBody(lst, openTasks, doneTasks) {
   setTimeout(() => {
     const ti = document.getElementById(`ti_${lst.id}`);
     const td = document.getElementById(`td_${lst.id}`);
-    if (ti) ti.onkeydown = e => { if (e.key === 'Enter') addTask(lst.id); };
+    const tn = document.getElementById(`tn_${lst.id}`);
+    // Enter saves from the title OR the date box: typing a title, tabbing to the
+    // date and pressing Enter is the natural way to do it, and it used to do
+    // nothing at all, which is what made the + button feel compulsory.
+    const onEnter = e => { if (e.key === 'Enter') { e.preventDefault(); addTask(lst.id); } };
+    if (ti) ti.onkeydown = onEnter;
+    if (td) td.onkeydown = onEnter;
+    // Notes is a textarea, where Enter has to stay a new line — so the keyboard
+    // save there is Cmd+Enter (Ctrl+Enter on a PC keyboard).
+    if (tn) tn.onkeydown = e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addTask(lst.id); }
+    };
     if (td) wireAutoDate(td);
   }, 0);
 
@@ -5942,6 +5965,7 @@ function makeListBlock(lst) {
     <span class="list-drag-handle" title="Drag to reorder">⠿</span>
     <span class="list-name">${lst.name}</span>
     ${openTasks.length > 0 ? `<span class="list-count">${openTasks.length}</span>` : ''}
+    <button class="list-add-btn" onclick="event.stopPropagation();startAddTask('${lst.id}')" title="Add a task to this list" aria-label="Add a task to ${lst.name}">+</button>
     <button class="list-focus-btn" onclick="event.stopPropagation();openListFocus('${lst.id}')" title="Focus on this list">⛶</button>
     <button class="list-rename" onclick="event.stopPropagation();openRenameListModal('${lst.id}')" title="Rename list">&#9998;</button>
     <button class="list-del" onclick="event.stopPropagation();deleteList('${lst.id}','${lst.name}')" title="Delete list">✕</button>`;
@@ -6056,6 +6080,31 @@ function makeTaskRow(task, opts) {
   return row;
 }
 
+// The + on a list header. A closed list has no body and so no input to type
+// into, so open it first — which is also the fix for a list that looked empty
+// but was only collapsed.
+function startAddTask(listId) {
+  if (listCollapsed[listId] !== false) {
+    listCollapsed[listId] = false;
+    renderHub();
+  }
+  focusAddTask(listId);
+}
+
+// Called after a render, so the input exists only on the next frame.
+function focusAddTask(listId) {
+  setTimeout(() => {
+    const ti = document.getElementById(`ti_${listId}`);
+    if (!ti) return;
+    ti.focus();
+    // Don't yank the page around on a phone if the list is already in view.
+    const r = ti.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > window.innerHeight) {
+      ti.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, 30);
+}
+
 async function addTask(listId) {
   const ti = document.getElementById(`ti_${listId}`);
   const td = document.getElementById(`td_${listId}`);
@@ -6070,6 +6119,9 @@ async function addTask(listId) {
     const [t] = await api('POST', 'tasks', { list_id: listId, title, completed: false, due_date, notes, user_id: authSession?.user_id });
     tasks.push(t);
     renderHub(); renderWeek();
+    // The re-render replaces the input that was just typed into, so put the
+    // cursor back — otherwise adding three tasks means clicking back in twice.
+    focusAddTask(listId);
   } catch(e) { showToast('Error adding task'); }
 }
 
