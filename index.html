@@ -1875,7 +1875,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-10-28';
+const APP_VERSION = '2026-11-04';
 const WHATS_NEW = "Three things to keep notes findable: star a note to put it On the agenda and it stays above the timeline; search across note text, meetings and people; and tag a note with a person, then click that name to see everything about them in order.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -6193,7 +6193,9 @@ async function createNextRepeatOccurrence(t) {
     });
     tasks.push(nt);
     renderHub(); renderWeek(); renderAgenda();
+    return nt;
   } catch(e) { showToast('Could not create next repeat: ' + e.message, true); }
+  return null;
 }
 
 // ── Optimistic writes ──
@@ -6242,10 +6244,10 @@ async function toggleTask(id) {
     rerenderAll();
     if (!await saveOrRollback(snap, () => api('DELETE', `tasks?id=eq.${id}`), 'that task')) return;
     await deleteReminderEvent(removed.reminder_gcal_id);
-    if (removed.repeat_freq) await createNextRepeatOccurrence(removed);
+    if (removed.repeat_freq) rememberSpawnedRepeat(id, await createNextRepeatOccurrence(removed));
     return;
   }
-  lastAction = { type: 'toggle', taskId: id, prevCompleted: t.completed };
+  lastAction = { type: 'toggle', taskId: id, prevCompleted: t.completed, prevInProgress: !!t.in_progress };
   t.completed = !t.completed;
   // A completed task can't also be "in progress" — clear it so the indicator
   // doesn't linger on finished work.
@@ -6257,7 +6259,17 @@ async function toggleTask(id) {
   if (!ok) return;
   // Completing clears the reminder; un-completing puts it back.
   if (t.reminder_minutes != null) await persistTaskReminder(t);
-  if (completingNow && t.repeat_freq) await createNextRepeatOccurrence(t);
+  if (completingNow && t.repeat_freq) rememberSpawnedRepeat(id, await createNextRepeatOccurrence(t));
+}
+
+// Completing a repeating task creates the next occurrence. Undoing the tick has
+// to take that with it, or every undo leaves a duplicate behind — so the undo
+// entry remembers what was spawned, as long as it's still the entry we made.
+function rememberSpawnedRepeat(taskId, spawned) {
+  if (!spawned || !lastAction) return;
+  const mine = (lastAction.type === 'toggle' && lastAction.taskId === taskId)
+    || (lastAction.type === 'restoreTasks' && lastAction.tasks?.some(t => t.id === taskId));
+  if (mine) lastAction.spawnedId = spawned.id;
 }
 
 async function toggleInProgress(id) {
@@ -6480,20 +6492,46 @@ async function undoLastAction() {
   lastAction = null;
   const snap = snapshotData();
   let ok = true;
+  // What actually changed, for the message. Left null when nothing did — the
+  // old version started this as "succeeded" and said “Undone” even when it had
+  // taken no action at all, which is worse than saying nothing: it tells you
+  // the thing is back when it isn't, so you stop looking for it.
+  let message = null;
+
   if (action.type === 'toggle') {
     const t = tasks.find(t => t.id === action.taskId);
-    if (t) {
-      t.completed = action.prevCompleted;
-      rerenderAll();
-      ok = await saveOrRollback(snap,
-        () => api('PATCH', `tasks?id=eq.${action.taskId}`, { completed: t.completed }), 'that undo');
+    if (!t) {
+      showToast('That task isn\u2019t here any more, so there was nothing to put back.');
+      return;
     }
+    t.completed = action.prevCompleted;
+    // Completing a task also clears in_progress, so undoing has to put that
+    // back or the flag is quietly lost every time a tick is taken back.
+    if (action.prevInProgress !== undefined) t.in_progress = action.prevInProgress;
+    rerenderAll();
+    ok = await saveOrRollback(snap,
+      () => api('PATCH', `tasks?id=eq.${action.taskId}`,
+                { completed: t.completed, in_progress: t.in_progress }), 'that undo');
+    message = t.completed
+      ? `Undone \u2014 “${t.title}” is ticked off again.`
+      : `Undone \u2014 “${t.title}” is open again${listLabel(t)}.`;
+
   } else if (action.type === 'restoreTasks') {
+    if (!action.tasks?.length) { showToast('Nothing to undo'); return; }
     tasks = tasks.concat(action.tasks);
     rerenderAll();
     // One insert for the whole batch — a per-task loop could half-succeed and
     // leave the undo itself partially applied.
     ok = await saveOrRollback(snap, () => api('POST', 'tasks', action.tasks), 'that undo');
+    const one = action.tasks.length === 1 ? action.tasks[0] : null;
+    message = one
+      // A restored task comes back exactly as it was, which means a completed
+      // one comes back ticked off and won't appear on Today or the Agenda.
+      // Saying where it went is the difference between "it worked" and
+      // "it vanished again".
+      ? `Undone \u2014 “${one.title}” is back${listLabel(one)}${one.completed ? ', still ticked off' : ''}.`
+      : `Undone \u2014 ${action.tasks.length} tasks are back.`;
+
   } else if (action.type === 'restoreList') {
     lists = lists.concat([action.list]);
     tasks = tasks.concat(action.tasks);
@@ -6502,8 +6540,40 @@ async function undoLastAction() {
       await api('POST', 'lists', action.list);
       if (action.tasks.length) await api('POST', 'tasks', action.tasks);
     }, 'that undo');
+    message = `Undone \u2014 “${action.list.name}” is back.`;
+
+  } else {
+    showToast('Nothing to undo');
+    return;
   }
-  if (ok) showToast('Undone');
+
+  if (!ok) return;            // saveOrRollback has already explained the failure
+  if (action.spawnedId) await removeSpawnedRepeat(action.spawnedId);
+  showToast(message);
+}
+
+// Where a task lives, for undo messages — omitted when the list is gone.
+function listLabel(t) {
+  const l = lists.find(l => l.id === t.list_id);
+  return l ? ` in ${l.name}` : '';
+}
+
+// The next occurrence a completion created, removed when that completion is
+// undone. A failure here is worth saying out loud rather than leaving a
+// duplicate on a future day with no explanation.
+async function removeSpawnedRepeat(id) {
+  const i = tasks.findIndex(t => t.id === id);
+  if (i === -1) return;
+  const [removed] = tasks.splice(i, 1);
+  rerenderAll();
+  try {
+    await api('DELETE', `tasks?id=eq.${id}`);
+  } catch (e) {
+    tasks.splice(i, 0, removed);
+    rerenderAll();
+    console.error('Could not remove the spawned repeat:', e);
+    showToast('Undone, but the next repeat is still on the calendar.', true);
+  }
 }
 
 // Cmd/Ctrl+K opens capture from anywhere — the whole point is that getting a

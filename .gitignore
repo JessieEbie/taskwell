@@ -13,3 +13,6 @@ Taskwell mac app/dist/
 # Local regression test harness — a tool Claude runs before pushing changes,
 # not part of the shipped app. Never committed/deployed.
 tests/
+
+# Local Claude Code settings — contains machine-local tokens, never commit.
+.claude/settings.local.json
