@@ -691,6 +691,21 @@
                align-items: center; justify-content: center; flex-direction: column; gap: 12px;
                z-index: 300; transition: opacity .4s; }
     .loading.hidden { opacity: 0; pointer-events: none; }
+    /* Shown instead of the spinner when the first load fails outright. Before
+       this, a failed load hid the spinner to reveal a completely empty app,
+       with the reason in a toast that disappeared after five seconds — so on a
+       phone it read as "Taskwell is broken" with no way back but force-quitting. */
+    .load-fail { display: flex; flex-direction: column; align-items: center; gap: 14px;
+                 width: 100%; max-width: 320px; padding: 0 20px; text-align: center; }
+    .load-fail[hidden] { display: none; }
+    .load-fail-title { font-family: 'Helvetica Neue', sans-serif; font-size: 17px; color: var(--ink); }
+    .load-fail-why { font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
+                     line-height: 1.55; color: var(--ink-soft); }
+    .load-fail button { font-family: 'Helvetica Neue', sans-serif; font-size: 15px;
+                        min-height: 44px; padding: 0 24px; border-radius: 10px;
+                        cursor: pointer; width: 100%; }
+    .load-fail-retry { background: var(--rose); border: none; color: var(--paper); }
+    .load-fail-out { background: transparent; border: 1px solid var(--ink-faint); color: var(--ink-soft); }
 
     /* ── Auth / Login ── */
     .login-screen { position: fixed; inset: 0; background: var(--paper); display: flex;
@@ -1031,8 +1046,14 @@
 </div>
 
 <div class="loading" id="loading">
-  <div class="spinner"></div>
-  <div class="loading-text">Loading Taskwell…</div>
+  <div class="spinner" id="loadSpinner"></div>
+  <div class="loading-text" id="loadingText">Loading Taskwell…</div>
+  <div class="load-fail" id="loadFail" hidden>
+    <div class="load-fail-title">Couldn’t reach your tasks</div>
+    <div class="load-fail-why" id="loadFailWhy"></div>
+    <button class="load-fail-retry" onclick="location.reload()">Try again</button>
+    <button class="load-fail-out" onclick="signOut()">Sign out</button>
+  </div>
 </div>
 
 <!-- Rail -->
@@ -1875,7 +1896,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-11-04';
+const APP_VERSION = '2026-11-09';
 const WHATS_NEW = "Three things to keep notes findable: star a note to put it On the agenda and it stays above the timeline; search across note text, meetings and people; and tag a note with a person, then click that name to see everything about them in order.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -1924,6 +1945,55 @@ function allSectionsFor(ctx) {
 // label for an uncategorized list (see `l.section || 'Misc'` elsewhere), not a real
 // section the user asked for, so it must never get auto-persisted back in after
 // being deleted.
+// The first request of a session is the one most likely to fail: a phone
+// waking up on a weak signal, a Wi-Fi handoff mid-request, or a backend cold
+// start. One stumble used to sink the whole load. Try three times with a short
+// backoff before giving up — a genuine outage still fails, just not a blip.
+async function loadCoreData() {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, attempt * 1200));
+    try {
+      return await Promise.all([
+        api('GET', 'lists?order=created_at.asc'),
+        api('GET', 'tasks?order=created_at.asc')
+      ]);
+    } catch (e) {
+      lastErr = e;
+      // A dead session is not a network problem and retrying cannot fix it —
+      // api() has already signed out and the login screen is on its way.
+      if (/Session expired/i.test(e?.message || '')) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+// Says plainly what went wrong and offers a way out, instead of leaving an
+// empty app behind a toast that has already vanished.
+function showLoadFailure(e) {
+  const raw = (e?.message || '').trim();
+  let why;
+  if (/abort/i.test(raw)) {
+    why = 'The connection timed out. If you\u2019re on a weak signal, moving somewhere with better reception and trying again usually does it.';
+  } else if (/could not reach the server/i.test(raw)) {
+    why = 'Taskwell couldn\u2019t reach the server. Your tasks are safe — this is the connection, not your data.';
+  } else if (/failed to fetch|network|load failed|offline/i.test(raw)) {
+    why = 'No connection to the server. Check that you\u2019re online, then try again.';
+  } else {
+    why = 'Your tasks are safe — Taskwell just couldn\u2019t load them this time.' +
+          (raw ? ' (' + raw + ')' : '');
+  }
+  const fail = document.getElementById('loadFail');
+  if (!fail) { showToast('Connection error: ' + raw); return; }
+  document.getElementById('loadFailWhy').textContent = why;
+  const sp = document.getElementById('loadSpinner');
+  const lt = document.getElementById('loadingText');
+  if (sp) sp.style.display = 'none';
+  if (lt) lt.style.display = 'none';
+  fail.hidden = false;
+  document.getElementById('loading').classList.remove('hidden');
+}
+
 async function healMissingSections() {
   for (const ctx of ['work', 'home']) {
     const arr = sectionsFor(ctx);
@@ -5044,11 +5114,12 @@ async function boot() {
   wireAutoDate(document.getElementById('calEventDate'));
   wireAutoDate(document.getElementById('addTaskDate'));
   try {
-    [lists, tasks] = await Promise.all([
-      api('GET','lists?order=created_at.asc'),
-      api('GET','tasks?order=created_at.asc'),
-      loadCalFeeds()
-    ]);
+    // Calendar feeds load alongside but never block or break the app: they
+    // swallow their own failures, and a stray rejection here must not take the
+    // tasks down with it.
+    const calFeedsReady = loadCalFeeds().catch(() => {});
+    [lists, tasks] = await loadCoreData();
+    await calFeedsReady;
     // Loaded separately and forgivingly: if the notes table hasn't been created
     // yet, the app must still start normally rather than failing to boot.
     try {
@@ -5153,7 +5224,13 @@ async function boot() {
       sessionStorage.removeItem('outlook_pending_code');
       await exchangeOutlookCode(outlookCode, OUTLOOK_REDIRECT);
     }
-  } catch(e) { console.error('Load error:', e); showToast('Connection error: ' + e.message, true); }
+  } catch(e) {
+    console.error('Load error:', e);
+    // Nothing rendered, so hiding the overlay would reveal an empty app. Keep
+    // the overlay up and explain, with a Try again button.
+    showLoadFailure(e);
+    return;
+  }
   document.getElementById('loading').classList.add('hidden');
   checkWhatsNew();
 }
