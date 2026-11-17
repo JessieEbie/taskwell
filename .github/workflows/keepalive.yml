@@ -1,0 +1,194 @@
+# Supabase pauses free projects after about 7 days of low database activity.
+# A paused project stops serving its hostname entirely, so Taskwell simply
+# stops working until it is resumed by hand in the dashboard. One request a
+# day is enough to count as activity and keep that from happening over a
+# break.
+#
+# No secrets needed: the project URL and publishable key are already in
+# taskwell.html by design, and row-level security means neither can read a
+# single row belonging to anyone.
+#
+# Why this file is shaped the way it is, learned from the scheduling-poll
+# version that ran for two months doing the wrong thing:
+#
+#   1. A ping cannot un-pause a paused project. Once it is down, every later
+#      run fails too. Exiting 1 on that produces a failure email every day
+#      about a state no amount of retrying can fix.
+#
+#   2. One failed request is not news. Retry before believing anything.
+#
+# So this job always ends green, and reports a genuinely stuck project by
+# opening an issue — which notifies once, then stays quiet while it is open.
+# Closing the issue re-arms it.
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "41 9 * * *"     # daily, 09:41 UTC — off the hour to dodge peak load
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write             # for the monthly heartbeat commit
+  issues: write               # for the "this needs a hand" notice
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the backend settings from taskwell.html
+        id: cfg
+        run: |
+          # Anchored to the const declaration on purpose. An unanchored match
+          # also hits the use of DEFAULT_SB_KEY further down the file and
+          # silently glues two values together.
+          URL=$(grep -oE "^const DEFAULT_SB_URL = '[^']*'" taskwell.html | head -1 | sed -E "s/.*'([^']*)'$/\1/")
+          KEY=$(grep -oE "^const DEFAULT_SB_KEY = '[^']*'" taskwell.html | head -1 | sed -E "s/.*'([^']*)'$/\1/")
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "could not read DEFAULT_SB_URL / DEFAULT_SB_KEY from taskwell.html"
+            echo "state=misconfigured" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "url=$URL"             >> "$GITHUB_OUTPUT"
+          echo "key=$KEY"             >> "$GITHUB_OUTPUT"
+          echo "host=${URL#https://}" >> "$GITHUB_OUTPUT"
+          echo "state=ok"             >> "$GITHUB_OUTPUT"
+
+      - name: Ping the database
+        id: ping
+        if: steps.cfg.outputs.state == 'ok'
+        env:
+          URL:  ${{ steps.cfg.outputs.url }}
+          KEY:  ${{ steps.cfg.outputs.key }}
+          HOST: ${{ steps.cfg.outputs.host }}
+        run: |
+          # A paused project has no DNS record at all, so this is the cheapest
+          # way to tell "paused" apart from "that request failed". getent ships
+          # with glibc, so it is always there on the runner.
+          if ! getent hosts "$HOST" >/dev/null 2>&1; then
+            echo "::warning::$HOST does not resolve — the project looks paused."
+            echo "state=paused" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # allowed_emails is the one table an anonymous caller can query
+          # without tripping the restrictive is_allowed_user() policy. It runs
+          # a real SELECT in Postgres — which is the point — and comes back as
+          # an empty array, so it discloses nothing. Every other table answers
+          # 401 for anon, which would be indistinguishable from a rotated key.
+          state=unreachable
+          for attempt in 1 2 3; do
+            CODE=$(curl -s -o /tmp/out.json -w "%{http_code}" --max-time 20 \
+              "$URL/rest/v1/allowed_emails?select=email&limit=1" \
+              -H "apikey: $KEY" \
+              -H "Authorization: Bearer $KEY") || CODE=000
+            echo "attempt $attempt: HTTP $CODE"
+            head -c 200 /tmp/out.json 2>/dev/null; echo
+
+            if [ "$CODE" = "200" ]; then
+              state=awake
+              break
+            fi
+            # A refused key will be refused again — no point retrying that one.
+            if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
+              state=rejected
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 20; fi
+          done
+
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "Result: $state"
+
+      - name: Say what happened
+        env:
+          STATE: ${{ steps.ping.outputs.state || steps.cfg.outputs.state }}
+        run: |
+          {
+            echo "### Keep Supabase awake"
+            case "$STATE" in
+              awake)
+                echo "Database answered. Nothing to do." ;;
+              paused)
+                echo "The hostname does not resolve, which is what a paused project looks like. Resume it in the Supabase dashboard." ;;
+              rejected)
+                echo "The database answered but refused the key. It was probably rotated — update \`DEFAULT_SB_KEY\` in \`taskwell.html\`." ;;
+              misconfigured)
+                echo "Could not read the backend settings out of \`taskwell.html\`." ;;
+              *)
+                echo "No answer after three tries. Could be a passing blip; it will try again tomorrow." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only a person can resume a paused project or rotate a key, so these are
+      # the two cases worth interrupting her for. One open notice at a time: if
+      # one is already open this does nothing, so a long outage does not turn
+      # into a long pile of mail.
+      - name: Open a notice if it needs a hand
+        if: steps.ping.outputs.state == 'paused' || steps.ping.outputs.state == 'rejected'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.ping.outputs.state }}
+          HOST: ${{ steps.cfg.outputs.host }}
+        run: |
+          TITLE="Taskwell is down: Supabase needs attention"
+
+          # If this lookup itself fails, say nothing rather than failing the run —
+          # a broken notice is not worth an email about a broken notice.
+          OPEN=$(gh issue list --state open --search "$TITLE in:title" --json number --jq 'length' 2>/dev/null) || OPEN=unknown
+          if [ "$OPEN" = "unknown" ]; then
+            echo "::warning::Could not check for an existing notice — skipping."
+            exit 0
+          fi
+          if [ "$OPEN" != "0" ]; then
+            echo "A notice is already open — staying quiet."
+            exit 0
+          fi
+
+          if [ "$STATE" = "paused" ]; then
+            BODY=$(printf '%s\n' \
+              "\`$HOST\` has no DNS record, which is what a paused Supabase project looks like." \
+              "" \
+              "While it is paused Taskwell cannot load anything, and this daily ping cannot bring it back on its own." \
+              "" \
+              "**To fix:** open the project in the Supabase dashboard and click **Resume**. Free projects can be restored for up to a year, with the data intact. It takes a few minutes to finish booting — a 521 in the meantime is normal." \
+              "" \
+              "Close this issue once it is back, so the check can tell you again if it ever happens later.")
+          else
+            BODY=$(printf '%s\n' \
+              "The database answered but rejected the publishable key." \
+              "" \
+              "It was most likely rotated. Copy the current key from the Supabase dashboard into \`DEFAULT_SB_KEY\` in \`taskwell.html\`, then copy the file over \`index.html\` as usual." \
+              "" \
+              "Close this issue once it is sorted.")
+          fi
+
+          gh issue create --title "$TITLE" --body "$BODY" \
+            || echo "::warning::Could not open the notice issue."
+
+      # GitHub disables scheduled workflows in repos with no activity for 60
+      # days, which would silently switch off the very thing keeping the
+      # database alive — and a summer break is longer than 60 days. A monthly
+      # commit resets that clock. If the push is refused — branch protection,
+      # say — that is worth a warning but not a failed run, so it never
+      # exits 1. Only .keepalive is touched, so taskwell.html and its served
+      # copy in index.html are never involved.
+      - name: Touch the heartbeat file monthly
+        if: steps.ping.outputs.state == 'awake'
+        run: |
+          if [ "$(date -u +%d)" != "01" ]; then
+            echo "not the 1st — nothing to commit"
+            exit 0
+          fi
+          date -u +"last checked %Y-%m-%d" > .keepalive
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .keepalive
+          if git diff --staged --quiet; then
+            echo "nothing changed"
+            exit 0
+          fi
+          git commit -m "chore: keepalive heartbeat [skip ci]"
+          git push || echo "::warning::Could not push the heartbeat — check branch protection on main."
