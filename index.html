@@ -1814,8 +1814,8 @@
     <label class="modal-label">Person (optional)</label>
     <input class="modal-input" id="noteEditPerson" list="notePeopleList" placeholder="e.g. a student or colleague" />
     <datalist id="notePeopleList"></datalist>
-    <label class="modal-label">Project (optional)</label>
-    <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign" />
+    <label class="modal-label">Project (optional — a slash makes a sub-project)</label>
+    <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign/Exams" />
     <datalist id="noteProjectList"></datalist>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('noteEditModal')">Cancel</button>
@@ -1896,8 +1896,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-11-09';
-const WHATS_NEW = "Three things to keep notes findable: star a note to put it On the agenda and it stays above the timeline; search across note text, meetings and people; and tag a note with a person, then click that name to see everything about them in order.";
+const APP_VERSION = '2026-11-17';
+const WHATS_NEW = "Projects nest now. Put a slash in a project name, like BIO 340 redesign/Exams, and it files underneath the one before it — the parent comes into being on its own, with no setup first. The rail lists the top level and opens one step at a time, a project counts everything beneath it, and renaming one carries its sub-projects along.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -7188,7 +7188,7 @@ function renderNotes() {
   // or the project renamed from somewhere else. Drop it rather than leaving the
   // tab stuck on an empty result with nothing to click to get back.
   if (notesProject && notesProject !== NO_PROJECT &&
-      !notes.some(n => !n.archived && (n.project || '').trim() === notesProject)) {
+      !notes.some(n => !n.archived && projIsWithin(n.project, notesProject))) {
     notesProject = null;
   }
 
@@ -7196,7 +7196,7 @@ function renderNotes() {
   let live = notes.filter(n => !n.archived);
   if (notesPerson) live = live.filter(n => (n.person || '') === notesPerson);
   if (notesProject === NO_PROJECT) live = live.filter(n => !(n.project || '').trim());
-  else if (notesProject) live = live.filter(n => (n.project || '').trim() === notesProject);
+  else if (notesProject) live = live.filter(n => projIsWithin(n.project, notesProject));
   if (q) live = live.filter(n => (noteText(n) + ' ' + (n.event_title || '') + ' ' +
                                   (n.person || '') + ' ' + (n.project || ''))
                                   .toLowerCase().includes(q));
@@ -7235,9 +7235,14 @@ function renderNotes() {
   if (!live.length) {
     const empty = document.createElement('div');
     empty.className = 'notes-empty';
+    // A project does not exist until a note names one, so an empty page is
+    // also the only place to say where projects come from \u2014 otherwise the
+    // grouping button looks like a feature that is missing rather than idle.
     empty.textContent = (q || notesPerson || notesProject)
       ? 'Nothing matches that.'
-      : 'Nothing captured yet. Press \u2318K anywhere to jot something down.';
+      : 'Nothing captured yet. Press \u2318K anywhere to jot something down. '
+        + 'Every note can name a meeting, a person and a project \u2014 put a slash '
+        + 'in the project to file it under another, like BIO 340 redesign/Exams.';
     area.appendChild(empty);
     return;
   }
@@ -7282,7 +7287,7 @@ function renderNotes() {
 function renderNotesByProject(area, list) {
   const groups = new Map();
   list.forEach(n => {
-    const key = (n.project || '').trim() || NO_PROJECT;
+    const key = projKey(n.project) || NO_PROJECT;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(n);
   });
@@ -7350,12 +7355,15 @@ function buildNoteCard(n, opts) {
     ev.textContent = n.event_title;
     meta.appendChild(ev);
   }
-  if ((n.project || '').trim()) {
+  if (projKey(n.project)) {
+    const full = projKey(n.project);
     const pr = document.createElement('span');
     pr.className = 'note-project';
-    pr.textContent = n.project.trim();
+    // The leaf alone would read as two unrelated projects once two parents
+    // each have an "Exams" under them, so the card carries the whole path.
+    pr.textContent = full;
     pr.title = 'Show only this project';
-    pr.onclick = () => filterNotesByProject(n.project.trim());
+    pr.onclick = () => filterNotesByProject(full);
     meta.appendChild(pr);
   }
   if (n.person) {
@@ -7468,15 +7476,48 @@ function filterNotesBy(person) {
 // Projects are free text on the note itself, like the person field, rather than
 // a table of their own: one less thing to set up before writing anything down,
 // and the list of projects is simply whatever has been used.
+// A slash makes a sub-project: "BIO 340 redesign/Exams" sits under "BIO 340
+// redesign". The parent needs no note of its own — writing the child is what
+// brings it into being, the same way writing any project name creates it.
+const PROJ_SEP = '/';
+
+function projParts(name) {
+  return String(name || '').split(PROJ_SEP).map(s => s.trim()).filter(Boolean);
+}
+function projKey(name) { return projParts(name).join(PROJ_SEP); }
+function projLeaf(name) { const p = projParts(name); return p[p.length - 1] || ''; }
+function projParent(name) {
+  const p = projParts(name);
+  p.pop();
+  return p.length ? p.join(PROJ_SEP) : null;
+}
+// Looking at a project means looking at everything filed beneath it too.
+function projIsWithin(name, root) {
+  const k = projKey(name);
+  return !!k && (k === root || k.startsWith(root + PROJ_SEP));
+}
+
+// Every project in use, plus the parents implied by any sub-project, so a
+// parent still shows up when only its children carry notes. `count` is the
+// notes filed directly on it; `total` includes everything underneath.
 function knownProjects() {
-  const counts = new Map();
+  const own = new Map();
   notes.filter(n => !n.archived).forEach(n => {
-    const name = (n.project || '').trim();
+    const name = projKey(n.project);
     if (!name) return;
-    counts.set(name, (counts.get(name) || 0) + 1);
+    own.set(name, (own.get(name) || 0) + 1);
   });
-  return [...counts.entries()].map(([name, count]) => ({ name, count }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const all = new Set();
+  own.forEach((_, name) => {
+    const parts = projParts(name);
+    for (let i = 1; i <= parts.length; i++) all.add(parts.slice(0, i).join(PROJ_SEP));
+  });
+  return [...all].map(name => {
+    let total = 0;
+    own.forEach((c, k) => { if (projIsWithin(k, name)) total += c; });
+    return { name, leaf: projLeaf(name), parent: projParent(name),
+             depth: projParts(name).length - 1, count: own.get(name) || 0, total };
+  }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function renderProjectRail() {
@@ -7507,10 +7548,27 @@ function renderProjectRail() {
   };
 
   pill('All', null, !notesProject, () => filterNotesByProject(null));
-  projects.forEach(pr => pill(pr.name, pr.count, notesProject === pr.name,
-                              () => filterNotesByProject(pr.name)));
+  // Only the top level is listed up front. Listing every branch at once would
+  // make the rail unreadable the moment there are sub-projects, so children
+  // appear below once you are inside their parent — the rail stays short and
+  // tells you where you are.
+  projects.filter(pr => !pr.parent).forEach(pr =>
+    pill(pr.name, pr.total, notesProject === pr.name,
+         () => filterNotesByProject(pr.name)));
   if (loose) pill('No project', loose, notesProject === NO_PROJECT,
                   () => filterNotesByProject(NO_PROJECT));
+
+  // Where you are, then one step down. Showing the open sub-project itself
+  // keeps exactly one pill lit and gives Rename something to sit beside;
+  // its parent stays in the rail above as the way back up.
+  if (notesProject && notesProject !== NO_PROJECT) {
+    if (projParent(notesProject)) {
+      pill('› ' + projLeaf(notesProject), null, true,
+           () => filterNotesByProject(notesProject));
+    }
+    projects.filter(pr => pr.parent === notesProject).forEach(pr =>
+      pill('› ' + pr.leaf, pr.total, false, () => filterNotesByProject(pr.name)));
+  }
 
   // Free text picks up typos, and a typo quietly splits one project in two.
   // Renaming is offered only on the project being looked at, and sits right
@@ -7544,20 +7602,36 @@ function toggleNotesGrouping() {
 // Renames across every note in the project at once, so a project stays one
 // project rather than becoming two with similar names.
 async function renameProject(from) {
-  const to = (prompt('Rename this project on every note in it:', from) || '').trim();
+  const to = projKey(prompt('Rename this project on every note in it:', from) || '');
   if (!to || to === from) return;
-  const hit = notes.filter(n => (n.project || '').trim() === from);
+  // Renaming a parent takes its sub-projects with it, so the branch stays
+  // intact instead of its children being orphaned under a name that is gone.
+  const hit = notes.filter(n => projIsWithin(n.project, from));
   if (!hit.length) return;
-  const ids = hit.map(n => n.id);
-  hit.forEach(n => { n.project = to; });
-  if (notesProject === from) notesProject = to;
+
+  const was = new Map(hit.map(n => [n.id, n.project]));
+  const groups = new Map();                 // new value -> ids sharing it
+  hit.forEach(n => {
+    const next = to + projKey(n.project).slice(from.length);
+    n.project = next;
+    if (!groups.has(next)) groups.set(next, []);
+    groups.get(next).push(n.id);
+  });
+  if (notesProject && projIsWithin(notesProject, from)) {
+    notesProject = to + notesProject.slice(from.length);
+  }
   renderNotes();
+
   try {
-    await api('PATCH', `notes?id=in.(${ids.join(',')})`, { project: to });
+    for (const [next, ids] of groups) {
+      await api('PATCH', `notes?id=in.(${ids.join(',')})`, { project: next });
+    }
     showToast(`Renamed to ${to}`);
   } catch (e) {
-    hit.forEach(n => { n.project = from; });
-    if (notesProject === to) notesProject = from;
+    hit.forEach(n => { n.project = was.get(n.id); });
+    if (notesProject && projIsWithin(notesProject, to)) {
+      notesProject = from + notesProject.slice(to.length);
+    }
     renderNotes();
     showToast("Couldn't rename that project — please try again.", true);
   }
