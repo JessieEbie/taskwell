@@ -1902,12 +1902,30 @@ const WHATS_NEW = "Projects nest now. Put a slash in a project name, like BIO 34
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
 
+// Storage is not merely empty when it is unavailable — it throws on the very
+// first read. A browser with site data blocked, private mode in some
+// configurations, and any page served from an opaque origin all behave that
+// way. Nearly every preference below is read at script-eval time, so one throw
+// there stops the whole script and the app comes up blank instead of falling
+// back to its defaults — the same failure the opening screen was taught to
+// survive for a flaky connection. Reading through these makes an unreachable
+// store look exactly like an empty one, which is what every caller already
+// expects. Unparsable JSON is treated the same way and for the same reason: a
+// corrupt preference should cost you that preference, not the whole app.
+function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function ssGet(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
+function jsonOr(raw, fallback) {
+  try { return raw == null ? fallback : (JSON.parse(raw) ?? fallback); }
+  catch (e) { return fallback; }
+}
+function lsJSON(key, fallback) { return jsonOr(lsGet(key), fallback); }
+
 // A visitor can point the app at their own Supabase project instead of the
 // default shared one — see showSetupScreen()/saveBackendConfig(). Their choice is
 // stored per-browser in localStorage (persists across tabs/reloads). sessionStorage
 // is also checked (and takes priority) for any tooling that sets a tab-scoped
 // override without touching the browser's persistent config.
-const customConfig = JSON.parse(sessionStorage.getItem('tw_config') || localStorage.getItem('tw_config') || 'null');
+const customConfig = jsonOr(ssGet('tw_config') || lsGet('tw_config'), null);
 const isCustomBackend = !!(customConfig && customConfig.url && customConfig.key);
 const SB_URL = isCustomBackend ? customConfig.url.replace(/\/+$/, '') : DEFAULT_SB_URL;
 const SB_KEY = isCustomBackend ? customConfig.key : DEFAULT_SB_KEY;
@@ -2153,51 +2171,51 @@ let sectionCollapsed = {}, listCollapsed = {}, dragTaskId = null;
 // Last-used view preferences (Hub's Home/Work filter, Week/Agenda's unassigned-tray
 // filter) — cached in localStorage for instant load, then reconciled against the
 // server copy in boot() so they carry across devices, same pattern as other prefs.
-let viewPrefs = JSON.parse(localStorage.getItem('tw_view_prefs') || '{}');
+let viewPrefs = lsJSON('tw_view_prefs', {});
 let weekOffset = 0, activeWeekList = 'all';
 // Migrate the old standalone "hide unassigned" toggle into the 'none' scope value.
 let weekBroadFilter = viewPrefs.weekBroadFilter || (viewPrefs.hideUnassigned ? 'none' : 'all'); // 'all' | 'none' | 'home' | 'work' — which lists the unassigned tray/drill-down draw from
 let weekListFilter = viewPrefs.weekListFilter || null;    // null | 'home:<section>' | 'work:<section>' | a specific list id
 let hubContextFilter = viewPrefs.hubContextFilter || 'all';
 let activeSettingsTab = 'calendar';
-let currentContext = localStorage.getItem('tw_context') || 'all';
+let currentContext = lsGet('tw_context') || 'all';
 let editingTaskId = null;
 // list drag state is managed inside initListDrag (pointer-events based)
 let selectedDay = dateKey(new Date());
 let miniMonthDate = new Date();
-let calFeeds = JSON.parse(localStorage.getItem('tw_cal_feeds') || '[]');
+let calFeeds = lsJSON('tw_cal_feeds', []);
 // Per-calendar-source show/hide, keyed by source id ('google', 'google_second',
 // 'outlook', or 'ics:<feedId>'). Missing/undefined means visible — so events from
 // before this feature existed, or a source not yet in the map, default to shown.
-let calSourceVisibility = JSON.parse(localStorage.getItem('tw_cal_source_visibility') || '{}');
+let calSourceVisibility = lsJSON('tw_cal_source_visibility', {});
 // Per-calendar-source name/context/color overrides, keyed the same way as
 // calSourceVisibility. context is 'work' | 'home' | 'other' — work/home always use
 // that context's theme color; 'other' calendars carry their own explicit color.
-let calSourceStyles = JSON.parse(localStorage.getItem('tw_cal_source_styles') || '{}');
+let calSourceStyles = lsJSON('tw_cal_source_styles', {});
 // Unified Calendar view — a single "Calendar" rail tab with an Agenda/Week/Month
 // sub-nav, vs. the original separate Day/Week/Month rail tabs. Purely a UI-layout
 // preference; both modes render the same underlying #day/#week/#month sections.
-let unifiedCalendarView = localStorage.getItem('tw_unified_calendar_view') === '1';
-let calendarSubView = localStorage.getItem('tw_calendar_subview') || 'week'; // 'agenda' | 'week' | 'month'
+let unifiedCalendarView = lsGet('tw_unified_calendar_view') === '1';
+let calendarSubView = lsGet('tw_calendar_subview') || 'week'; // 'agenda' | 'week' | 'month'
 // Hides the rail's Work/Home toggle — the same filtering already exists via the
 // unified Hub's dropdown and the calendar views' All/Home/Work scope dropdown, so
 // this is purely about decluttering the rail, not losing the ability to filter.
-let hideContextToggle = localStorage.getItem('tw_hide_context_toggle') === '1';
+let hideContextToggle = lsGet('tw_hide_context_toggle') === '1';
 let calEvents = {};
-let authSession = JSON.parse(localStorage.getItem('tw_auth') || 'null');
-let googleTokens = JSON.parse(localStorage.getItem('tw_google_tokens') || 'null');
+let authSession = lsJSON('tw_auth', null);
+let googleTokens = lsJSON('tw_google_tokens', null);
 let outlookTokens = null;
 let serverLastSeen = null; // account-wide last-seen "what's new" version (from Supabase)
 const shownGcalErrors = new Set(); // dedupes repeated Google/Outlook Calendar fetch-error toasts
 // Optional second Google Calendar (e.g. a shared or work calendar), tagged as
 // 'work' or 'personal'. Empty secondCalId means there isn't one configured.
-let secondCalId = localStorage.getItem('tw_second_cal_id') || '';
-let secondCalContext = localStorage.getItem('tw_second_cal_context') || 'work';
-let outlookEmail = localStorage.getItem('tw_outlook_email') || '';
-let userTimezone = localStorage.getItem('tw_timezone') || 'America/Phoenix';
-let autoClearCompleted = localStorage.getItem('tw_auto_clear_completed') === '1';
-let hideBirthdays = localStorage.getItem('tw_hide_birthdays') === '1';
-let showDeclinedEvents = localStorage.getItem('tw_show_declined_events') === '1';
+let secondCalId = lsGet('tw_second_cal_id') || '';
+let secondCalContext = lsGet('tw_second_cal_context') || 'work';
+let outlookEmail = lsGet('tw_outlook_email') || '';
+let userTimezone = lsGet('tw_timezone') || 'America/Phoenix';
+let autoClearCompleted = lsGet('tw_auto_clear_completed') === '1';
+let hideBirthdays = lsGet('tw_hide_birthdays') === '1';
+let showDeclinedEvents = lsGet('tw_show_declined_events') === '1';
 
 const PALETTES = [
   { id: 'original', name: 'Original', swatch: '#B8A898', accent: '#B8A898', dark: '#9A8E87', pale: '#EDE8E2', rail: '#B8A898' },
@@ -2272,7 +2290,9 @@ const PALETTES = [
   { id: 'sanddune',     name: 'Sand Dune',         swatch: '#EAE1CC', accent: '#EAE1CC', dark: '#A49E8F', pale: '#FDFCFA', rail: '#EAE1CC' },
   { id: 'seafoamgreen', name: 'Seafoam Green',     swatch: '#D9DFD1', accent: '#D9DFD1', dark: '#989C92', pale: '#FBFCFA', rail: '#D9DFD1' },
   { id: 'driftwood',    name: 'Driftwood',         swatch: '#E4D0C4', accent: '#E4D0C4', dark: '#A09289', pale: '#FCFBFA', rail: '#E4D0C4' },
-  { id: 'mistgrey',     name: 'Mist Grey',         swatch: '#D0D6D4', accent: '#D0D6D4', dark: '#929694', pale: '#FAFBFA', rail: '#D0D6D4' },
+  // The id stays 'mistgrey': it is a stored key in user_settings.palettes and
+  // localStorage, so renaming it would silently drop anyone's saved choice.
+  { id: 'mistgrey',     name: 'Mist Gray',         swatch: '#D0D6D4', accent: '#D0D6D4', dark: '#929694', pale: '#FAFBFA', rail: '#D0D6D4' },
   { id: 'springgreen',  name: 'Spring Green',      swatch: '#EFF7E3', accent: '#EFF7E3', dark: '#A7AD9F', pale: '#FDFEFC', rail: '#EFF7E3' },
   { id: 'lavfields',    name: 'Lavender Fields',   swatch: '#EFD5EB', accent: '#EFD5EB', dark: '#A795A5', pale: '#FDFBFC', rail: '#EFD5EB' },
   { id: 'petalpink',    name: 'Petal Pink',        swatch: '#D2A7B7', accent: '#D2A7B7', dark: '#937580', pale: '#FBF7F9', rail: '#D2A7B7' },
@@ -2295,7 +2315,7 @@ const PALETTES = [
   { id: 'forestfern',   name: 'Forest Fern',       swatch: '#697564', accent: '#697564', dark: '#4A5246', pale: '#F2F3F1', rail: '#697564' },
 ];
 
-let userPalettes = JSON.parse(localStorage.getItem('tw_palettes') || 'null') || { work: 'original', home: 'sage', all: 'rose' };
+let userPalettes = lsJSON('tw_palettes', null) || { work: 'original', home: 'sage', all: 'rose' };
 
 function applyPalettes() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
@@ -2693,7 +2713,7 @@ async function makePkceChallenge() {
 function handleGoogleSignInClick() {
   // Only the default shared backend needs this disclosure — a self-hosted instance's
   // owner IS the signed-in user, so there's no separate admin who could see their data.
-  if (!isCustomBackend && !localStorage.getItem('tw_privacy_ack')) {
+  if (!isCustomBackend && !lsGet('tw_privacy_ack')) {
     openModal('privacyNoticeModal');
     return;
   }
@@ -3420,7 +3440,7 @@ async function connectGoogleCalendar() {
 
 async function processGcalCallback(code, state) {
   try {
-    const verifier = localStorage.getItem('gcal_verifier') || '';
+    const verifier = lsGet('gcal_verifier') || '';
     localStorage.removeItem('gcal_verifier');
     const redirectUri = `http://localhost:${window.__GCAL_REDIRECT_PORT__ || 37842}`;
     const res = await fetch(`${SB_URL}/functions/v1/google-calendar-auth`, {
@@ -3614,7 +3634,7 @@ async function connectOutlookCalendar() {
 // to the original authorize request, or Microsoft rejects the exchange.
 async function exchangeOutlookCode(code, redirectUri) {
   try {
-    const verifier = localStorage.getItem('outlook_verifier') || '';
+    const verifier = lsGet('outlook_verifier') || '';
     localStorage.removeItem('outlook_verifier');
     const res = await fetch(`${SB_URL}/functions/v1/outlook-calendar-auth`, {
       method: 'POST',
@@ -4733,7 +4753,7 @@ async function syncCalendars() {
 
 function loadCalCache() {
   try {
-    const cached = localStorage.getItem('tw_cal_cache');
+    const cached = lsGet('tw_cal_cache');
     if (cached) { calEvents = JSON.parse(cached); renderWeek(); renderAgenda(); refreshMonthDayCells(); }
   } catch(e) {}
 }
@@ -5005,7 +5025,7 @@ async function boot() {
     history.replaceState(null, '', window.location.pathname);
   } else if (qp.get('code')) {
     try {
-      const verifier = localStorage.getItem('pkce_verifier') || '';
+      const verifier = lsGet('pkce_verifier') || '';
       localStorage.removeItem('pkce_verifier');
       const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=pkce`, {
         method: 'POST',
@@ -5036,7 +5056,7 @@ async function boot() {
   // wipe it before anything else loads.
   if (authSession.user_id) {
     let lastOwner = null;
-    try { lastOwner = localStorage.getItem('tw_data_owner_uid'); } catch(e) {}
+    try { lastOwner = lsGet('tw_data_owner_uid'); } catch(e) {}
     if (lastOwner && lastOwner !== authSession.user_id) { wipeLocalUserCache(); }
     try { localStorage.setItem('tw_data_owner_uid', authSession.user_id); } catch(e) {}
   }
@@ -5193,20 +5213,20 @@ async function boot() {
     // register it in the default backend's directory (best-effort, silent) so
     // that signing in from ANY device/browser can find its way back here
     // automatically instead of showing "access denied" forever.
-    if (isCustomBackend && !localStorage.getItem('tw_directory_registered')) {
+    if (isCustomBackend && !lsGet('tw_directory_registered')) {
       registerSelfHostedBackend();
     }
-    if (sessionStorage.getItem('tw_directory_redirect_msg')) {
+    if (ssGet('tw_directory_redirect_msg')) {
       sessionStorage.removeItem('tw_directory_redirect_msg');
       showToast('Reconnected to your self-hosted instance');
     }
 
     // Complete pending Google Calendar OAuth exchange
-    const gcalCode = sessionStorage.getItem('gcal_pending_code');
+    const gcalCode = ssGet('gcal_pending_code');
     if (gcalCode) {
       sessionStorage.removeItem('gcal_pending_code');
       try {
-        const verifier = localStorage.getItem('gcal_verifier') || '';
+        const verifier = lsGet('gcal_verifier') || '';
         localStorage.removeItem('gcal_verifier');
         const res = await fetch(`${SB_URL}/functions/v1/google-calendar-auth`, {
           method: 'POST',
@@ -5230,7 +5250,7 @@ async function boot() {
       } catch(e) { console.error('Google auth error:', e); showToast('Google auth error: ' + e.message, true); }
     }
 
-    const outlookCode = sessionStorage.getItem('outlook_pending_code');
+    const outlookCode = ssGet('outlook_pending_code');
     if (outlookCode) {
       sessionStorage.removeItem('outlook_pending_code');
       await exchangeOutlookCode(outlookCode, OUTLOOK_REDIRECT);
@@ -5249,7 +5269,7 @@ async function boot() {
 function checkWhatsNew() {
   // Prefer the account-wide value (set on any device) over this device's local
   // copy, so the banner shows at most once per person — not once per device.
-  const lastSeen = serverLastSeen || localStorage.getItem('tw_last_seen_version');
+  const lastSeen = serverLastSeen || lsGet('tw_last_seen_version');
   if (lastSeen == null) {
     // First time on any device — set the baseline, show nothing. This is what
     // keeps brand-new users from seeing updates that shipped before they joined.
