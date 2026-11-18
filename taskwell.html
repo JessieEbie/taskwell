@@ -1837,6 +1837,8 @@
     <label class="modal-check-row"><input type="checkbox" id="addTaskPriority" /> <span>&#9873; Priority</span></label>
     <label class="modal-label">Remind me</label>
     <select class="modal-select" id="addTaskRemind"></select>
+    <label class="modal-label">Notes</label>
+    <textarea class="modal-input" id="addTaskNotes" placeholder="Notes, links, etc. (optional)" rows="3" style="resize:vertical;font-family:inherit;font-size:14px"></textarea>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('addTaskModal')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmAddTask()">Add</button>
@@ -7077,6 +7079,7 @@ function openAddTaskModal(defaultDate) {
   document.getElementById('addTaskStart').value = '';
   document.getElementById('addTaskEnd').value = '';
   document.getElementById('addTaskPriority').checked = false;
+  document.getElementById('addTaskNotes').value = '';
   fillReminderSelect('addTaskRemind', null);
   openModal('addTaskModal');
   setTimeout(() => document.getElementById('addTaskTitle').focus(), 50);
@@ -7093,11 +7096,15 @@ async function confirmAddTask() {
   if (start_time && !end_time) end_time = minutesToTaskTime(taskTimeToMinutes(start_time) + DEFAULT_TASK_DURATION_MIN);
   if (!start_time) end_time = null;
   const priority = document.getElementById('addTaskPriority').checked;
+  const notes = document.getElementById('addTaskNotes').value.trim();
   try {
     const [t] = await api('POST', 'tasks', {
       list_id: listId, title, completed: false, due_date, week_assigned: due_date,
       start_time, end_time, user_id: authSession?.user_id,
-      ...(priority ? { priority: true } : {})
+      ...(priority ? { priority: true } : {}),
+      // Left out rather than sent empty, so nothing is written that was not
+      // typed — the same way priority is handled just above.
+      ...(notes ? { notes } : {})
     });
     tasks.push(t);
     closeModal('addTaskModal');
