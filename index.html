@@ -321,25 +321,87 @@
     .note-pin.on { color: var(--khaki); }
     @media (pointer: coarse) { .note-pin { min-width: 44px; min-height: 44px; } }
     .note-card.pinned { border-color: var(--khaki); box-shadow: inset 3px 0 0 var(--khaki); }
-    /* Projects. A note's project is free text, so the rail is built from what
-       has actually been typed rather than from a fixed list. It scrolls
-       sideways instead of wrapping, so a dozen projects can never push the
-       notes themselves off the bottom of a phone. */
-    .note-proj-rail { display: flex; align-items: center; gap: 6px; padding: 0 20px 10px;
-                      flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
-                      scrollbar-width: none; }
-    .note-proj-rail::-webkit-scrollbar { display: none; }
-    .note-proj-rail[hidden] { display: none; }
-    .proj-pill { font-family: 'Helvetica Neue', sans-serif; font-size: 11.5px; white-space: nowrap;
-                 border: 1px solid var(--cream-dark); background: var(--paper); color: var(--ink-soft);
-                 border-radius: 14px; padding: 6px 12px; min-height: 32px; cursor: pointer;
-                 flex-shrink: 0; }
-    .proj-pill:hover { border-color: var(--accent); color: var(--ink); }
-    .proj-pill.on { background: var(--accent-pale); border-color: var(--accent);
-                    color: var(--ink); font-weight: 700; }
-    .proj-pill .n { color: var(--ink-faint); margin-left: 5px; font-weight: 400; }
-    .proj-pill.on .n { color: var(--ink-soft); }
-    @media (pointer: coarse) { .proj-pill { min-height: 44px; padding: 6px 14px; } }
+    /* Projects and tags sit in a pane beside the notes rather than in a rail
+       above them: the whole shape of what has been written down is visible at
+       once, and a project is something you can look through instead of
+       something you have to remember the name of. A note's project is still
+       free text, so the tree is built from what has actually been typed, plus
+       any project made in the pane that has no notes in it yet.
+
+       On a narrow screen the pane becomes a drawer over the notes, because a
+       fixed sidebar and a readable note cannot both have the width. */
+    .notes-layout { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+    .notes-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .proj-pane { width: 228px; flex-shrink: 0; display: flex; flex-direction: column;
+                 border-right: 1px solid var(--cream-dark); background: var(--cream);
+                 overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 16px; }
+    .proj-pane-hd { display: flex; align-items: center; gap: 6px; padding: 12px 12px 6px;
+                    font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; font-weight: 700;
+                    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+    .proj-add { margin-left: auto; background: none; border: 1px solid var(--cream-dark);
+                border-radius: 7px; color: var(--ink-soft); font-size: 15px; line-height: 1;
+                cursor: pointer; min-width: 30px; min-height: 30px; }
+    .proj-add:hover { border-color: var(--accent); color: var(--ink); }
+    .proj-row { display: flex; align-items: center; gap: 0; }
+    .proj-twist { background: none; border: none; cursor: pointer; color: var(--ink-faint);
+                  font-size: 10px; line-height: 1; width: 20px; min-height: 34px; flex-shrink: 0;
+                  padding: 0; }
+    .proj-twist.open { transform: rotate(90deg); }
+    .proj-twist.none { visibility: hidden; }
+    .proj-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+                 background: none; border: none; cursor: pointer; text-align: left;
+                 font-family: 'Helvetica Neue', sans-serif; font-size: 12.5px; color: var(--ink-soft);
+                 padding: 7px 10px 7px 2px; min-height: 34px; border-radius: 7px;
+                 margin-right: 8px; }
+    .proj-name .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .proj-name .n { margin-left: auto; font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
+    .proj-name:hover { background: var(--cream-dark); color: var(--ink); }
+    .proj-row.on .proj-name { background: var(--accent-pale); color: var(--ink); font-weight: 700; }
+    .proj-row.on .proj-name .n { color: var(--ink-soft); }
+    .proj-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px; }
+    .proj-acts:not(:empty) { padding-top: 8px; }
+    .proj-acts button { font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
+                        border: 1px solid var(--cream-dark); border-radius: 8px; background: var(--paper);
+                        color: var(--ink-soft); cursor: pointer; padding: 5px 9px; min-height: 32px; }
+    .proj-acts button:hover { border-color: var(--accent); color: var(--ink); }
+    .proj-hint { font-size: 11px; color: var(--ink-faint); padding: 2px 12px 0; line-height: 1.45;
+                 font-style: italic; }
+    .tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 12px 0; }
+    .tag-chip { font-family: 'Helvetica Neue', sans-serif; font-size: 11.5px; cursor: pointer;
+                border: 1px solid var(--cream-dark); background: var(--paper); color: var(--ink-soft);
+                border-radius: 12px; padding: 5px 10px; min-height: 30px; display: inline-flex;
+                align-items: center; gap: 5px; }
+    .tag-chip:hover { border-color: var(--accent); color: var(--ink); }
+    .tag-chip.on { background: var(--accent-pale); border-color: var(--accent);
+                   color: var(--ink); font-weight: 700; }
+    .tag-chip .n { color: var(--ink-faint); font-weight: 400; }
+    .tag-chip.on .n { color: var(--ink-soft); }
+    .tag-setup { font-size: 11px; color: var(--ink-faint); padding: 2px 12px 0; line-height: 1.45; }
+    .tag-setup code { display: block; margin-top: 5px; font-family: Menlo, monospace; font-size: 10px;
+                      word-break: break-word; background: var(--paper); border: 1px solid var(--cream-dark);
+                      border-radius: 6px; padding: 6px; color: var(--ink-soft); user-select: all; }
+    .tag-setup[hidden] { display: none; }
+    .note-tag { background: var(--accent-pale); color: var(--ink-soft); border-radius: 10px;
+                padding: 2px 7px; cursor: pointer; }
+    .note-tag:hover { color: var(--ink); }
+    .note-sort { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: var(--ink-soft);
+                 background: var(--paper); border: 1.5px solid var(--cream-dark); border-radius: 8px;
+                 padding: 6px 8px; min-height: 36px; cursor: pointer; }
+    .proj-pane-btn { display: none; }
+    .proj-scrim { display: none; }
+    @media (pointer: coarse) {
+      .proj-name, .proj-twist { min-height: 44px; }
+      .proj-acts button, .tag-chip, .note-sort { min-height: 44px; }
+      .proj-add { min-width: 44px; min-height: 44px; }
+    }
+    @media (max-width: 860px) {
+      .proj-pane { position: fixed; z-index: 60; top: 0; bottom: 0; left: 0; width: min(84vw, 300px);
+                   box-shadow: 2px 0 18px rgba(0,0,0,.2); transform: translateX(-104%);
+                   transition: transform .18s ease; padding-top: 10px; }
+      .proj-pane.open { transform: none; }
+      .proj-scrim.on { display: block; position: fixed; inset: 0; z-index: 59; background: rgba(0,0,0,.3); }
+      .proj-pane-btn { display: inline-flex; }
+    }
     .note-project { color: var(--brown); cursor: pointer; font-weight: 700; }
     .note-project:hover { text-decoration: underline; }
     .note-proj-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
@@ -810,7 +872,11 @@
       .page-header { padding: 10px 12px 0; flex-wrap: wrap; gap: 4px; }
       .page-title { font-size: 20px; }
       .hub-controls { padding: 8px 12px; gap: 6px; flex-wrap: wrap; }
-      .note-proj-rail { padding: 0 12px 8px; }
+      /* Written out again because #notes .hub-controls above is the more
+         specific selector, so the plain class alone never reaches Notes. */
+      #notes .hub-controls, #hub .hub-controls, #today .hub-controls
+        { padding: 8px 12px; gap: 6px; }
+      .proj-pane-hd, .tag-wrap, .proj-acts, .proj-hint, .tag-setup { padding-left: 10px; padding-right: 10px; }
       .section-body { grid-template-columns: 1fr; gap: 8px; }
       #week .week-controls { padding: 8px 12px 0; }
       #day > .week-nav-row, #month > .week-nav-row { padding: 8px 12px 0; }
@@ -1160,16 +1226,39 @@
       <div class="page-title">Notes</div>
       <div class="page-sub" id="notesSub"></div>
     </div>
-    <div class="hub-controls">
-      <button class="btn btn-primary" onclick="openCaptureModal()">+ Capture</button>
-      <button class="btn btn-primary" onclick="openNoteEditor(null)">+ New note</button>
-      <input class="note-search" id="noteSearch" type="search" placeholder="Search notes…"
-             oninput="notesQuery = this.value; renderNotes();" />
-      <button class="btn" id="notesGroupBtn" onclick="toggleNotesGrouping()">Group by project</button>
-      <span class="note-filter" id="notePersonFilter" hidden></span>
+    <div class="notes-layout">
+      <div class="proj-scrim" id="projScrim" onclick="toggleProjPane(false)"></div>
+      <aside class="proj-pane" id="projPane" aria-label="Projects and tags">
+        <div class="proj-pane-hd">
+          <span>Projects</span>
+          <button class="proj-add" onclick="newProject()" title="New project"
+                  aria-label="New project">+</button>
+        </div>
+        <div id="projTree"></div>
+        <div class="proj-acts" id="projActs"></div>
+        <div class="proj-pane-hd">Tags</div>
+        <div class="tag-wrap" id="tagList"></div>
+        <div class="tag-setup" id="tagSetup" hidden></div>
+      </aside>
+      <div class="notes-main">
+        <div class="hub-controls">
+          <button class="btn proj-pane-btn" id="projPaneBtn" onclick="toggleProjPane()">Projects</button>
+          <button class="btn btn-primary" onclick="openCaptureModal()">+ Capture</button>
+          <button class="btn btn-primary" onclick="openNoteEditor(null)">+ New note</button>
+          <input class="note-search" id="noteSearch" type="search" placeholder="Search notes…"
+                 oninput="notesQuery = this.value; renderNotes();" />
+          <select class="note-sort" id="notesSortSel" aria-label="Sort notes"
+                  onchange="setNotesSort(this.value)">
+            <option value="new">Newest first</option>
+            <option value="old">Oldest first</option>
+          </select>
+          <button class="btn" id="notesGroupBtn" onclick="toggleNotesGrouping()">Group by project</button>
+          <span class="note-filter" id="notePersonFilter" hidden></span>
+          <span id="noteTagFilters"></span>
+        </div>
+        <div class="scroll-area" id="notesScrollArea"></div>
+      </div>
     </div>
-    <div class="note-proj-rail" id="noteProjRail" hidden></div>
-    <div class="scroll-area" id="notesScrollArea"></div>
   </section>
 
   <!-- WEEK -->
@@ -1817,6 +1906,11 @@
     <label class="modal-label">Project (optional — a slash makes a sub-project)</label>
     <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign/Exams" />
     <datalist id="noteProjectList"></datalist>
+    <label class="modal-label" id="noteEditTagsLabel">Tags (optional)</label>
+    <div class="tag-wrap" id="noteEditTags" style="padding:0 0 8px"></div>
+    <input class="modal-input" id="noteEditTagInput" list="noteTagList"
+           placeholder="Type a tag and press Enter" />
+    <datalist id="noteTagList"></datalist>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('noteEditModal')">Cancel</button>
       <button class="btn btn-danger" id="noteEditDelete">Delete</button>
@@ -1896,8 +1990,8 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-11-17';
-const WHATS_NEW = "Projects nest now. Put a slash in a project name, like BIO 340 redesign/Exams, and it files underneath the one before it — the parent comes into being on its own, with no setup first. The rail lists the top level and opens one step at a time, a project counts everything beneath it, and renaming one carries its sub-projects along. The iSEE Lab site's own leaf and amber are in the color list too, near the top.";
+const APP_VERSION = '2026-11-18';
+const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes now sort newest or oldest first, by the day the note is about. Tags are new as well: Action needed, Important, anything you like, several to a note, and picking two in the pane narrows to the notes carrying both.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -2081,6 +2175,7 @@ create table if not exists public.notes (
   on_agenda boolean default false,
   person text,
   project text,
+  tags jsonb default '[]'::jsonb,
   archived boolean default false,
   created_at timestamptz default now()
 );
@@ -5155,6 +5250,7 @@ async function boot() {
     // yet, the app must still start normally rather than failing to boot.
     try {
       notes = await api('GET', 'notes?archived=eq.false&order=created_at.desc');
+      await detectTagSupport();
     } catch (e) {
       notes = [];
       console.warn('Notes unavailable (table may not exist yet):', e?.message);
@@ -7217,9 +7313,11 @@ function renderNotes() {
 
   // A project filter can outlive the project itself — every note in it archived,
   // or the project renamed from somewhere else. Drop it rather than leaving the
-  // tab stuck on an empty result with nothing to click to get back.
+  // tab stuck on an empty result with nothing to click to get back. A project
+  // made in the pane counts as real while it waits for its first note, so it
+  // is not swept away the moment it is created.
   if (notesProject && notesProject !== NO_PROJECT &&
-      !notes.some(n => !n.archived && projIsWithin(n.project, notesProject))) {
+      !knownProjects().some(pr => pr.name === notesProject)) {
     notesProject = null;
   }
 
@@ -7228,9 +7326,25 @@ function renderNotes() {
   if (notesPerson) live = live.filter(n => (n.person || '') === notesPerson);
   if (notesProject === NO_PROJECT) live = live.filter(n => !(n.project || '').trim());
   else if (notesProject) live = live.filter(n => projIsWithin(n.project, notesProject));
+  // Every tag picked has to be on the note, not just one of them: adding a
+  // second tag should always narrow what you are looking at.
+  if (notesTags.length) live = live.filter(n => {
+    const have = noteTags(n).map(tagKey);
+    return notesTags.every(k => have.includes(k));
+  });
   if (q) live = live.filter(n => (noteText(n) + ' ' + (n.event_title || '') + ' ' +
-                                  (n.person || '') + ' ' + (n.project || ''))
+                                  (n.person || '') + ' ' + (n.project || '') + ' ' +
+                                  noteTags(n).join(' '))
                                   .toLowerCase().includes(q));
+
+  // The server hands notes back newest-written first, which is not the same as
+  // newest-dated: a note written today for next Tuesday's meeting belongs on
+  // Tuesday. Sorting on the note's own day puts the headings in order whichever
+  // direction is asked for, and falls back to the writing time within a day.
+  const dayOf = n => n.day || (n.created_at || '').slice(0, 10);
+  const dir = notesSort === 'old' ? 1 : -1;
+  live.sort((a, b) => dir * (String(dayOf(a)).localeCompare(String(dayOf(b)))
+    || String(a.created_at || '').localeCompare(String(b.created_at || ''))));
 
   const chip = document.getElementById('notePersonFilter');
   if (chip) {
@@ -7244,7 +7358,10 @@ function renderNotes() {
   const pdl = document.getElementById('noteProjectList');
   if (pdl) pdl.innerHTML = knownProjects()
     .map(pr => `<option value="${escHtml(pr.name)}"></option>`).join('');
-  renderProjectRail();
+  renderProjectPane();
+  renderTagFilterChips();
+  const sortSel = document.getElementById('notesSortSel');
+  if (sortSel && sortSel.value !== notesSort) sortSel.value = notesSort;
 
   // Grouping by project only means anything while looking at all of them; once
   // you're inside one project there is only ever the one group.
@@ -7257,7 +7374,7 @@ function renderNotes() {
   const sub = document.getElementById('notesSub');
   if (sub) {
     const total = notes.filter(n => !n.archived).length;
-    sub.textContent = (q || notesPerson || notesProject)
+    sub.textContent = (q || notesPerson || notesProject || notesTags.length)
       ? `${live.length} of ${total}`
       : (total ? `${total} note${total !== 1 ? 's' : ''}` : '');
   }
@@ -7269,11 +7386,12 @@ function renderNotes() {
     // A project does not exist until a note names one, so an empty page is
     // also the only place to say where projects come from \u2014 otherwise the
     // grouping button looks like a feature that is missing rather than idle.
-    empty.textContent = (q || notesPerson || notesProject)
+    empty.textContent = (q || notesPerson || notesProject || notesTags.length)
       ? 'Nothing matches that.'
       : 'Nothing captured yet. Press \u2318K anywhere to jot something down. '
-        + 'Every note can name a meeting, a person and a project \u2014 put a slash '
-        + 'in the project to file it under another, like BIO 340 redesign/Exams.';
+        + 'Every note can name a meeting, a person, a project and any number of '
+        + 'tags \u2014 the pane beside this one lists them all, and a slash in a '
+        + 'project name files it under another, like BIO 340 redesign/Exams.';
     area.appendChild(empty);
     return;
   }
@@ -7397,6 +7515,14 @@ function buildNoteCard(n, opts) {
     pr.onclick = () => filterNotesByProject(full);
     meta.appendChild(pr);
   }
+  noteTags(n).forEach(t => {
+    const tg = document.createElement('span');
+    tg.className = 'note-tag';
+    tg.textContent = t;
+    tg.title = 'Show only notes tagged ' + t;
+    tg.onclick = () => toggleTagFilter(t);
+    meta.appendChild(tg);
+  });
   if (n.person) {
     const who = document.createElement('span');
     who.className = 'note-person';
@@ -7486,6 +7612,13 @@ let notesPerson = null;
 const NO_PROJECT = '\u0000none';
 let notesProject = null;
 let notesGroupBy = 'date';   // 'date' | 'project'
+let notesSort = lsGet('tw_notes_sort') === 'old' ? 'old' : 'new';   // 'new' | 'old'
+
+function setNotesSort(v) {
+  notesSort = v === 'old' ? 'old' : 'new';
+  try { localStorage.setItem('tw_notes_sort', notesSort); } catch (e) {}
+  renderNotes();
+}
 
 // Plain text of a note, for searching — rich notes are HTML underneath.
 function noteText(n) {
@@ -7528,6 +7661,22 @@ function projIsWithin(name, root) {
   return !!k && (k === root || k.startsWith(root + PROJ_SEP));
 }
 
+// Which branches of the tree are unfolded. A per-device habit rather than
+// anything about the notes themselves, so it stays on the device.
+let projOpen = new Set(lsJSON('tw_proj_open', []) || []);
+function saveProjOpen() {
+  try { localStorage.setItem('tw_proj_open', JSON.stringify([...projOpen])); } catch (e) {}
+}
+
+// A project made in the pane has no notes in it yet, so there is nothing on
+// the server to derive it from. It is held here until its first note gives it
+// a real existence everywhere — at which point it is dropped, because the
+// notes themselves now say it is there.
+let pendingProjects = (lsJSON('tw_pending_projects', []) || []).map(projKey).filter(Boolean);
+function savePendingProjects() {
+  try { localStorage.setItem('tw_pending_projects', JSON.stringify(pendingProjects)); } catch (e) {}
+}
+
 // Every project in use, plus the parents implied by any sub-project, so a
 // parent still shows up when only its children carry notes. `count` is the
 // notes filed directly on it; `total` includes everything underneath.
@@ -7539,10 +7688,14 @@ function knownProjects() {
     own.set(name, (own.get(name) || 0) + 1);
   });
   const all = new Set();
-  own.forEach((_, name) => {
+  const addBranch = (name) => {
     const parts = projParts(name);
     for (let i = 1; i <= parts.length; i++) all.add(parts.slice(0, i).join(PROJ_SEP));
-  });
+  };
+  own.forEach((_, name) => addBranch(name));
+  // Projects made in the pane belong in the tree too, or there would be
+  // nowhere to file their first note.
+  pendingProjects.forEach(addBranch);
   return [...all].map(name => {
     let total = 0;
     own.forEach((c, k) => { if (projIsWithin(k, name)) total += c; });
@@ -7551,71 +7704,290 @@ function knownProjects() {
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function renderProjectRail() {
-  const rail = document.getElementById('noteProjRail');
-  if (!rail) return;
-  const projects = knownProjects();
-  const loose = notes.filter(n => !n.archived && !(n.project || '').trim()).length;
-  // Nothing to dig into until at least one note has been given a project — and
-  // the rail stays up while a filter is on, so there's always a way back out.
-  rail.hidden = !projects.length && !notesProject;
-  rail.innerHTML = '';
-  if (rail.hidden) return;
+// The pane is permanent on a wide screen and a drawer on a narrow one. One
+// function covers both: on a wide screen the class simply has no effect.
+function toggleProjPane(force) {
+  const pane = document.getElementById('projPane');
+  const scrim = document.getElementById('projScrim');
+  if (!pane) return;
+  const open = force == null ? !pane.classList.contains('open') : !!force;
+  pane.classList.toggle('open', open);
+  if (scrim) scrim.classList.toggle('on', open);
+}
 
-  let activePill = null;
-  const pill = (label, count, active, onClick) => {
+// Picking something closes the drawer, because on a phone it is covering the
+// very notes you just asked to see. On a wide screen there is nothing to close.
+function projPaneIsDrawer() {
+  return !!(window.matchMedia && window.matchMedia('(max-width: 860px)').matches);
+}
+function pickProject(name) {
+  filterNotesByProject(name);
+  if (projPaneIsDrawer()) toggleProjPane(false);
+}
+
+// The whole tree at once, folded down to the branches in use. Indentation and
+// a disclosure arrow carry the nesting; the count on a row is everything
+// beneath it, so a parent still reads as the size of the thing it contains.
+function renderProjectPane() {
+  const tree = document.getElementById('projTree');
+  if (!tree) return;
+  const live = notes.filter(n => !n.archived);
+
+  // A project with notes in it now exists on every device. The local
+  // placeholder has done its job and would otherwise sit there forever.
+  const real = new Set();
+  live.forEach(n => {
+    const parts = projParts(n.project);
+    for (let i = 1; i <= parts.length; i++) real.add(parts.slice(0, i).join(PROJ_SEP));
+  });
+  const keep = pendingProjects.filter(name => !real.has(name));
+  if (keep.length !== pendingProjects.length) { pendingProjects = keep; savePendingProjects(); }
+
+  const projects = knownProjects();
+  const loose = live.filter(n => !(n.project || '').trim()).length;
+
+  // Everything on the way down to the open project is unfolded, so arriving at
+  // a sub-project from a card or from search never leaves it hidden in a
+  // collapsed branch — and the open project itself too, so opening one always
+  // shows what is filed underneath it.
+  const onPath = new Set();
+  if (notesProject && notesProject !== NO_PROJECT) {
+    for (let p = notesProject; p; p = projParent(p)) onPath.add(p);
+  }
+
+  tree.innerHTML = '';
+  const row = (label, count, active, onPick, depth, kids, open, onTwist) => {
+    const r = document.createElement('div');
+    r.className = 'proj-row' + (active ? ' on' : '');
+    const tw = document.createElement('button');
+    tw.className = 'proj-twist' + (kids ? (open ? ' open' : '') : ' none');
+    tw.textContent = '▸';
+    if (kids && onTwist) {
+      tw.title = open ? 'Collapse' : 'Expand';
+      tw.setAttribute('aria-label', tw.title);
+      tw.onclick = onTwist;
+    } else {
+      tw.tabIndex = -1;
+      tw.setAttribute('aria-hidden', 'true');
+    }
+    r.appendChild(tw);
     const b = document.createElement('button');
-    b.className = 'proj-pill' + (active ? ' on' : '');
-    b.appendChild(document.createTextNode(label));
-    if (count != null) {
+    b.className = 'proj-name';
+    b.style.paddingLeft = (2 + depth * 14) + 'px';
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = label;
+    t.title = label;
+    b.appendChild(t);
+    if (count) {
       const c = document.createElement('span');
       c.className = 'n';
       c.textContent = count;
       b.appendChild(c);
     }
-    b.onclick = onClick;
-    rail.appendChild(b);
-    if (active) activePill = b;
+    b.onclick = onPick;
+    r.appendChild(b);
+    tree.appendChild(r);
   };
 
-  pill('All', null, !notesProject, () => filterNotesByProject(null));
-  // Only the top level is listed up front. Listing every branch at once would
-  // make the rail unreadable the moment there are sub-projects, so children
-  // appear below once you are inside their parent — the rail stays short and
-  // tells you where you are.
-  projects.filter(pr => !pr.parent).forEach(pr =>
-    pill(pr.name, pr.total, notesProject === pr.name,
-         () => filterNotesByProject(pr.name)));
-  if (loose) pill('No project', loose, notesProject === NO_PROJECT,
-                  () => filterNotesByProject(NO_PROJECT));
+  row('All notes', live.length, !notesProject, () => pickProject(null), 0, false, false, null);
 
-  // Where you are, then one step down. Showing the open sub-project itself
-  // keeps exactly one pill lit and gives Rename something to sit beside;
-  // its parent stays in the rail above as the way back up.
-  if (notesProject && notesProject !== NO_PROJECT) {
-    if (projParent(notesProject)) {
-      pill('› ' + projLeaf(notesProject), null, true,
-           () => filterNotesByProject(notesProject));
+  const walk = (parent, depth) => {
+    projects.filter(pr => pr.parent === parent).forEach(pr => {
+      const kids = projects.some(c => c.parent === pr.name);
+      const open = kids && (projOpen.has(pr.name) || onPath.has(pr.name));
+      row(pr.leaf, pr.total, notesProject === pr.name, () => pickProject(pr.name),
+          depth, kids, open, () => {
+            if (projOpen.has(pr.name)) projOpen.delete(pr.name); else projOpen.add(pr.name);
+            saveProjOpen();
+            renderProjectPane();
+          });
+      if (open) walk(pr.name, depth + 1);
+    });
+  };
+  walk(null, 0);
+
+  // Loose notes go last: the pile still to be sorted rather than a project.
+  if (loose) row('No project', loose, notesProject === NO_PROJECT,
+                 () => pickProject(NO_PROJECT), 0, false, false, null);
+
+  if (!projects.length) {
+    const hint = document.createElement('div');
+    hint.className = 'proj-hint';
+    hint.textContent = 'No projects yet. Make one with +, or name a project on any note.';
+    tree.appendChild(hint);
+  }
+
+  renderProjectActions(projects);
+  renderTagPane();
+
+  // On a phone the pane is hidden, so the button has to say where you are.
+  const btn = document.getElementById('projPaneBtn');
+  if (btn) {
+    btn.textContent = notesProject === NO_PROJECT ? 'No project'
+      : notesProject ? projLeaf(notesProject) : 'Projects';
+  }
+}
+
+// What can be done to the project being looked at, as plain buttons under the
+// tree. There is no hover and no right-click on a touchscreen, so an action
+// has to be something that is simply there.
+function renderProjectActions(projects) {
+  const acts = document.getElementById('projActs');
+  if (!acts) return;
+  acts.innerHTML = '';
+  const cur = (notesProject && notesProject !== NO_PROJECT) ? notesProject : null;
+  if (!cur) return;
+  const add = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.onclick = fn;
+    acts.appendChild(b);
+  };
+  add('Rename…', 'Rename this project on every note in it', () => renameProject(cur));
+  add('+ Sub-project', 'Make a project underneath this one', () => newProject(cur));
+  const info = projects.find(pr => pr.name === cur);
+  if (info && !info.total) {
+    add('Remove', 'Drop this project, which has no notes in it', () => removeEmptyProject(cur));
+  }
+}
+
+function newProject(parent) {
+  const name = projKey(prompt(
+    parent ? 'Name the new project under ' + parent + ':'
+           : 'Name the project. A slash files it under another, like BIO 340 redesign/Exams.',
+    parent ? parent + PROJ_SEP : '') || '');
+  if (!name) return;
+  if (!pendingProjects.includes(name) && !knownProjects().some(pr => pr.name === name)) {
+    pendingProjects.push(name);
+    savePendingProjects();
+  }
+  for (let p = projParent(name); p; p = projParent(p)) projOpen.add(p);
+  saveProjOpen();
+  pickProject(name);
+  showToast('Project made — its first note settles it in');
+}
+
+function removeEmptyProject(name) {
+  // Only ever one with no notes: a project that has notes is defined by them,
+  // and removing it would mean quietly editing every one.
+  pendingProjects = pendingProjects.filter(pr => !projIsWithin(pr, name));
+  savePendingProjects();
+  if (notesProject && projIsWithin(notesProject, name)) notesProject = projParent(name);
+  renderNotes();
+}
+
+// ── Tags ──
+// A project says what a note belongs to; a tag says what it needs from you.
+// A note can carry several, and the pane narrows on all of the ones picked
+// rather than any of them, so adding a second tag always shows less.
+const STARTER_TAGS = ['Action needed', 'Important', 'Waiting on', 'Follow up', 'Idea', 'Decision'];
+const TAG_SQL = "alter table public.notes add column if not exists tags jsonb default '[]'::jsonb;";
+let tagsSupported = true;
+let notesTags = [];          // the tag keys being filtered on, lowercased
+
+function noteTags(n) {
+  const raw = n && n.tags;
+  if (!Array.isArray(raw)) return [];
+  return raw.map(t => String(t == null ? '' : t).trim()).filter(Boolean);
+}
+function tagKey(t) { return String(t == null ? '' : t).trim().replace(/\s+/g, ' ').toLowerCase(); }
+function cleanTag(t) { return String(t == null ? '' : t).trim().replace(/\s+/g, ' ').slice(0, 40); }
+
+// Matched case-insensitively but shown as first typed, so "Important" and
+// "important" stay one tag rather than two that look identical in the list.
+function knownTags() {
+  const m = new Map();
+  notes.filter(n => !n.archived).forEach(n => noteTags(n).forEach(t => {
+    const k = tagKey(t);
+    if (!k) return;
+    if (!m.has(k)) m.set(k, { name: t, count: 0 });
+    m.get(k).count++;
+  }));
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function toggleTagFilter(tag) {
+  const k = tagKey(tag);
+  if (!k) return;
+  notesTags = notesTags.includes(k) ? notesTags.filter(x => x !== k) : [...notesTags, k];
+  renderNotes();
+  if (projPaneIsDrawer()) toggleProjPane(false);
+}
+
+// Tags arrived after the notes table did, so an instance set up before them
+// has no column to put them in. Every row PostgREST returns carries every
+// column, so one note settles it without asking the server anything extra.
+// With no notes at all, ask for the column by name — an error that names it
+// means it is missing, and anything else is treated as a passing fault, so a
+// flaky connection never hides the tag UI.
+async function detectTagSupport() {
+  try {
+    if (notes.length) {
+      tagsSupported = Object.prototype.hasOwnProperty.call(notes[0], 'tags');
+      return;
     }
-    projects.filter(pr => pr.parent === notesProject).forEach(pr =>
-      pill('› ' + pr.leaf, pr.total, false, () => filterNotesByProject(pr.name)));
+    await api('GET', 'notes?select=tags&limit=1');
+    tagsSupported = true;
+  } catch (e) {
+    tagsSupported = !/tags/i.test(String((e && e.message) || ''));
+  }
+}
+
+function renderTagPane() {
+  const wrap = document.getElementById('tagList');
+  const setup = document.getElementById('tagSetup');
+  if (!wrap || !setup) return;
+
+  // Rather than a field that quietly loses what is typed into it, say plainly
+  // what one line of SQL would fix.
+  setup.hidden = tagsSupported;
+  wrap.innerHTML = '';
+  if (!tagsSupported) {
+    setup.textContent = 'Tags need one line in the Supabase SQL editor, run once:';
+    const code = document.createElement('code');
+    code.textContent = TAG_SQL;
+    setup.appendChild(code);
+    return;
   }
 
-  // Free text picks up typos, and a typo quietly splits one project in two.
-  // Renaming is offered only on the project being looked at, and sits right
-  // beside it rather than at the end of a rail you'd have to scroll to find.
-  if (notesProject && notesProject !== NO_PROJECT && activePill) {
-    const ren = document.createElement('button');
-    ren.className = 'proj-pill';
-    ren.textContent = 'Rename\u2026';
-    ren.title = 'Rename this project on every note in it';
-    ren.onclick = () => renameProject(notesProject);
-    activePill.after(ren);
+  const tags = knownTags();
+  if (!tags.length) {
+    const hint = document.createElement('div');
+    hint.className = 'proj-hint';
+    hint.textContent = 'No tags yet. Add one while editing a note.';
+    wrap.appendChild(hint);
+    return;
   }
-  // With more projects than fit the width, the selected one can sit off-screen.
-  if (activePill && activePill.scrollIntoView) {
-    activePill.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }
+  tags.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'tag-chip' + (notesTags.includes(tagKey(t.name)) ? ' on' : '');
+    b.appendChild(document.createTextNode(t.name));
+    const c = document.createElement('span');
+    c.className = 'n';
+    c.textContent = t.count;
+    b.appendChild(c);
+    b.onclick = () => toggleTagFilter(t.name);
+    wrap.appendChild(b);
+  });
+}
+
+// The tags in force, beside the notes rather than only in the pane — on a
+// phone the pane is shut, and a filter you cannot see is a filter you forget.
+function renderTagFilterChips() {
+  const host = document.getElementById('noteTagFilters');
+  if (!host) return;
+  host.innerHTML = '';
+  const names = new Map(knownTags().map(t => [tagKey(t.name), t.name]));
+  notesTags.forEach(k => {
+    const chip = document.createElement('span');
+    chip.className = 'note-filter';
+    chip.textContent = (names.get(k) || k) + '  ×';
+    chip.title = 'Stop filtering on this tag';
+    chip.onclick = () => toggleTagFilter(k);
+    host.appendChild(chip);
+  });
 }
 
 function filterNotesByProject(project) {
@@ -7635,10 +8007,23 @@ function toggleNotesGrouping() {
 async function renameProject(from) {
   const to = projKey(prompt('Rename this project on every note in it:', from) || '');
   if (!to || to === from) return;
+  // A project made in the pane has no notes to rewrite — renaming it is
+  // renaming the placeholder, and that is the whole job.
+  if (pendingProjects.some(pr => projIsWithin(pr, from))) {
+    pendingProjects = pendingProjects.map(pr =>
+      projIsWithin(pr, from) ? to + pr.slice(from.length) : pr);
+    savePendingProjects();
+  }
   // Renaming a parent takes its sub-projects with it, so the branch stays
   // intact instead of its children being orphaned under a name that is gone.
   const hit = notes.filter(n => projIsWithin(n.project, from));
-  if (!hit.length) return;
+  if (!hit.length) {
+    if (notesProject && projIsWithin(notesProject, from)) {
+      notesProject = to + notesProject.slice(from.length);
+    }
+    renderNotes();
+    return;
+  }
 
   const was = new Map(hit.map(n => [n.id, n.project]));
   const groups = new Map();                 // new value -> ids sharing it
@@ -7816,6 +8201,68 @@ function rtInit() {
 // one coming up, so notes can be written FOR a meeting rather than only during
 // one.
 let editingNoteId = null;
+let editingTags = [];
+
+// Commas split, so pasting "Important, Follow up" does the obvious thing.
+// Case-insensitively unique, and capped: past a handful the chips are longer
+// than the note and the tag has stopped being a way of finding anything.
+function addEditingTag(raw) {
+  String(raw == null ? '' : raw).split(',').forEach(part => {
+    const t = cleanTag(part);
+    if (!t) return;
+    if (editingTags.length >= 8) return;
+    if (editingTags.some(x => tagKey(x) === tagKey(t))) return;
+    editingTags.push(t);
+  });
+  renderNoteEditorTags();
+}
+
+function renderNoteEditorTags() {
+  const wrap = document.getElementById('noteEditTags');
+  const input = document.getElementById('noteEditTagInput');
+  const label = document.getElementById('noteEditTagsLabel');
+  if (!wrap || !input || !label) return;
+
+  // With nowhere to store them, offer nothing rather than a field that throws
+  // away what is typed into it. The pane says what to do about that.
+  label.hidden = !tagsSupported;
+  wrap.hidden = !tagsSupported;
+  input.hidden = !tagsSupported;
+  if (!tagsSupported) return;
+
+  wrap.innerHTML = '';
+  editingTags.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tag-chip on';
+    b.textContent = t + '  ×';
+    b.title = 'Remove this tag';
+    b.onclick = () => {
+      editingTags = editingTags.filter(x => tagKey(x) !== tagKey(t));
+      renderNoteEditorTags();
+    };
+    wrap.appendChild(b);
+  });
+
+  // The tags already in use first, then a few obvious ones, so the common case
+  // is a single tap and no typing and no two spellings of the same thing.
+  const used = knownTags().map(t => t.name);
+  const offer = [...used, ...STARTER_TAGS.filter(st => !used.some(u => tagKey(u) === tagKey(st)))]
+    .filter(t => !editingTags.some(x => tagKey(x) === tagKey(t)))
+    .slice(0, 10);
+  offer.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tag-chip';
+    b.textContent = '+ ' + t;
+    b.title = 'Add this tag';
+    b.onclick = () => addEditingTag(t);
+    wrap.appendChild(b);
+  });
+
+  const dl = document.getElementById('noteTagList');
+  if (dl) dl.innerHTML = used.map(t => `<option value="${escHtml(t)}"></option>`).join('');
+}
 
 // Every event on a given day, as options for the meeting picker.
 function fillNoteEventOptions(day, selectedTitle) {
@@ -7855,6 +8302,21 @@ function openNoteEditor(id) {
   fillNoteEventOptions(day, n?.event_title || '');
   document.getElementById('noteEditPerson').value = n?.person || '';
   document.getElementById('noteEditProject').value = n?.project || activeProjectForNewNote() || '';
+  editingTags = n ? noteTags(n) : [];
+  const tagInput = document.getElementById('noteEditTagInput');
+  tagInput.value = '';
+  tagInput.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addEditingTag(tagInput.value);
+      tagInput.value = '';
+    }
+  };
+  // Clicking away should not throw away what is sitting in the box.
+  tagInput.onblur = () => {
+    if (tagInput.value.trim()) { addEditingTag(tagInput.value); tagInput.value = ''; }
+  };
+  renderNoteEditorTags();
   // Changing the day re-offers that day's meetings.
   dayInput.oninput = () => {
     const d = parseDate(dayInput.value);
@@ -7875,15 +8337,23 @@ async function saveNoteEdit() {
   const event_title = document.getElementById('noteEditEvent').value || null;
   const person = document.getElementById('noteEditPerson').value.trim() || null;
   const project = document.getElementById('noteEditProject').value.trim() || null;
+  // A tag typed but not entered still counts — losing it because Save was
+  // clicked before Enter would be the easiest mistake in the whole editor.
+  const tagBox = document.getElementById('noteEditTagInput');
+  if (tagBox && tagBox.value.trim()) { addEditingTag(tagBox.value); tagBox.value = ''; }
+  const tags = tagsSupported ? editingTags.slice() : null;
   const existing = editingNoteId ? notes.find(x => x.id === editingNoteId) : null;
   closeModal('noteEditModal');
   try {
+    // Written once, so the optimistic copy and the request can never disagree.
+    const fields = { body, day, event_title, person, project };
+    if (tags) fields.tags = tags;
     if (existing) {
       const before = { ...existing };
-      Object.assign(existing, { body, day, event_title, person, project });
+      Object.assign(existing, fields);
       renderNotes();
       try {
-        await api('PATCH', `notes?id=eq.${existing.id}`, { body, day, event_title, person, project });
+        await api('PATCH', `notes?id=eq.${existing.id}`, fields);
       } catch (e) {
         Object.assign(existing, before);
         renderNotes();
@@ -7891,7 +8361,7 @@ async function saveNoteEdit() {
       }
     } else {
       const [saved] = await api('POST', 'notes', {
-        user_id: authSession?.user_id, body, day, event_title, person, project,
+        user_id: authSession?.user_id, ...fields,
       });
       notes.unshift(saved);
       renderNotes();
