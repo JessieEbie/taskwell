@@ -359,6 +359,10 @@
     .note-btn:hover { border-color: var(--accent); color: var(--ink); }
     @media (pointer: coarse) { .note-btn { min-height: 44px; padding: 5px 14px; } }
     .notes-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; }
+    /* Why a note came up. Drawn onto the rendered card only — a note's own
+       text is never touched, so no amount of searching can put markup into
+       something that later gets saved. */
+    mark.note-hl { background: var(--khaki); color: var(--ink); border-radius: 3px; padding: 0 1px; }
     .note-search { flex: 1; min-width: 150px; padding: 8px 12px; min-height: 36px;
                    border: 1.5px solid var(--cream-dark); border-radius: 8px; background: var(--cream);
                    font-family: inherit; font-size: 13px; color: var(--ink); }
@@ -437,6 +441,43 @@
     .note-tag { background: var(--accent-pale); color: var(--ink-soft); border-radius: 10px;
                 padding: 2px 7px; cursor: pointer; }
     .note-tag:hover { color: var(--ink); }
+    /* Printing. The page itself is a fixed-height app with its own scrolling
+       panes, which prints as one clipped screenshot, so printing builds a
+       plain document instead and shows that. Scoped to a class rather than
+       applied to every print, so Cmd+P anywhere else behaves as it always
+       did rather than coming out blank. */
+    #printArea { display: none; }
+    @media print {
+      @page { margin: 16mm 14mm; }
+      /* body is the app's own flex row. Left as one, the print document
+         becomes a narrow flex child in the corner of the sheet instead of
+         the page, so the layout is flattened for the duration. */
+      /* height:100dvh and overflow:hidden are what make the app a fixed
+         window; left alone they clip the printout to a single page. */
+      body.printing { display: block !important; background: #fff;
+                      height: auto !important; overflow: visible !important; }
+      body.printing > *:not(#printArea) { display: none !important; }
+      body.printing #printArea { display: block; width: 100%; color: #000; background: #fff; }
+      #printArea .pr-head { border-bottom: 1px solid #999; padding-bottom: 7pt; margin-bottom: 4pt; }
+      #printArea .pr-title { font-family: Georgia, serif; font-size: 19pt; }
+      #printArea .pr-sub { font-family: 'Helvetica Neue', sans-serif; font-size: 9pt;
+                           color: #444; margin-top: 3pt; }
+      #printArea .pr-day { font-family: 'Helvetica Neue', sans-serif; font-size: 8.5pt;
+                           font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+                           color: #333; margin: 13pt 0 3pt; }
+      /* A note split across a page break is the one thing that makes a
+         printout harder to read than the screen it came from. */
+      #printArea .pr-note { break-inside: avoid; page-break-inside: avoid;
+                            border-bottom: 1px solid #ddd; padding: 6pt 0 7pt; }
+      #printArea .pr-body { font-size: 11pt; line-height: 1.45; color: #000; cursor: auto; }
+      #printArea .pr-meta { font-family: 'Helvetica Neue', sans-serif; font-size: 8.5pt;
+                            color: #444; margin-top: 4pt; }
+      #printArea a { color: #000; text-decoration: underline; }
+      #printArea ul.chk > li::before { color: #000; }
+      /* A ticked item is faint on screen because it is done, not because it
+         should be hard to read; on paper the strike-through alone says that. */
+      #printArea ul.chk > li[data-done="1"] { color: #555; }
+    }
     .note-sort { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: var(--ink-soft);
                  background: var(--paper); border: 1.5px solid var(--cream-dark); border-radius: 8px;
                  padding: 6px 8px; min-height: 36px; cursor: pointer; }
@@ -1306,6 +1347,7 @@
             <option value="old">Oldest first</option>
           </select>
           <button class="btn" id="notesGroupBtn" onclick="toggleNotesGrouping()">Group by project</button>
+          <button class="btn" onclick="printNotes()" title="Print what is on screen, or save it as a PDF">Print / PDF</button>
           <span class="note-filter" id="notePersonFilter" hidden></span>
           <span id="noteTagFilters"></span>
         </div>
@@ -1916,6 +1958,9 @@
 </div>
 
 <!-- Quick Capture -->
+<!-- Filled only when printing, and empty the rest of the time. -->
+<div id="printArea" aria-hidden="true"></div>
+
 <div class="modal-overlay" id="captureModal">
   <div class="modal">
     <div class="modal-title">Capture</div>
@@ -2058,7 +2103,7 @@
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
 const APP_VERSION = '2026-11-18';
-const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes sort newest or oldest first now, by the day the note is about. Tags are new too: Action needed, Important, anything you like, several to a note, and picking two narrows to the notes carrying both. The note editor has a Full button that gives it the whole screen, lists run five levels deep with a different marker at each, and the Meeting list finally obeys the same Calendars filter as the week and the month. Add Task has a Notes box, so what you know while typing a task no longer has to wait for an edit.";
+const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes sort newest or oldest first now, by the day the note is about. Tags are new too: Action needed, Important, anything you like, several to a note, and picking two narrows to the notes carrying both. Searching marks the words it matched, and Print / PDF prints whatever is on screen \u2014 filter to a project or a tag and that is what comes out. The note editor has a Full button that gives it the whole screen, lists run five levels deep with a different marker at each, and the Meeting list finally obeys the same Calendars filter as the week and the month. Add Task has a Notes box, so what you know while typing a task no longer has to wait for an edit.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -7379,20 +7424,12 @@ async function saveCapture() {
   }
 }
 
-function renderNotes() {
-  const area = document.getElementById('notesScrollArea');
-  if (!area) return;
+// What the Notes tab is showing: every filter in force, in the chosen order.
+// One definition, because the printout is the thing on screen and the two
+// drifting apart would be invisible until a printed page came out wrong.
+function noteDay(n) { return n.day || (n.created_at || '').slice(0, 10); }
 
-  // A project filter can outlive the project itself — every note in it archived,
-  // or the project renamed from somewhere else. Drop it rather than leaving the
-  // tab stuck on an empty result with nothing to click to get back. A project
-  // made in the pane counts as real while it waits for its first note, so it
-  // is not swept away the moment it is created.
-  if (notesProject && notesProject !== NO_PROJECT &&
-      !knownProjects().some(pr => pr.name === notesProject)) {
-    notesProject = null;
-  }
-
+function filteredNotes() {
   const q = notesQuery.trim().toLowerCase();
   let live = notes.filter(n => !n.archived);
   if (notesPerson) live = live.filter(n => (n.person || '') === notesPerson);
@@ -7413,10 +7450,41 @@ function renderNotes() {
   // newest-dated: a note written today for next Tuesday's meeting belongs on
   // Tuesday. Sorting on the note's own day puts the headings in order whichever
   // direction is asked for, and falls back to the writing time within a day.
-  const dayOf = n => n.day || (n.created_at || '').slice(0, 10);
   const dir = notesSort === 'old' ? 1 : -1;
-  live.sort((a, b) => dir * (String(dayOf(a)).localeCompare(String(dayOf(b)))
+  return live.sort((a, b) => dir * (String(noteDay(a)).localeCompare(String(noteDay(b)))
     || String(a.created_at || '').localeCompare(String(b.created_at || ''))));
+}
+
+// The filters in force, said in words — for the heading of a printout, where
+// there is no pane or search box on the page to show what was being looked at.
+function noteFilterSummary() {
+  const bits = [];
+  if (notesProject === NO_PROJECT) bits.push('with no project');
+  if (notesPerson) bits.push('about ' + notesPerson);
+  if (notesTags.length) {
+    const names = new Map(knownTags().map(t => [tagKey(t.name), t.name]));
+    bits.push('tagged ' + notesTags.map(k => names.get(k) || k).join(' and '));
+  }
+  if (notesQuery.trim()) bits.push('matching “' + notesQuery.trim() + '”');
+  return bits;
+}
+
+function renderNotes() {
+  const area = document.getElementById('notesScrollArea');
+  if (!area) return;
+
+  // A project filter can outlive the project itself — every note in it archived,
+  // or the project renamed from somewhere else. Drop it rather than leaving the
+  // tab stuck on an empty result with nothing to click to get back. A project
+  // made in the pane counts as real while it waits for its first note, so it
+  // is not swept away the moment it is created.
+  if (notesProject && notesProject !== NO_PROJECT &&
+      !knownProjects().some(pr => pr.name === notesProject)) {
+    notesProject = null;
+  }
+
+  const q = notesQuery.trim().toLowerCase();
+  const live = filteredNotes();
 
   const chip = document.getElementById('notePersonFilter');
   if (chip) {
@@ -7537,6 +7605,131 @@ function renderNotesByProject(area, list) {
   });
 }
 
+// Marks every occurrence of the search text on an already-built card, so it
+// is obvious which words brought the note up. Walks the text nodes rather
+// than the HTML string: a match straddling a tag boundary is simply left
+// unmarked instead of corrupting the markup around it. The buttons are
+// skipped, or searching for "edit" would light up every Edit button.
+function highlightMatches(el, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase();
+  if (!el || !q) return;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement && n.parentElement.closest('.note-actions'))
+      ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => {
+    const text = node.nodeValue || '';
+    const lower = text.toLowerCase();
+    if (!lower.includes(q)) return;
+    const frag = document.createDocumentFragment();
+    let from = 0, at = lower.indexOf(q);
+    while (at >= 0) {
+      if (at > from) frag.appendChild(document.createTextNode(text.slice(from, at)));
+      const mark = document.createElement('mark');
+      mark.className = 'note-hl';
+      mark.textContent = text.slice(at, at + q.length);
+      frag.appendChild(mark);
+      from = at + q.length;
+      at = lower.indexOf(q, from);
+    }
+    if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
+    node.parentNode.replaceChild(frag, node);
+  });
+}
+
+// ── Printing ──
+// What is on screen is the selection: filter to a project, a tag, a person or
+// a search and print exactly that. Builds a plain document rather than trying
+// to print the app, which is a fixed-height thing full of its own scrolling
+// panes and comes out as one clipped page.
+function buildPrintArea() {
+  const area = document.getElementById('printArea');
+  if (!area) return 0;
+  const live = filteredNotes();
+  area.innerHTML = '';
+  if (!live.length) return 0;
+
+  const head = document.createElement('div');
+  head.className = 'pr-head';
+  const title = document.createElement('div');
+  title.className = 'pr-title';
+  title.textContent = (notesProject && notesProject !== NO_PROJECT) ? notesProject : 'Notes';
+  head.appendChild(title);
+  const sub = document.createElement('div');
+  sub.className = 'pr-sub';
+  sub.textContent = [
+    `${live.length} note${live.length !== 1 ? 's' : ''}`,
+    ...noteFilterSummary(),
+    'printed ' + new Date().toLocaleDateString('en-US',
+      { month: 'long', day: 'numeric', year: 'numeric' }),
+  ].join(' · ');
+  head.appendChild(sub);
+  area.appendChild(head);
+
+  let lastDay = null;
+  live.forEach(n => {
+    const day = noteDay(n);
+    if (day !== lastDay) {
+      lastDay = day;
+      const d = document.createElement('div');
+      d.className = 'pr-day';
+      d.textContent = day
+        ? new Date(day + 'T12:00:00').toLocaleDateString('en-US',
+            { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        : 'No date';
+      area.appendChild(d);
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'pr-note';
+    const body = document.createElement('div');
+    const rich = noteIsRich(n.body);
+    // Keeps note-body so the nested list markers apply here too, and a
+    // printed outline reads the same as the one on screen.
+    body.className = 'note-body pr-body ' + (rich ? 'rich' : 'plain');
+    if (rich) body.innerHTML = sanitizeNoteHtml(n.body); else body.textContent = n.body;
+    wrap.appendChild(body);
+
+    const bits = [];
+    if (n.event_title) bits.push(n.event_title);
+    if (projKey(n.project)) bits.push(projKey(n.project));
+    if (n.person) bits.push(n.person);
+    noteTags(n).forEach(t => bits.push('#' + t));
+    if (bits.length) {
+      const m = document.createElement('div');
+      m.className = 'pr-meta';
+      m.textContent = bits.join('  ·  ');
+      wrap.appendChild(m);
+    }
+    area.appendChild(wrap);
+  });
+  return live.length;
+}
+
+function printNotes() {
+  if (!buildPrintArea()) {
+    showToast('Nothing to print — no notes match what is on screen');
+    return;
+  }
+  document.body.classList.add('printing');
+  window.print();
+}
+
+// Cmd+P while looking at Notes should give the same document as the button.
+// Anywhere else it is left alone, so the rest of the app prints as it always
+// did. Safari has not always fired these, which is why the button does the
+// work itself rather than relying on them.
+window.addEventListener('beforeprint', () => {
+  if (!document.getElementById('notes')?.classList.contains('active')) return;
+  if (buildPrintArea()) document.body.classList.add('printing');
+});
+window.addEventListener('afterprint', () => {
+  document.body.classList.remove('printing');
+  const area = document.getElementById('printArea');
+  if (area) area.innerHTML = '';
+});
+
 function buildNoteCard(n, opts) {
   const card = document.createElement('div');
   card.className = 'note-card' + (n.on_agenda ? ' pinned' : '');
@@ -7649,6 +7842,9 @@ function buildNoteCard(n, opts) {
   meta.appendChild(actions);
 
   card.appendChild(meta);
+  // Last, so it covers the body and the chips alike without any of the
+  // builders above having to know that a search is running.
+  highlightMatches(card, notesQuery);
   return card;
 }
 
