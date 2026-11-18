@@ -273,6 +273,36 @@
     /* Rich content, in both the editor and the cards. */
     .rt-editor, .note-body.rich { line-height: 1.5; }
     .rt-editor ul, .note-body.rich ul, .rt-editor ol, .note-body.rich ol { margin: 4px 0 4px 20px; }
+    /* Outline markers, so a numbered list that goes two deep reads as an
+       outline rather than as 1, 1, 1 down the page. The usual run: numbers,
+       then letters, then roman, then capitals — and round again past five
+       levels, by which point the indentation is doing the work anyway.
+       Written as descendant selectors on purpose: a numbered list nested
+       inside a bulleted one is still the second ordered level, and should
+       take letters. Bullets already cycle disc / circle / square on their
+       own, and checklists opt out of markers entirely. */
+    /* Bullets stop being distinct after three: browsers define disc, circle
+       and square and then repeat square for ever, so a fourth level is
+       indistinguishable from the third. Levels four and five name their own
+       glyph. Every rule excludes .chk, because a checklist draws its own
+       boxes — and these selectors are more specific than the rule that turns
+       its marker off, so without the exclusion a nested checklist would grow
+       a bullet beside every box. */
+    .rt-editor ul:not(.chk), .note-body.rich ul:not(.chk) { list-style-type: disc; }
+    .rt-editor ul ul:not(.chk), .note-body.rich ul ul:not(.chk) { list-style-type: circle; }
+    .rt-editor ul ul ul:not(.chk), .note-body.rich ul ul ul:not(.chk) { list-style-type: square; }
+    .rt-editor ul ul ul ul:not(.chk),
+    .note-body.rich ul ul ul ul:not(.chk) { list-style-type: "\2023\00a0"; }
+    .rt-editor ul ul ul ul ul:not(.chk),
+    .note-body.rich ul ul ul ul ul:not(.chk) { list-style-type: "\2013\00a0"; }
+    .rt-editor ul ul ul ul ul ul:not(.chk),
+    .note-body.rich ul ul ul ul ul ul:not(.chk) { list-style-type: disc; }
+    .rt-editor ol, .note-body.rich ol { list-style-type: decimal; }
+    .rt-editor ol ol, .note-body.rich ol ol { list-style-type: lower-alpha; }
+    .rt-editor ol ol ol, .note-body.rich ol ol ol { list-style-type: lower-roman; }
+    .rt-editor ol ol ol ol, .note-body.rich ol ol ol ol { list-style-type: upper-alpha; }
+    .rt-editor ol ol ol ol ol, .note-body.rich ol ol ol ol ol { list-style-type: upper-roman; }
+    .rt-editor ol ol ol ol ol ol, .note-body.rich ol ol ol ol ol ol { list-style-type: decimal; }
     .rt-editor li, .note-body.rich li { margin: 2px 0; }
     .rt-editor h3, .note-body.rich h3 { font-size: 15px; margin: 8px 0 4px; }
     .rt-editor p, .note-body.rich p { margin: 4px 0; }
@@ -296,6 +326,29 @@
                  padding: 10px 12px; font-family: Georgia, serif; font-size: 15px; color: var(--ink); }
     .rt-editor:focus { outline: none; border-color: var(--accent); }
     @media (pointer: coarse) { .rt-toolbar button { min-height: 44px; padding: 4px 13px; } }
+    /* A meeting note runs longer than 190px of editor in a 440px box, which is
+       a window onto what you are writing rather than room to write it. Full
+       screen gives the editor the height of the screen and moves the fields
+       that merely describe the note — day, meeting, person, project, tags —
+       into a column beside it, so nothing is hidden, only rearranged. The
+       wrappers are inert until then, so the ordinary modal is untouched. */
+    .rt-toolbar .rt-grow { margin-left: auto; }
+    #noteEditModal.full { padding: 10px; }
+    #noteEditModal.full .modal { max-width: none; width: 100%; height: 100%;
+                                 display: flex; flex-direction: column; padding: 16px 18px; }
+    #noteEditModal.full .note-edit-cols { flex: 1; min-height: 0; display: flex; gap: 20px; }
+    #noteEditModal.full .note-edit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #noteEditModal.full .rt-editor { flex: 1; max-height: none; }
+    #noteEditModal.full .note-edit-side { width: 290px; flex-shrink: 0; overflow-y: auto;
+                                          -webkit-overflow-scrolling: touch; }
+    /* Too narrow for two columns: stack them and let the pair scroll as one,
+       with the editor still given most of the height. */
+    @media (max-width: 720px) {
+      #noteEditModal.full .note-edit-cols { display: block; overflow-y: auto;
+                                            -webkit-overflow-scrolling: touch; }
+      #noteEditModal.full .note-edit-side { width: auto; overflow: visible; }
+      #noteEditModal.full .rt-editor { min-height: 46vh; }
+    }
     .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
                  font-size: 11px; color: var(--ink-faint); }
     .note-event { color: var(--ink-soft); }
@@ -1881,38 +1934,50 @@
 <div class="modal-overlay" id="noteEditModal">
   <div class="modal modal-wide">
     <div class="modal-title" id="noteEditTitle">Note</div>
-    <div class="rt-toolbar" id="noteEditToolbar">
-      <button type="button" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
-      <button type="button" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
-      <span class="rt-sep"></span>
-      <button type="button" data-cmd="insertUnorderedList" title="Bullets">&bull;&nbsp;List</button>
-      <button type="button" data-cmd="insertOrderedList" title="Numbered">1.&nbsp;List</button>
-      <button type="button" data-cmd="checklist" title="Checklist">&#9744;&nbsp;Check</button>
-      <span class="rt-sep"></span>
-      <button type="button" data-cmd="outdent" title="Outdent (⇧Tab)">&larr;</button>
-      <button type="button" data-cmd="indent" title="Indent (Tab)">&rarr;</button>
-    </div>
-    <div class="rt-editor" id="noteEditBody" contenteditable="true" role="textbox"
-         aria-multiline="true" aria-label="Note"></div>
-    <div class="modal-row" style="justify-content:flex-start;gap:10px;margin-top:10px">
-      <div style="flex:1">
-        <label class="modal-label">Day</label>
-        <input class="modal-input" id="noteEditDay" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+    <!-- Two wrappers that do nothing until the editor is expanded: in the
+         ordinary modal they are plain blocks and the form reads top to bottom
+         exactly as before. Full screen turns them into the writing column and
+         the column of things that describe the note. -->
+    <div class="note-edit-cols">
+      <div class="note-edit-main">
+        <div class="rt-toolbar" id="noteEditToolbar">
+          <button type="button" data-cmd="bold" title="Bold (⌘B)"><b>B</b></button>
+          <button type="button" data-cmd="italic" title="Italic (⌘I)"><i>I</i></button>
+          <span class="rt-sep"></span>
+          <button type="button" data-cmd="insertUnorderedList" title="Bullets">&bull;&nbsp;List</button>
+          <button type="button" data-cmd="insertOrderedList" title="Numbered">1.&nbsp;List</button>
+          <button type="button" data-cmd="checklist" title="Checklist">&#9744;&nbsp;Check</button>
+          <span class="rt-sep"></span>
+          <button type="button" data-cmd="outdent" title="Outdent (⇧Tab)">&larr;</button>
+          <button type="button" data-cmd="indent" title="Indent (Tab)">&rarr;</button>
+          <button type="button" class="rt-grow" id="noteEditExpand"
+                  onclick="toggleNoteEditorFull()">&#10530;&nbsp;Full</button>
+        </div>
+        <div class="rt-editor" id="noteEditBody" contenteditable="true" role="textbox"
+             aria-multiline="true" aria-label="Note"></div>
+      </div>
+      <div class="note-edit-side">
+        <div class="modal-row" style="justify-content:flex-start;gap:10px;margin-top:10px">
+          <div style="flex:1">
+            <label class="modal-label">Day</label>
+            <input class="modal-input" id="noteEditDay" placeholder="MM/DD/YY" maxlength="8" inputmode="numeric" />
+          </div>
+        </div>
+        <label class="modal-label">Meeting</label>
+        <select class="modal-select" id="noteEditEvent"></select>
+        <label class="modal-label">Person (optional)</label>
+        <input class="modal-input" id="noteEditPerson" list="notePeopleList" placeholder="e.g. a student or colleague" />
+        <datalist id="notePeopleList"></datalist>
+        <label class="modal-label">Project (optional — a slash makes a sub-project)</label>
+        <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign/Exams" />
+        <datalist id="noteProjectList"></datalist>
+        <label class="modal-label" id="noteEditTagsLabel">Tags (optional)</label>
+        <div class="tag-wrap" id="noteEditTags" style="padding:0 0 8px"></div>
+        <input class="modal-input" id="noteEditTagInput" list="noteTagList"
+               placeholder="Type a tag and press Enter" />
+        <datalist id="noteTagList"></datalist>
       </div>
     </div>
-    <label class="modal-label">Meeting</label>
-    <select class="modal-select" id="noteEditEvent"></select>
-    <label class="modal-label">Person (optional)</label>
-    <input class="modal-input" id="noteEditPerson" list="notePeopleList" placeholder="e.g. a student or colleague" />
-    <datalist id="notePeopleList"></datalist>
-    <label class="modal-label">Project (optional — a slash makes a sub-project)</label>
-    <input class="modal-input" id="noteEditProject" list="noteProjectList" placeholder="e.g. BIO 340 redesign/Exams" />
-    <datalist id="noteProjectList"></datalist>
-    <label class="modal-label" id="noteEditTagsLabel">Tags (optional)</label>
-    <div class="tag-wrap" id="noteEditTags" style="padding:0 0 8px"></div>
-    <input class="modal-input" id="noteEditTagInput" list="noteTagList"
-           placeholder="Type a tag and press Enter" />
-    <datalist id="noteTagList"></datalist>
     <div class="modal-row">
       <button class="btn" onclick="closeModal('noteEditModal')">Cancel</button>
       <button class="btn btn-danger" id="noteEditDelete">Delete</button>
@@ -1993,7 +2058,7 @@
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
 const APP_VERSION = '2026-11-18';
-const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes now sort newest or oldest first, by the day the note is about. Tags are new as well: Action needed, Important, anything you like, several to a note, and picking two in the pane narrows to the notes carrying both.";
+const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes sort newest or oldest first now, by the day the note is about. Tags are new too: Action needed, Important, anything you like, several to a note, and picking two narrows to the notes carrying both. The note editor has a Full button that gives it the whole screen, lists run five levels deep with a different marker at each, and the Meeting list finally obeys the same Calendars filter as the week and the month. Add Task has a Notes box, so what you know while typing a task no longer has to wait for an edit.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_s9VIKwo6dnfrcpM-5KjEMg_NEPGzhFU';
@@ -8275,7 +8340,11 @@ function renderNoteEditorTags() {
 function fillNoteEventOptions(day, selectedTitle) {
   const sel = document.getElementById('noteEditEvent');
   if (!sel) return;
-  const evs = (calEvents[day] || []).slice().sort((a, b) => {
+  // The same Calendars filter the week and the month obey. A calendar turned
+  // off there is off here too, which is the point of turning it off — and it
+  // is what keeps the list short enough to pick from when the same meeting
+  // arrives from two accounts under two different names.
+  const evs = visibleCalEvents(day).slice().sort((a, b) => {
     if (a.allDay && !b.allDay) return -1;
     if (!a.allDay && b.allDay) return 1;
     return timeToMinutes(a.time) - timeToMinutes(b.time);
@@ -8294,9 +8363,32 @@ function fillNoteEventOptions(day, selectedTitle) {
   sel.value = selectedTitle || '';
 }
 
+// Remembered: someone who wanted the room once generally wants it again, and
+// re-expanding on every note would be its own small chore.
+let noteEditorFull = lsGet('tw_note_full') === '1';
+
+function applyNoteEditorFull() {
+  const ov = document.getElementById('noteEditModal');
+  const btn = document.getElementById('noteEditExpand');
+  if (!ov || !btn) return;
+  ov.classList.toggle('full', noteEditorFull);
+  btn.innerHTML = noteEditorFull ? '&#10529;&nbsp;Small' : '&#10530;&nbsp;Full';
+  btn.title = noteEditorFull ? 'Back to the small editor' : 'Expand to the whole screen';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+function toggleNoteEditorFull() {
+  noteEditorFull = !noteEditorFull;
+  try { localStorage.setItem('tw_note_full', noteEditorFull ? '1' : '0'); } catch (e) {}
+  applyNoteEditorFull();
+  // The point of the button is to carry on writing, so the caret goes back.
+  document.getElementById('noteEditBody')?.focus();
+}
+
 function openNoteEditor(id) {
   const n = id ? notes.find(x => x.id === id) : null;
   editingNoteId = id;
+  applyNoteEditorFull();
   const day = n?.day || todayKey();
   document.getElementById('noteEditTitle').textContent = n ? 'Edit note' : 'New note';
   rtInit();
