@@ -262,14 +262,19 @@
     #notes .hub-controls { display: flex; align-items: center; gap: 8px; padding: 10px 20px 12px; flex-shrink: 0; flex-wrap: wrap; }
     .capture-hint { font-size: 11px; color: var(--ink-faint); }
     .capture-context { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; min-height: 16px; }
-    .note-day-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; font-weight: 700;
-                    text-transform: uppercase; color: var(--ink-faint); margin: 16px 0 6px; }
+    /* A date you are meant to read, not a faint label: full ink, and a size
+       that survives a phone screen. */
+    .note-day-hdr { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: .04em;
+                    color: var(--ink); margin: 16px 0 6px; }
     .note-day-hdr:first-child { margin-top: 0; }
     .note-card { background: var(--paper); border: 1px solid var(--cream-dark); border-radius: 10px;
                  padding: 10px 12px; margin-bottom: 8px; }
     .note-body { font-size: 14px; color: var(--ink); word-break: break-word; cursor: text; }
     .note-body.plain { white-space: pre-wrap; }
-    .note-body:hover { color: var(--accent-dark); }
+    /* The card edge says "clickable", not the words. Fading the whole note to
+       brown on hover made the thing you were trying to read harder to read. */
+    .note-card:hover { border-color: var(--accent); }
     /* Rich content, in both the editor and the cards. */
     .rt-editor, .note-body.rich { line-height: 1.5; }
     .rt-editor ul, .note-body.rich ul, .rt-editor ol, .note-body.rich ol { margin: 4px 0 4px 20px; }
@@ -350,8 +355,14 @@
       #noteEditModal.full .rt-editor { min-height: 46vh; }
     }
     .note-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;
-                 font-size: 11px; color: var(--ink-faint); }
+                 font-size: 11.5px; color: var(--ink-soft); }
+    /* The date and time are read; the rest of the row is filter chips. */
+    .note-when { color: var(--ink); font-weight: 600; }
     .note-event { color: var(--ink-soft); }
+    /* Links, in the cards and in the editor alike. */
+    .note-body a, .rt-editor a { color: var(--brown); text-decoration: underline;
+                                 text-underline-offset: 2px; cursor: pointer; }
+    .note-body a:hover, .rt-editor a:hover { color: var(--ink); }
     .note-sent { color: var(--accent-dark); }
     .note-actions { margin-left: auto; display: flex; gap: 6px; }
     .note-btn { background: none; border: 1px solid var(--cream-dark); border-radius: 8px; cursor: pointer;
@@ -1993,6 +2004,9 @@
           <button type="button" data-cmd="insertOrderedList" title="Numbered">1.&nbsp;List</button>
           <button type="button" data-cmd="checklist" title="Checklist">&#9744;&nbsp;Check</button>
           <span class="rt-sep"></span>
+          <button type="button" data-cmd="link"
+                  title="Link (&#8984;K) — hold &#8984; and click a link to open it">&#128279;&nbsp;Link</button>
+          <span class="rt-sep"></span>
           <button type="button" data-cmd="outdent" title="Outdent (⇧Tab)">&larr;</button>
           <button type="button" data-cmd="indent" title="Indent (Tab)">&rarr;</button>
           <button type="button" class="rt-grow" id="noteEditExpand"
@@ -2102,7 +2116,7 @@
 // ── Config ──
 // Bump this with every deploy — also drives the footer text and the
 // "what's new" banner (shown once to returning users after it changes).
-const APP_VERSION = '2026-11-18';
+const APP_VERSION = '2026-11-19';
 const WHATS_NEW = "Notes has a projects pane. The whole tree is down the side \u2014 every project and sub-project, each counting everything beneath it, folding away when you do not need it. Make a project with +, before it has a single note in it, and rename or add a sub-project from the same place. Notes sort newest or oldest first now, by the day the note is about. Tags are new too: Action needed, Important, anything you like, several to a note, and picking two narrows to the notes carrying both. Searching marks the words it matched, and Print / PDF prints whatever is on screen \u2014 filter to a project or a tag and that is what comes out. The note editor has a Full button that gives it the whole screen, lists run five levels deep with a different marker at each, and the Meeting list finally obeys the same Calendars filter as the week and the month. Add Task has a Notes box, so what you know while typing a task no longer has to wait for an edit.";
 
 const DEFAULT_SB_URL = 'https://vblmnfjbtoeeytmzgbaf.supabase.co';
@@ -7429,6 +7443,21 @@ async function saveCapture() {
 // drifting apart would be invisible until a printed page came out wrong.
 function noteDay(n) { return n.day || (n.created_at || '').slice(0, 10); }
 
+// A note taken in a meeting belongs at the meeting's time, not at the minute it
+// happened to be typed — a note started at 3:54 for a 10:00 assembly reads as a
+// stray afternoon thought otherwise. Falls back to when it was written.
+// Deliberately NOT visibleCalEvents(): a note keeps its meeting's time even
+// when that calendar is switched off in the Calendars filter.
+function noteTime(n) {
+  if (n.event_title) {
+    const ev = (calEvents[noteDay(n)] || []).find(e => e.title === n.event_title);
+    if (ev) return ev.allDay ? 'All day' : (ev.time || '');
+  }
+  return n.created_at
+    ? new Date(n.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : '';
+}
+
 function filteredNotes() {
   const q = notesQuery.trim().toLowerCase();
   let live = notes.filter(n => !n.archived);
@@ -7736,9 +7765,17 @@ function buildNoteCard(n, opts) {
   const body = document.createElement('div');
   const rich = noteIsRich(n.body);
   body.className = 'note-body ' + (rich ? 'rich' : 'plain');
-  if (rich) body.innerHTML = sanitizeNoteHtml(n.body); else body.textContent = n.body;
+  // Linked on the way out as well as on the way in, so addresses already sitting
+  // in notes written before this become clickable without re-saving anything.
+  body.innerHTML = sanitizeNoteHtml(rich ? autoLinkHtml(n.body) : plainNoteHtml(n.body));
   body.title = 'Click to edit';
-  body.onclick = () => openNoteEditor(n.id);
+  body.onclick = (e) => {
+    // A link on a card is there to be followed. Only the rest of the note opens
+    // the editor, or the address would be unreachable from the one place it is
+    // actually read.
+    if (e.target.closest && e.target.closest('a[href]')) return;
+    openNoteEditor(n.id);
+  };
   card.appendChild(body);
 
   const meta = document.createElement('div');
@@ -7755,10 +7792,11 @@ function buildNoteCard(n, opts) {
       if (day) bits.push(new Date(day + 'T12:00:00')
         .toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
     }
-    if (n.created_at) bits.push(new Date(n.created_at)
-      .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+    const when = noteTime(n);
+    if (when) bits.push(when);
     if (bits.length) {
       const span = document.createElement('span');
+      span.className = 'note-when';
       span.textContent = bits.join(', ');
       meta.appendChild(span);
     }
@@ -8403,12 +8441,136 @@ function noteLines(body) {
   return out;
 }
 
+// Bare web addresses typed or pasted into a note become real links. Only
+// http(s) and www. — anything looser starts turning ordinary prose into links.
+const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi;
+
+// Trailing punctuation belongs to the sentence, not to the address. A closing
+// bracket only belongs to the address if it was opened inside it.
+function trimUrlTail(u) {
+  let end = u.length;
+  const dropPunct = () => { while (end > 0 && '.,;:!?'.includes(u[end - 1])) end--; };
+  dropPunct();
+  while (end > 0 && ')]}'.includes(u[end - 1])) {
+    const close = u[end - 1];
+    const open = close === ')' ? '(' : close === ']' ? '[' : '{';
+    const before = u.slice(0, end - 1);
+    if (before.split(open).length > before.split(close).length) break;
+    end--;
+    dropPunct();
+  }
+  return u.slice(0, end);
+}
+
+function autoLinkInto(root, doc) {
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    // Never relink what is already a link.
+    if (node.parentElement && node.parentElement.closest('a')) continue;
+    URL_RE.lastIndex = 0;
+    if (URL_RE.test(node.nodeValue || '')) targets.push(node);
+  }
+  targets.forEach(n => {
+    const text = n.nodeValue;
+    const frag = doc.createDocumentFragment();
+    let last = 0, m;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(text))) {
+      const raw = trimUrlTail(m[0]);
+      if (!raw) { URL_RE.lastIndex = m.index + m[0].length; continue; }
+      if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)));
+      const a = doc.createElement('a');
+      a.setAttribute('href', /^www\./i.test(raw) ? 'https://' + raw : raw);
+      a.textContent = raw;
+      frag.appendChild(a);
+      last = m.index + raw.length;
+      URL_RE.lastIndex = last;
+    }
+    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
+    n.parentNode.replaceChild(frag, n);
+  });
+}
+
+// Parsed in a detached document, so nothing in the markup runs on the way
+// through. sanitizeNoteHtml() still has the last word on what is kept.
+function autoLinkHtml(html) {
+  const doc = new DOMParser().parseFromString('<div id="r"></div>', 'text/html');
+  const root = doc.getElementById('r');
+  root.innerHTML = String(html || '');
+  autoLinkInto(root, doc);
+  return root.innerHTML;
+}
+
+// Notes written before rich text are plain strings. Their addresses should be
+// clickable too, without rewriting what is stored.
+function plainNoteHtml(text) {
+  const doc = new DOMParser().parseFromString('<div id="r"></div>', 'text/html');
+  const root = doc.getElementById('r');
+  root.textContent = String(text || '');
+  autoLinkInto(root, doc);
+  return root.innerHTML;
+}
+
+function normalizeHref(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  return /^www\./i.test(v) ? 'https://' + v : v;
+}
+
 // ── Editor behavior ──
 function rtExec(cmd) {
   const ed = document.getElementById('noteEditBody');
   ed.focus();
   if (cmd === 'checklist') { rtToggleChecklist(); return; }
+  if (cmd === 'link') { rtLink(); return; }
   document.execCommand(cmd, false, null);
+}
+
+// Make, edit, or remove a link. The selection is saved first and put back
+// afterwards: prompt() takes focus away, and without this the cursor would be
+// gone by the time there was an address to apply it to.
+function rtLink() {
+  const ed = document.getElementById('noteEditBody');
+  if (!ed) return;
+  const sel = document.getSelection();
+  const saved = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+  let node = saved ? saved.startContainer : null;
+  if (node && node.nodeType === 3) node = node.parentNode;
+  const existing = node && node.closest ? node.closest('a') : null;
+  const wasCollapsed = saved ? saved.collapsed : true;
+
+  const answer = prompt(
+    existing ? 'Edit the link \u2014 clear the box to remove it:' : 'Link address:',
+    existing ? (existing.getAttribute('href') || '') : 'https://');
+
+  ed.focus();
+  if (saved) { sel.removeAllRanges(); sel.addRange(saved); }
+  if (answer === null) return;                       // Cancel leaves it alone
+
+  const url = answer.trim();
+  if (existing) {
+    if (!url) {                                      // Unlink, keeping the words
+      const parent = existing.parentNode;
+      while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+      existing.remove();
+      return;
+    }
+    const href = normalizeHref(url);
+    if (!safeHttpUrl(href)) { showToast('A link has to start with http:// or https://'); return; }
+    existing.setAttribute('href', href);
+    return;
+  }
+  if (!url || url === 'https://') return;
+  const href = normalizeHref(url);
+  if (!safeHttpUrl(href)) { showToast('A link has to start with http:// or https://'); return; }
+  if (wasCollapsed) {
+    // Nothing selected: the address becomes its own words.
+    document.execCommand('insertHTML', false, `<a href="${escHtml(href)}">${escHtml(url)}</a>&nbsp;`);
+  } else {
+    document.execCommand('createLink', false, href);
+  }
 }
 
 // Turns the list the cursor is in into a checklist, or back again.
@@ -8452,7 +8614,20 @@ function rtInit() {
     } else if ((e.metaKey || e.ctrlKey) && 'bi'.includes(e.key.toLowerCase())) {
       e.preventDefault();
       document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : 'italic', false, null);
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      rtLink();
     }
+  });
+  // Inside the editor a plain click has to place the caret, or a link's text
+  // could never be edited. Hold the modifier to follow it instead.
+  ed.addEventListener('click', (e) => {
+    const a = e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a || !ed.contains(a)) return;
+    if (!(e.metaKey || e.ctrlKey)) return;
+    e.preventDefault();
+    const href = safeHttpUrl(a.getAttribute('href'));
+    if (href) window.open(href, '_blank', 'noopener,noreferrer');
   });
   // Ticking a box inside the editor.
   ed.addEventListener('click', (e) => {
@@ -8585,7 +8760,11 @@ function openNoteEditor(id) {
   const n = id ? notes.find(x => x.id === id) : null;
   editingNoteId = id;
   applyNoteEditorFull();
-  const day = n?.day || todayKey();
+  // noteDay(), not `n.day || today` — the same field the timeline groups by.
+  // A note saved before the day column existed has day = null, and falling back
+  // to today moved it to today's pile on open and offered today's meetings to
+  // attach it to. The card said Nov 5 while the editor said today.
+  const day = (n ? noteDay(n) : '') || todayKey();
   document.getElementById('noteEditTitle').textContent = n ? 'Edit note' : 'New note';
   rtInit();
   const ed = document.getElementById('noteEditBody');
@@ -8626,7 +8805,7 @@ function openNoteEditor(id) {
 
 async function saveNoteEdit() {
   const ed = document.getElementById('noteEditBody');
-  const body = sanitizeNoteHtml(ed.innerHTML);
+  const body = sanitizeNoteHtml(autoLinkHtml(ed.innerHTML));
   if (!(ed.textContent || '').trim()) { showToast('A note needs some text'); return; }
   const day = parseDate(document.getElementById('noteEditDay').value) || todayKey();
   const event_title = document.getElementById('noteEditEvent').value || null;
