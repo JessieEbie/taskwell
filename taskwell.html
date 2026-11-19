@@ -22,6 +22,10 @@
       --khaki: #C4B99A; --khaki-pale: #EDE7DA;
       --brown: #A67B5B;
       --rust: #B85C38; --paper: #FAF7F2;
+      /* Attention: overdue, in progress, flagged. Recomputed per palette by
+         applyPalettes() so it belongs to the theme instead of fighting it.
+         These are the fallbacks for the Original palette. */
+      --attn: #476b85; --attn-dark: #2c495e; --attn-pale: #dce4ea;
       --rose: #C4A4A0; --rose-dark: #A67B5B; --rose-pale: #EDE0DB;
       --accent: #B8A898; --accent-dark: #9A8E87; --accent-pale: #EDE8E2;
       --rail-bg: #B8A898;
@@ -206,7 +210,8 @@
     .task-detail-notes a { color: var(--accent-dark); text-decoration: underline; }
     .task-detail-meta { font-size: 12px; color: var(--ink-faint); font-family: 'Helvetica Neue', sans-serif; margin-bottom: 10px; }
     .due-badge { font-size: 10px; font-family: 'Helvetica Neue', sans-serif; padding: 2px 7px; border-radius: 10px; flex-shrink: 0; }
-    .due-badge.overdue { background: var(--rust); color: var(--paper); }
+    .due-badge.overdue { background: var(--attn-pale); color: var(--attn-dark);
+                         box-shadow: inset 0 0 0 1px var(--attn); font-weight: 600; }
     .due-badge.today { background: var(--accent-pale); color: var(--ink); }
     .due-badge.soon { background: var(--cream-dark); color: var(--ink-soft); }
     .task-edit { background: none; border: none; color: var(--ink-faint); font-size: 14px; cursor: pointer; padding: 0 2px; flex-shrink: 0; line-height: 1; }
@@ -219,10 +224,10 @@
        checkbox, so the two aren't mistaken for each other. */
     .task-inprogress-btn { background: none; border: none; color: var(--ink-faint); font-size: 13px;
                             cursor: pointer; padding: 0 2px; flex-shrink: 0; line-height: 1; }
-    .task-inprogress-btn:hover { color: var(--rust); }
+    .task-inprogress-btn:hover { color: var(--attn); }
     /* Bold + a strongly contrasting color (not the muted khaki row accent below,
        which reads too close to the unstarted gray to tell apart at a glance). */
-    .task-inprogress-btn.active { color: var(--rust); font-weight: bold; }
+    .task-inprogress-btn.active { color: var(--attn); font-weight: bold; }
     .task-row.in-progress { border-left: 3px solid var(--khaki); padding-left: 5px; margin-left: -8px; }
     .time-grid-chip.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
     .agenda-block.is-task.in-progress { box-shadow: inset 3px 0 0 var(--khaki); }
@@ -236,20 +241,20 @@
        already uses an inset box-shadow there and the two would overwrite. */
     .task-priority-btn { background: none; border: none; color: var(--ink-faint); font-size: 14px;
                          cursor: pointer; padding: 0 3px; flex-shrink: 0; line-height: 1; }
-    .task-priority-btn:hover { color: var(--priority); }
-    .task-priority-btn.active { color: var(--priority); }
-    .task-row.priority { background: color-mix(in srgb, var(--priority) 7%, transparent); }
+    .task-priority-btn:hover { color: var(--attn); }
+    .task-priority-btn.active { color: var(--attn); }
+    .task-row.priority { background: color-mix(in srgb, var(--attn) 9%, transparent); }
     .task-row.priority .task-text:not(.done) { font-weight: 700; }
-    .priority-flag { color: var(--priority); font-size: 11px; flex-shrink: 0; line-height: 1; }
-    .time-grid-chip.priority { outline: 1.5px solid var(--priority); outline-offset: -1.5px; }
+    .priority-flag { color: var(--attn); font-size: 11px; flex-shrink: 0; line-height: 1; }
+    .time-grid-chip.priority { outline: 1.5px solid var(--attn); outline-offset: -1.5px; }
     .time-grid-chip.priority .time-grid-chip-title { font-weight: 700; }
-    .agenda-block.is-task.priority { outline: 2.5px solid var(--priority); outline-offset: -2.5px; }
+    .agenda-block.is-task.priority { outline: 2.5px solid var(--attn); outline-offset: -2.5px; }
     .agenda-block.is-task.priority .priority-flag { color: #fff; }
-    .month-day-item.is-task.priority { font-weight: 700; outline: 1.5px solid var(--priority); outline-offset: -1.5px; }
-    .chip.priority { border-color: var(--priority); border-width: 1.5px; font-weight: 700; }
+    .month-day-item.is-task.priority { font-weight: 700; outline: 1.5px solid var(--attn); outline-offset: -1.5px; }
+    .chip.priority { border-color: var(--attn); border-width: 1.5px; font-weight: 700; }
     .modal-check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; margin: 4px 0 10px;
                        cursor: pointer; font-size: 14px; color: var(--ink); }
-    .modal-check-row input { width: 18px; height: 18px; accent-color: var(--priority); cursor: pointer; }
+    .modal-check-row input { width: 18px; height: 18px; accent-color: var(--attn); cursor: pointer; }
     .today-picker-list { max-height: 60vh; overflow-y: auto; margin: 6px 0 10px; }
     .today-picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 4px; cursor: pointer;
                           border-bottom: 1px solid var(--cream-dark); }
@@ -2538,16 +2543,66 @@ const PALETTES = [
 
 let userPalettes = lsJSON('tw_palettes', null) || { work: 'original', home: 'sage', all: 'rose' };
 
+// ── The attention color ──
+// Overdue, in progress and flagged used two fixed warm reds chosen for the
+// original rose-and-cream theme. Against a sage or a slate palette they read as
+// a different app's colors bolted on. With 86 palettes, hand-picking a matching
+// alert color for each one is not maintainable, so it is derived from the
+// accent instead — which also means any palette added later gets one for free.
+function hexToHsl(hex) {
+  const v = String(hex || '').replace('#', '');
+  const r = parseInt(v.slice(0, 2), 16) / 255,
+        g = parseInt(v.slice(2, 4), 16) / 255,
+        b = parseInt(v.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  if (!d) return { h: 0, s: 0, l };
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return { h: h * 60, s, l };
+}
+
+function hslToHex(h, s, l) {
+  h = ((h % 360) + 360) % 360; s = Math.max(0, Math.min(1, s)); l = Math.max(0, Math.min(1, l));
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const seg = Math.floor(h / 60) % 6;
+  const [r, g, b] = [[c,x,0],[x,c,0],[0,c,x],[0,x,c],[x,0,c],[c,0,x]][seg];
+  const to = v => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return '#' + to(r) + to(g) + to(b);
+}
+
+// A muted clay beside a cool accent, a muted slate-blue beside a warm one.
+// Never a saturated red: overdue is information, not an alarm, and a count of
+// late things is not something to be scolded by.
+function attnFor(accent) {
+  const { h } = hexToHsl(accent);
+  const warm = (h >= 345 || h <= 65);
+  const hue = warm ? 205 : 20;
+  const sat = warm ? 0.30 : 0.40;
+  return {
+    attn:  hslToHex(hue, sat, warm ? 0.40 : 0.44),
+    dark:  hslToHex(hue, sat + 0.06, warm ? 0.27 : 0.29),
+    pale:  hslToHex(hue, sat - 0.04, 0.89),
+  };
+}
+
 function applyPalettes() {
   const get = id => PALETTES.find(p => p.id === id) || PALETTES[0];
   const w = get(userPalettes.work), h = get(userPalettes.home), a = get(userPalettes.all);
+  const wa = attnFor(w.accent), ha = attnFor(h.accent), aa = attnFor(a.accent);
   let style = document.getElementById('paletteStyle');
   if (!style) { style = document.createElement('style'); style.id = 'paletteStyle'; document.head.appendChild(style); }
   style.textContent = `
     body { --accent:${w.accent}; --accent-dark:${w.dark}; --accent-pale:${w.pale}; --rail-bg:${w.rail};
-           --work-rail-color:${w.rail}; --home-rail-color:${h.rail}; }
-    body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail}; }
-    body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail}; }
+           --work-rail-color:${w.rail}; --home-rail-color:${h.rail};
+           --attn:${wa.attn}; --attn-dark:${wa.dark}; --attn-pale:${wa.pale}; }
+    body.ctx-home { --accent:${h.accent}; --accent-dark:${h.dark}; --accent-pale:${h.pale}; --rail-bg:${h.rail};
+           --attn:${ha.attn}; --attn-dark:${ha.dark}; --attn-pale:${ha.pale}; }
+    body.ctx-all  { --accent:${a.accent}; --accent-dark:${a.dark}; --accent-pale:${a.pale}; --rail-bg:${a.rail};
+           --attn:${aa.attn}; --attn-dark:${aa.dark}; --attn-pale:${aa.pale}; }
   `;
 }
 
